@@ -306,7 +306,7 @@ $menuColumns = [
     <div class="box-container-full mspv2-shell" data-tour="menu-root">
 
     <!-- Hero -->
-    <div class="mspv2-hero" data-tour="menu-header">
+    <div class="mspv2-hero" data-tour="menu-header" data-gp-commandbar>
         <div class="mspv2-hero-back">
             <a href="/portalgp/index.php" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú principal

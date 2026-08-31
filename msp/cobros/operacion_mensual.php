@@ -7611,14 +7611,12 @@ if (is_array($stageGenerationSnapshot)) {
 <?php msp2RenderCsrfAutoFieldScript(); ?>
 <main class="gp-main d-flex align-items-center justify-content-center p-4">
     <div class="box-container-wide">
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-            <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a MSP
-            </a>
-        </div>
         <div class="omw-shell">
             <div class="omw-header mb-3">
-                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2" data-gp-commandbar>
+                    <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
+                    </a>
                     <div>
                         <h1 class="h4 mb-1">Generar documento de cobro</h1>
                     </div>

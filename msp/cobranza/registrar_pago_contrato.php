@@ -817,10 +817,14 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
 <?php msp2RenderCsrfAutoFieldScript(); ?>
 <main class="gp-main d-flex align-items-center justify-content-center p-4">
     <div class="box-container-wide" data-tour="rpc-root">
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2" data-gp-commandbar>
             <a href="<?php echo msp2Escape($returnTo !== '' ? msp2Url($returnTo) : msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i><?php echo $returnTo !== '' ? 'Volver a Gestión de Cobranza' : 'Volver a MSP'; ?>
             </a>
+            <div>
+                <p class="section-kicker text-center mb-0">MSP / Cobranza</p>
+                <h1 class="form-title text-center mb-0">Pago por contrato</h1>
+            </div>
             <div class="d-flex gap-2">
                 <a href="<?php echo msp2Escape(msp2Url('pagos/archivos_pdf.php')); ?>" class="btn btn-outline-dark btn-sm">
                     <i class="bi bi-archive me-1" aria-hidden="true"></i>Respaldo PDFs
@@ -830,10 +834,6 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                 </button>
             </div>
         </div>
-
-        <p class="section-kicker text-center">MSP / Cobranza</p>
-        <h1 class="form-title text-center mb-2">Pago por contrato</h1>
-        <p class="text-muted text-center mb-4">Ingresa un pago único y el sistema lo distribuye por antigüedad entre documentos pendientes del contrato.</p>
 
         <?php include dirname(__DIR__) . '/templates/components/flash_toast.php'; ?>
         <?php if (is_array($toastFlash) && (($toastFlash['type'] ?? '') === 'success')): ?>

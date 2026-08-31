@@ -40,14 +40,14 @@ $menuItems = array_values(array_filter(
 <main class="d-flex align-items-center py-4">
     <div class="menu-wrapper">
         <section class="menu-panel">
-            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2" data-gp-commandbar>
                 <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
                 </a>
+                <h1 class="menu-title mb-0">Catálogos</h1>
                 <span class="section-kicker">MSP / Catálogo</span>
             </div>
 
-            <h1 class="menu-title">Catálogos</h1>
             <p class="menu-subtitle">Datos base para la operación inicial de MSP.</p>
 
             <div class="row row-cols-1 row-cols-md-2 g-3">

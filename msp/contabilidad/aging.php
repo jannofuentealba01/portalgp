@@ -413,13 +413,16 @@ if ($tablaExiste) {
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main p-3 p-md-4">
     <div class="box-container-full mx-auto" style="max-width: 1400px;">
-        <div class="d-flex align-items-center mb-3">
-            <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>">Volver a MSP</a>
+        <div class="d-flex align-items-center justify-content-between mb-2" data-gp-commandbar>
+            <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>">Volver al menú MSP</a>
+            <div>
+                <p class="section-kicker text-center mb-0">MSP / Contabilidad</p>
+                <h1 class="form-title text-center mb-0">Aging de Deudores</h1>
+            </div>
+            <span aria-hidden="true"></span>
         </div>
 
-        <p class="section-kicker text-center">MSP / Contabilidad</p>
-        <h1 class="form-title text-center mb-2">Aging de Deudores</h1>
-        <p class="text-muted text-center mb-4">Cartera vencida por tramos de atraso, con resumen y detalle por documento.</p>
+        <p class="text-muted text-center mb-3">Cartera vencida por tramos de atraso, con resumen y detalle por documento.</p>
 
         <?php msp2RenderFlash($flash); ?>
         <?php if ($loadError !== null): ?><div class="alert alert-danger"><?php echo msp2Escape($loadError); ?></div><?php endif; ?>

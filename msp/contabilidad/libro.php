@@ -168,13 +168,12 @@ if ($loadError === null) {
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="container-fluid py-4">
     <div class="container bg-white rounded shadow-sm p-4">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-gp-commandbar>
             <div>
-                <h1 class="h4 mb-1">Libro Diario Contable</h1>
-                <p class="text-muted mb-0">Asientos de doble partida generados desde documentos, pagos, garantías y saldos a favor.</p>
+                <h1 class="h4 mb-0">Libro Diario Contable</h1>
             </div>
             <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1"></i>Menú MSP
+                <i class="bi bi-arrow-left me-1"></i>Volver al menú MSP
             </a>
         </div>
 

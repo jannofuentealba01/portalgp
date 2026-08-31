@@ -100,3 +100,5 @@ $gpStylesVersion = is_file($gpStylesPath) ? (string) filemtime($gpStylesPath) : 
 <?php if ($gpIsMsp2Route): ?>
     <script src="/portalgp/msp/assets/modal_form_feedback.js" defer></script>
 <?php endif; ?>
+
+<?php require_once __DIR__ . '/components/page_navigation.php'; ?>

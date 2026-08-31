@@ -2370,3 +2370,266 @@ h2.form-subtitle {
     min-width: 90px;
   }
 }
+/* Navegación de regreso de página. El contenedor reserva el punto de montaje
+   para breadcrumbs sin mostrarlos todavía. */
+.gp-page-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  order: -100;
+}
+
+.gp-page-back,
+a.gp-page-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid #6b7280;
+  border-radius: 7px;
+  background: transparent;
+  color: #4b5563;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-decoration: none;
+  box-shadow: none;
+}
+
+.gp-page-back:hover,
+.gp-page-back:focus-visible {
+  border-color: #374151;
+  background: #f3f4f6;
+  color: #111827;
+  text-decoration: none;
+}
+
+.gp-page-back:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.24);
+  outline-offset: 2px;
+}
+
+.gp-page-back__icon {
+  margin-right: 7px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Barra superior compacta: regresar | título | acciones. */
+.gp-module-msp .gp-page-commandbar {
+  display: grid !important;
+  grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) minmax(160px, 1fr) !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 34px;
+  margin-bottom: 8px !important;
+}
+
+.gp-module-msp .gp-page-commandbar > .gp-page-navigation--inline {
+  grid-column: 1;
+  grid-row: 1;
+  width: auto;
+  justify-self: start;
+}
+
+.gp-module-msp .gp-page-commandbar > .gp-page-commandbar__title {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  margin: 0 !important;
+  text-align: center;
+  justify-self: center;
+}
+
+.gp-module-msp .gp-page-commandbar > .gp-page-commandbar__title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.gp-module-msp .gp-page-commandbar > .gp-page-commandbar__title h1,
+.gp-module-msp .gp-page-commandbar > h1.gp-page-commandbar__title {
+  margin: 0 !important;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 1.5rem !important;
+  line-height: 1.15 !important;
+}
+
+.gp-module-msp .gp-breadcrumbs {
+  max-width: min(54vw, 720px);
+  margin: 0 0 2px;
+  overflow: hidden;
+  color: #64748b;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.gp-module-msp .gp-breadcrumbs ol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+
+.gp-module-msp .gp-breadcrumbs li {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.gp-module-msp .gp-breadcrumbs li + li::before {
+  content: "›";
+  flex: 0 0 auto;
+  margin: 0 5px;
+  color: #94a3b8;
+}
+
+.gp-module-msp .gp-breadcrumbs a,
+.gp-module-msp .gp-breadcrumbs span {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  text-decoration: none;
+}
+
+.gp-module-msp .gp-breadcrumbs a:hover,
+.gp-module-msp .gp-breadcrumbs a:focus-visible {
+  color: #0b3a6e;
+  text-decoration: underline;
+}
+
+.gp-module-msp .gp-breadcrumbs [aria-current="page"] {
+  color: #334155;
+  font-weight: 600;
+}
+
+.gp-module-msp .gp-breadcrumbs-replaced-kicker { display: none !important; }
+
+/* El reporte integral prioriza métricas y tabla; la explicación ya es implícita. */
+.gp-page-msp-garantias-reporte-php .gp-page-commandbar__title > p {
+  display: none !important;
+}
+
+/* En la barra compacta, los ancestros y el título forman una sola línea.
+   El último elemento permanece disponible para lectores de pantalla. */
+.gp-module-msp .gp-page-commandbar__title .gp-breadcrumbs {
+  flex: 0 1 auto;
+  max-width: 28vw;
+  margin: 0;
+}
+
+.gp-module-msp .gp-page-commandbar__title .gp-breadcrumbs [aria-current="page"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.gp-module-msp .gp-page-commandbar > .gp-page-commandbar__actions {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  margin: 0 !important;
+  justify-self: end;
+}
+
+.gp-module-msp .gp-page-navigation-host { position: relative; }
+
+.gp-module-msp .gp-page-navigation--overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: auto;
+}
+
+/* Densidad de datos: una fila visual por registro y desplazamiento horizontal. */
+.gp-module-msp {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.gp-module-msp .table-responsive,
+.gp-module-msp .msp-management-table-responsive { overflow-x: auto; }
+
+.gp-module-msp main { overflow-x: auto; }
+
+.gp-module-msp main table {
+  min-width: max-content;
+}
+
+.gp-module-msp main table > :not(caption) > * > * {
+  padding: .25rem .45rem;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.gp-module-msp main table tbody {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: .875rem;
+  line-height: 1.2;
+}
+
+.gp-module-msp main table .text-wrap,
+.gp-module-msp main table [data-gp-allow-wrap="true"] { white-space: normal; }
+
+.gp-module-msp main table .btn-sm {
+  min-height: 28px !important;
+  padding: .2rem .45rem !important;
+  font-size: .8rem !important;
+  line-height: 1.15 !important;
+}
+
+@media print {
+  .gp-page-navigation { display: none !important; }
+}
+
+@media (max-width: 767.98px) {
+  .gp-module-msp .gp-page-commandbar {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+  }
+
+  .gp-module-msp .gp-page-commandbar > .gp-page-commandbar__title h1,
+  .gp-module-msp .gp-page-commandbar > h1.gp-page-commandbar__title {
+    font-size: 1.25rem !important;
+  }
+
+  .gp-module-msp .gp-page-navigation--overlay {
+    position: static;
+    margin-bottom: 8px;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .gp-page-navigation {
+    margin-bottom: 12px;
+  }
+
+  .gp-page-back,
+  a.gp-page-back {
+    min-height: 32px;
+    padding: 4px 9px;
+    font-size: 14px;
+  }
+}

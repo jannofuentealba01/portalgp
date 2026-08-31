@@ -1322,7 +1322,7 @@ if ($tablaExiste) {
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main p-2 p-xl-3">
     <div class="dashboard-shell">
-        <div class="dash-page-header mb-2">
+        <div class="dash-page-header mb-2" data-gp-commandbar>
             <div class="dash-page-back">
             <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a MSP

@@ -2638,7 +2638,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
 <main class="gp-main cd-main">
         <div class="cd-shell">
             <section class="cd-focusbar js-control-focusbar" aria-label="Controles de Control diario">
-                <div class="cd-focusbar-main">
+                <div class="cd-focusbar-main" data-gp-commandbar>
                     <div class="cd-focusbar-brand">
                         <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                             <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver
@@ -3876,5 +3876,6 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
     window.requestAnimationFrame(syncStickyHeaderOffset);
 })();
 </script>
+<?php require_once dirname(__DIR__, 2) . '/templates/components/page_navigation.php'; ?>
 </body>
 </html>

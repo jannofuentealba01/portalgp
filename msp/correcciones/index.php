@@ -171,13 +171,13 @@ function corrMonto(mixed $value): string
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main container-fluid py-4 px-lg-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3" data-gp-commandbar>
         <div>
             <p class="text-muted mb-1">MSP / Operación</p>
             <h1 class="h3 mb-1">Correcciones selectivas</h1>
             <p class="text-muted mb-0">Corrige un registro puntual sin borrar ni reabrir el período completo.</p>
         </div>
-        <a class="btn btn-outline-dark btn-sm" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php')); ?>">Volver a Operación mensual</a>
+        <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>">Volver al menú MSP</a>
     </div>
 
     <div class="card shadow-sm mb-3">
@@ -612,5 +612,4 @@ document.addEventListener('DOMContentLoaded', () => {
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>
-
 

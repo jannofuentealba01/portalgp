@@ -4,3 +4,4 @@
 <?php if (str_contains((string) ($_SERVER['REQUEST_URI'] ?? ''), '/portalgp/msp/') && function_exists('msp2QuickAccessSections')): ?>
     <?php include __DIR__ . '/../msp/templates/components/quick_access_offcanvas.php'; ?>
 <?php endif; ?>
+<?php require_once __DIR__ . '/components/page_navigation.php'; ?>

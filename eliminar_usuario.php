@@ -32,7 +32,7 @@ error_reporting(E_ALL);
 $userId = $_GET['id'] ?? null;
 
 if (!$userId) {
-    echo "<script>alert('ID de usuario no especificado.'); window.location.href = 'lista_usuarios.php';</script>";
+    echo "<script>alert('ID de usuario no especificado.'); window.location.href = '/portalgp/sistema/gestion/usuarios.php';</script>";
     exit();
 }
 
@@ -43,7 +43,7 @@ $stmt->execute();
 $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$usuario) {
-    echo "<script>alert('Usuario no encontrado.'); window.location.href = 'lista_usuarios.php';</script>";
+    echo "<script>alert('Usuario no encontrado.'); window.location.href = '/portalgp/sistema/gestion/usuarios.php';</script>";
     exit();
 }
 
@@ -60,9 +60,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !$registrosAsociados) {
         $stmtDeleteUser->bindParam(':id', $userId, PDO::PARAM_INT);
         
         if ($stmtDeleteUser->execute()) {
-            echo "<script>alert('Usuario eliminado correctamente.'); window.location.href = 'lista_usuarios.php';</script>";
+            echo "<script>alert('Usuario eliminado correctamente.'); window.location.href = '/portalgp/sistema/gestion/usuarios.php';</script>";
         } else {
-            echo "<script>alert('Error al eliminar el usuario.'); window.location.href = 'lista_usuarios.php';</script>";
+            echo "<script>alert('Error al eliminar el usuario.'); window.location.href = '/portalgp/sistema/gestion/usuarios.php';</script>";
         }
     } catch (PDOException $e) {
         echo "Error en la eliminación del usuario: " . $e->getMessage();
@@ -132,13 +132,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !$registrosAsociados) {
     <h2>Eliminar Usuario</h2>
     <?php if ($registrosAsociados): ?>
         <p>No se puede eliminar al usuario <strong><?php echo htmlspecialchars($usuario['nombre_completo']); ?></strong> porque tiene registros asociados.</p>
-        <a href="lista_usuarios.php">Volver a la lista de usuarios</a>
+        <a href="/portalgp/sistema/gestion/usuarios.php">Volver a la lista de usuarios</a>
     <?php else: ?>
         <p>¿Estás seguro de que deseas eliminar al usuario <strong><?php echo htmlspecialchars($usuario['nombre_completo']); ?></strong>?</p>
         <form method="POST">
             <button type="submit">Eliminar Usuario</button>
         </form>
-        <a href="lista_usuarios.php">Cancelar</a>
+        <a href="/portalgp/sistema/gestion/usuarios.php">Cancelar</a>
     <?php endif; ?>
 </div>
 

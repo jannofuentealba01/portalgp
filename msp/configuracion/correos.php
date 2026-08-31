@@ -73,10 +73,11 @@ try {
 
 <main class="gp-main py-4">
     <div class="container" style="max-width: 980px;">
-        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2" data-gp-commandbar>
             <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
             </a>
+            <h1 class="h4 mb-0">Configuración de correos</h1>
             <span class="section-kicker">MSP / Configuración</span>
         </div>
 
@@ -85,7 +86,6 @@ try {
         <section class="box-container">
             <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-3">
                 <div>
-                    <h1 class="h4 mb-1">Configuración de correos</h1>
                     <p class="text-muted mb-0">Controla el envío real a correos de arrendatarios.</p>
                 </div>
                 <span class="badge <?php echo $estadoHabilitado ? 'text-bg-success' : 'text-bg-secondary'; ?> fs-6">

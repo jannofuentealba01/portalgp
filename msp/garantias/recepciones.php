@@ -261,4 +261,5 @@ try {
 })();
 </script>
 <?php msp2RenderCsrfAutoFieldScript(); ?>
+<?php require_once dirname(__DIR__, 2) . '/templates/components/page_navigation.php'; ?>
 </body></html>

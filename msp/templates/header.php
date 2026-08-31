@@ -26,3 +26,4 @@ msp2RenderCsrfAutoFieldScript();
         </div>
     </div>
 </header>
+<?php require_once dirname(__DIR__, 2) . '/templates/components/page_navigation.php'; ?>

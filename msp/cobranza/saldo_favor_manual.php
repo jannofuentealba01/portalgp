@@ -1279,21 +1279,17 @@ foreach ($saldoFavorOptionRows as $optionRow) {
 <?php msp2RenderCsrfAutoFieldScript(); ?>
 <main class="gp-main d-flex align-items-center justify-content-center p-4">
     <div class="box-container-wide">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <a href="<?php echo msp2Escape(msp2Url('cobranza/cargos_extra.php?periodo=' . urlencode($periodoYm))); ?>" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1"></i>Volver a Cargos Extra
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2" data-gp-commandbar>
+            <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1"></i>Volver al menú MSP
             </a>
+            <div>
+                <p class="section-kicker text-center mb-0">MSP / Cobranza</p>
+                <h1 class="h4 text-center mb-0">Saldo a Favor Manual</h1>
+            </div>
             <a href="<?php echo msp2Escape(msp2Url('documentos_cobro/index.php')); ?>" class="btn btn-outline-primary btn-sm">
                 <i class="bi bi-receipt me-1"></i>Ir a Documentos de cobro
             </a>
-        </div>
-
-        <div class="card mb-3">
-            <div class="card-body">
-                <p class="section-kicker mb-2">MSP / Cobranza</p>
-                <h1 class="h4 mb-1">Saldo a Favor Manual</h1>
-                <p class="small text-muted mb-0">Registra rebajas, devoluciones, indemnizaciones u otros ajustes a favor del arrendatario.</p>
-            </div>
         </div>
 
         <?php include dirname(__DIR__) . '/templates/components/flash_toast.php'; ?>
