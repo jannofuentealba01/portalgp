@@ -1,0 +1,25 @@
+<?php
+require_once __DIR__ . '/../bootstrap.php';
+if (function_exists('msp2RequireAccess')) msp2RequireAccess();
+$pdo = $pdo ?? ($conn ?? null);
+if (!$pdo instanceof PDO) { http_response_code(500); exit('Conexión no disponible.'); }
+$idContrato = (int)($_GET['id_contrato'] ?? $_POST['id_contrato_arriendo'] ?? 0);
+$mensaje = $error = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion'] ?? '') === 'crear_convenio') {
+    try {
+        $stmt = $pdo->prepare("EXEC dbo.msp_convenio_crear @id_contrato_arriendo=:c,@monto_total=:m,@numero_cuotas=:n,@fecha_primera_vencimiento=:f,@observaciones=:o,@id_usuario=:u");
+        $stmt->execute([':c'=>$idContrato,':m'=>(float)str_replace(',','.',$_POST['monto_total'] ?? 0),':n'=>(int)($_POST['numero_cuotas'] ?? 0),':f'=>$_POST['fecha_primera_vencimiento'] ?? null,':o'=>$_POST['observaciones'] ?? null,':u'=>$_SESSION['id_usuario'] ?? null]);
+        $mensaje='Convenio creado correctamente con sus cuotas.';
+    } catch (Throwable $e) { $error=$e->getMessage(); }
+}
+$contrato = $pdo->prepare("SELECT c.id_contrato_arriendo, c.fecha_inicio, c.fecha_termino, COALESCE(a.nombre_locatario,a.nombre_representante,a.rut) arrendatario FROM dbo.msp_contratos_arriendo c LEFT JOIN dbo.msp_arrendatarios a ON a.id_arrendatario=c.id_arrendatario WHERE c.id_contrato_arriendo=:id");
+$contrato->execute([':id'=>$idContrato]); $contrato=$contrato->fetch(PDO::FETCH_ASSOC);
+$convenios=[]; $cuotas=[];
+if ($contrato) { $q=$pdo->prepare('SELECT * FROM dbo.msp_vw_convenios_pago_estado WHERE id_contrato_arriendo=:id ORDER BY id_convenio_pago DESC'); $q->execute([':id'=>$idContrato]); $convenios=$q->fetchAll(PDO::FETCH_ASSOC); $q=$pdo->prepare('SELECT q.*,c.id_contrato_arriendo FROM dbo.msp_convenio_pago_cuotas q JOIN dbo.msp_convenios_pago c ON c.id_convenio_pago=q.id_convenio_pago WHERE c.id_contrato_arriendo=:id ORDER BY q.id_convenio_pago DESC,q.numero_cuota'); $q->execute([':id'=>$idContrato]); $cuotas=$q->fetchAll(PDO::FETCH_ASSOC); }
+?><!doctype html><html lang="es"><head><meta charset="utf-8"><title>Convenio de pago</title><style>body{font-family:Arial;background:#f4f7fb;margin:30px;color:#17365d}.card{background:#fff;border:1px solid #d5deea;border-radius:8px;padding:22px;margin:15px 0}label{display:block;margin:10px 0 4px}input,textarea{padding:9px;width:100%;max-width:450px}button{margin-top:15px;padding:10px 18px;background:#12477d;color:#fff;border:0;border-radius:4px}.ok{background:#dff4e6;padding:12px}.err{background:#f9d7d7;padding:12px}table{border-collapse:collapse;width:100%;background:#fff}th,td{padding:8px;border:1px solid #d5deea;text-align:left}</style></head><body>
+<a href="<?=htmlspecialchars(function_exists('msp2Url')?msp2Url('cobranza/gestionar.php?id_contrato='.$idContrato):'gestionar.php?id_contrato='.$idContrato)?>">← Volver a cobranza</a><h1>Convenio de pago con cuotas</h1>
+<?php if($mensaje):?><div class="ok"><?=htmlspecialchars($mensaje)?></div><?php endif;?><?php if($error):?><div class="err"><?=htmlspecialchars($error)?></div><?php endif;?>
+<?php if(!$contrato):?><div class="err">Contrato no encontrado.</div><?php else: ?><div class="card"><h2>Contrato #<?=$idContrato?></h2><p>Arrendatario: <?=htmlspecialchars($contrato['arrendatario']??'—')?></p><form method="post"><input type="hidden" name="accion" value="crear_convenio"><input type="hidden" name="id_contrato_arriendo" value="<?=$idContrato?>"><label>Monto total *</label><input name="monto_total" required type="number" step="0.01" min="0.01"><label>Número de cuotas *</label><input name="numero_cuotas" required type="number" min="1" max="120"><label>Primer vencimiento *</label><input name="fecha_primera_vencimiento" required type="date"><label>Observaciones</label><textarea name="observaciones"></textarea><br><button>Crear convenio</button></form></div>
+<div class="card"><h2>Convenios existentes</h2><?php if(!$convenios):?><p>No hay convenios registrados.</p><?php else:?><table><tr><th>ID</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Cuotas atrasadas</th><th>Estado</th></tr><?php foreach($convenios as $c):?><tr><td><?=$c['id_convenio_pago']?></td><td>$<?=number_format($c['monto_total'],2,',','.')?></td><td>$<?=number_format($c['total_pagado'],2,',','.')?></td><td>$<?=number_format($c['saldo_pendiente'],2,',','.')?></td><td><?=$c['cuotas_atrasadas']?></td><td><?=htmlspecialchars($c['estado'])?></td></tr><?php endforeach;?></table><?php endif;?></div>
+<div class="card"><h2>Plan de cuotas</h2><table><tr><th>Convenio</th><th>Cuota</th><th>Vencimiento</th><th>Monto</th><th>Pagado</th><th>Estado</th></tr><?php foreach($cuotas as $q):?><tr><td><?=$q['id_convenio_pago']?></td><td><?=$q['numero_cuota']?></td><td><?=$q['fecha_vencimiento']?></td><td>$<?=number_format($q['monto_cuota'],2,',','.')?></td><td>$<?=number_format($q['monto_pagado'],2,',','.')?></td><td><?=htmlspecialchars($q['estado'])?></td></tr><?php endforeach;?></table></div><?php endif;?></body></html>
+

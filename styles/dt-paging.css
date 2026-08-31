@@ -1,0 +1,33 @@
+/* -----------------------------------------------------------------
+   DataTables + Bootstrap 5
+   • Centra la barra de paginación
+   • Coloca los botones en una sola línea (horizontal)
+   ----------------------------------------------------------------- */
+
+/* Contenedor de la paginación */
+.dataTables_wrapper .dataTables_paginate       {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 0.6rem !important;         /* espacio entre botones   */
+    margin: 1rem 0 !important;
+    flex-wrap: nowrap !important;   /* NO saltar de línea      */
+}
+
+/* Caso “full_numbers” (usa <ul><li>) */
+.dataTables_wrapper .dataTables_paginate ul.pagination {
+    display: flex !important;
+    gap: 0.6rem !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Items <li> o enlaces sueltos <a>/<span> */
+.dataTables_wrapper .dataTables_paginate li,
+.dataTables_wrapper .dataTables_paginate a,
+.dataTables_wrapper .dataTables_paginate span  {
+    display: inline-block !important;
+    list-style: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}

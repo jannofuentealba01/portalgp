@@ -1,0 +1,37 @@
+# Prevent nested repository metadata from being published when MSP is vendored.
+/.git/
+
+# Environment and local overrides.
+.env
+.env.*
+!.env.example
+config/mail.php
+
+# Dependencies / build artifacts.
+/vendor/
+/node_modules/
+
+# IDE and OS noise.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.codex
+
+# Local backups and temporary files.
+*.bak
+*.tmp
+*.temp
+*.log
+locales/importar8-1.php
+*.sql.gz
+
+# Common accidental exports/imports.
+*.zip
+*.7z
+*.xlsx
+*.xls
+*.csv
+*.pdf

@@ -1,0 +1,9 @@
+1. Ingresamos periodo de cobro (MM-YYYY), valor uf y dia de valor uf.
+2. Ingresamos valor kwh y periodo de medicion, adicionalmente agregamos un lote de datos con las mediciones (cod_local, valor)
+ (idealmente mostrar una vista de los datos asociados a los locales)
+3. Ingresamos valor litro gas, factor y adicionalmente agregamos un lote de medicion (cod_local, valor)
+ (idealmente mostrar una vista de los datos asociados a los locales)
+4. Ingresamos nro factura agua, lectura anterior, lectura actual, consumo en m3, cargo fijo, servicio alcantarillado, tratamiento aguas servidas, servicio agua potable, (opcional sobreconsumo y interez P.F plazo) y un lote de (cod_local, valor)
+ (idealmente mostrar una vista de los datos asociados a los locales)
+5. Generar documento de cobro por tienda (grupo de locales).
+6. (a futuro) Envio de correos masivos.

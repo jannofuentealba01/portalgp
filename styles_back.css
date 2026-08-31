@@ -1,0 +1,151 @@
+/* Fondo general del sistema */
+body.bg-light {
+  background-color: #f4f4f9 !important;
+  font-family: Arial, sans-serif !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 100vh !important;
+}
+
+/* Contenedor principal (NO afecta al header y footer) */
+.container.mt-4 {
+  background-color: #fff !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+  border-radius: 10px !important;
+  padding: 20px 40px !important;
+  max-width: 3000px !important; */ /* Comenta o ajusta según necesites */
+  width: 95%; /* Ajusta este valor para ver menos margen */
+  text-align: left;
+  margin: 40px auto; /* Ajusta este margin si quieres también reducir el espacio vertical */
+}
+
+/* Estilos para los títulos */
+h2.text-center.mb-4 {
+  color: #003399 !important;
+  font-size: 22px !important;
+  font-weight: bold;
+  margin-bottom: 20px;
+  text-align: center; /* Asegura que los títulos estén centrados */
+}
+
+/* Botón de acciones (Guardar, Consultar, etc.) */
+.btn.btn-primary {
+  background-color: #0288d1 !important;
+  border-color: #0288d1 !important;
+  padding: 10px 20px !important;
+  font-size: 16px !important;
+  font-weight: bold;
+}
+
+.btn.btn-primary:hover {
+  background-color: #0277bd !important;
+  border-color: #0277bd !important;
+}
+
+/* Botón de acción secundaria */
+.btn-secondary {
+  background-color: #6c757d !important;
+  border-color: #6c757d !important;
+  padding: 10px 20px !important;
+}
+.btn-secondary:hover {
+  background-color: #5a6268 !important;
+  border-color: #545b62 !important;
+}
+
+.btn-success {
+    background-color: #0288d1 !important;
+    border-color: #0288d1 !important;
+}
+.btn-success:hover {
+    background-color: #0277bd !important;
+    border-color: #0277bd !important;
+}
+
+/* Formularios organizados */
+.form-group {
+  margin-bottom: 15px !important;
+}
+
+.form-group label {
+  font-weight: bold !important;
+}
+
+.form-group input, .form-group select {
+  width: 100% !important;
+  padding: 8px !important;
+  border: 1px solid #ced4da !important;
+  border-radius: 5px !important;
+}
+
+/* Campos deshabilitados */
+input[readonly] {
+  background-color: #e9ecef !important;
+  cursor: not-allowed;
+}
+
+/* Tabla con bordes y alineación */
+.table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.table th {
+  background-color: #007bff !important;
+  color: #fff !important;
+  padding: 10px !important;
+  text-align: center;
+  border: 1px solid #dee2e6 !important;
+}
+
+.table td {
+  padding: 8px !important;
+  text-align: center !important;
+  border: 1px solid #dee2e6 !important;
+}
+
+/* Botones de paginación */
+.pagination {
+  display: flex !important;
+  justify-content: center !important;
+  margin-top: 20px !important;
+}
+
+.pagination button {
+  padding: 5px 10px !important;
+  margin: 0 5px !important;
+  border-radius: 5px !important;
+}
+
+/* Ajustes responsive */
+@media (max-width: 768px) {
+  .container.mt-4 {
+    padding: 15px !important;
+    width: 95% !important;
+  }
+
+  .table th, .table td {
+    font-size: 14px !important;
+    padding: 6px !important;
+  }
+
+  .btn {
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+  }
+/* Scroll horizontal para tablas largas */
+.table-responsive {
+  overflow-x: auto;
+  width: 100%;
+}
+
+/* Ajuste para la columna Observaciones */
+td.observaciones-cell {
+  max-width: 250px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  text-align: left !important;
+  font-size: 14px;
+}

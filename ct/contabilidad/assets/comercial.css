@@ -1,0 +1,12 @@
+#ct-comercial .table td,
+#ct-comercial .table th {
+    vertical-align: middle;
+}
+
+#ct-comercial .ct-crud-actions .btn {
+    min-width: 34px;
+}
+
+#ct-modal-registrar-venta .table thead th {
+    white-space: nowrap;
+}

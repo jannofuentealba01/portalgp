@@ -1,0 +1,316 @@
+:root {
+    --ct-color-text: #1f2f3d;
+    --ct-color-muted: #5d7484;
+    --ct-color-border: #d8e3ec;
+    --ct-color-surface: #f8fafc;
+    --ct-color-surface-2: #f2f7fb;
+    --ct-color-primary: #1f5d7e;
+    --ct-color-primary-2: #2b8a8f;
+    --ct-radius-sm: 8px;
+    --ct-radius-md: 12px;
+    --ct-radius-lg: 16px;
+    --ct-shadow-1: 0 8px 24px rgba(16, 36, 51, 0.12);
+    --ct-control-height: 38px;
+    --ct-motion-fast: 150ms;
+    --ct-motion-base: 220ms;
+    --ct-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ct-crud-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.ct-crud-toolbar-title {
+    letter-spacing: 0.1px;
+}
+
+.ct-crud-toolbar-hint {
+    margin-top: 0.1rem;
+    font-size: 0.78rem;
+}
+
+.ct-crud-btn-main {
+    min-height: var(--ct-control-height);
+}
+
+.ct-crud-filters {
+    background: var(--ct-color-surface);
+    border: 1px solid #e5edf4;
+    border-radius: var(--ct-radius-md);
+    padding: 12px;
+}
+
+.ct-crud-filters .form-label {
+    font-size: 0.78rem;
+    color: #516979 !important;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.ct-crud-filters .form-control,
+.ct-crud-filters [data-searchable-btn] {
+    min-height: var(--ct-control-height);
+    border-color: #cedbe6;
+    font-size: 0.875rem;
+}
+
+.ct-crud-filters .ct-crud-filter-submit {
+    min-height: var(--ct-control-height);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.ct-crud-table thead th {
+    background: #eef3f8;
+    color: #2a4051;
+    border-bottom-color: var(--ct-color-border);
+}
+
+.ct-crud-table tbody td {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+}
+
+.ct-crud-table tbody tr:hover {
+    background: #f7fbff;
+}
+
+.ct-crud-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.ct-crud-actions .btn {
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0.25rem 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ct-crud-actions .dropdown-toggle::after {
+    margin-left: 0.25rem;
+}
+
+.ct-crud-actions .dropdown-menu {
+    min-width: 11rem;
+}
+
+.ct-crud-table-shell {
+    border: 1px solid #dbe6ef;
+    border-radius: var(--ct-radius-md);
+    background: #ffffff;
+    padding: 0.9rem;
+}
+
+.ct-crud-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.ct-crud-table-head-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: #2a4051;
+    font-weight: 600;
+}
+
+.ct-crud-table-head-link:hover {
+    color: #1f5d7e;
+}
+
+.ct-crud-table-empty {
+    color: #5d7484 !important;
+}
+
+.ct-crud-table-meta-left,
+.ct-crud-table-meta-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+/* Ejemplo visual empresarial/minimalista (scope por modulo/pantalla) */
+.ct-theme-enterprise .ct-crud-filters {
+    background: #f9fbfd;
+    border: 1px solid #d8e2ec;
+    border-radius: 14px;
+    padding: 13px;
+}
+
+.ct-theme-enterprise .ct-crud-table-shell {
+    background: #ffffff;
+    border: 1px solid #d6e0ea;
+    border-radius: 14px;
+    padding: 0.95rem;
+}
+
+.ct-theme-enterprise .ct-crud-table thead th {
+    background: #f3f7fb;
+    color: #34495d;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    border-bottom: 1px solid #d6e0ea;
+    white-space: nowrap;
+}
+
+.ct-theme-enterprise .ct-crud-table tbody tr {
+    border-bottom: 1px solid #edf2f7;
+    transition: background-color var(--ct-motion-fast) ease;
+}
+
+.ct-theme-enterprise .ct-crud-table tbody tr:hover {
+    background: #f7fbff;
+}
+
+.ct-theme-enterprise .ct-crud-table tbody td {
+    color: #2d3f50;
+}
+
+.ct-theme-enterprise .ct-crud-table-head-link {
+    color: #2f4356;
+}
+
+.ct-theme-enterprise .ct-crud-table-head-link:hover {
+    color: #1f5d7e;
+}
+
+.ct-theme-enterprise .ct-crud-actions .btn {
+    border-color: #c7d6e3;
+    color: #274154;
+}
+
+.ct-theme-enterprise .ct-crud-actions .btn:hover {
+    background: #f1f6fb;
+    border-color: #b8cbdb;
+    color: #1f3547;
+}
+
+.ct-theme-enterprise .ct-crud-actions .dropdown-menu {
+    border: 1px solid #d8e2ec;
+    border-radius: 12px;
+}
+
+.ct-crud-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.22rem 0.58rem;
+    font-size: 0.73rem;
+    font-weight: 600;
+    letter-spacing: 0.12px;
+    border: 1px solid transparent;
+    line-height: 1.25;
+}
+
+.ct-crud-pill-muted {
+    background: #eef2f6;
+    color: #3f5668;
+    border-color: #d7e0e8;
+}
+
+.ct-crud-pill-primary {
+    background: #e7efff;
+    color: #1e4c9a;
+    border-color: #c7d9ff;
+}
+
+.ct-crud-pill-success {
+    background: #e9f8ef;
+    color: #1d6a3f;
+    border-color: #c3e8d2;
+}
+
+.ct-crud-pill-info {
+    background: #e8f5fb;
+    color: #1f5f79;
+    border-color: #c8e7f5;
+}
+
+.ct-crud-pill-warning {
+    background: #fff8e7;
+    color: #7b5a0a;
+    border-color: #f2dfaf;
+}
+
+.ct-crud-pill-danger {
+    background: #fdeeee;
+    color: #9b2c2c;
+    border-color: #f3caca;
+}
+
+.ct-crud-pill-dark {
+    background: #eef1f5;
+    color: #2e3f51;
+    border-color: #d1d9e2;
+}
+
+.ct-crud-modal .modal-content {
+    border: 0;
+    border-radius: var(--ct-radius-lg);
+    box-shadow: var(--ct-shadow-1);
+    overflow: hidden;
+}
+
+.ct-crud-modal .modal-header {
+    border-bottom: 0;
+    padding: 1rem 1.2rem;
+    background: linear-gradient(135deg, var(--ct-color-primary) 0%, var(--ct-color-primary-2) 100%);
+    color: #fff;
+}
+
+.ct-crud-modal .modal-body {
+    padding: 1.2rem;
+    background: #f8fbfd;
+}
+
+.ct-crud-modal .modal-footer {
+    border-top: 0;
+    padding: 0.9rem 1.2rem 1.2rem;
+    background: #f8fbfd;
+}
+
+.ct-crud-fade-in {
+    animation: ctCrudFadeIn var(--ct-motion-base) var(--ct-motion-ease) both;
+}
+
+@keyframes ctCrudFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ct-crud-fade-in {
+        animation: none !important;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .ct-crud-filters {
+        padding: 10px;
+    }
+
+    .ct-crud-table-meta {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+
+    .ct-crud-table-meta-right {
+        justify-content: flex-start;
+    }
+}

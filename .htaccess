@@ -1,0 +1,5 @@
+# MSP-016: endpoints administrativos legacy no se exponen por HTTP.
+# La administración vigente se realiza desde los módulos protegidos de MSP.
+<FilesMatch "^(desactivar_usuario|procesar_crear_usuario|procesar_editar_usuario|procesar_eliminar_usuario)\.php$">
+    Require all denied
+</FilesMatch>

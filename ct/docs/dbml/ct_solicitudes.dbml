@@ -1,0 +1,404 @@
+Project ct_solicitudes {
+  database_type: "SQLServer"
+  Note: "Rediseño nuevo de solicitudes CT. Fuente principal: ct/db/15_ct_capa_solicitudes.sql y plan_mvp_solicitudes.md."
+}
+
+Table cr_usuarios {
+  id int [pk, note: "Stub externa. FK real a dbo.cr_usuarios."]
+}
+
+Table ct_comuna {
+  id_comuna int [pk, note: "Stub desde predial"]
+}
+
+Table ct_tipo_inmueble {
+  id_tipo_inmueble int [pk, note: "Stub desde predial"]
+}
+
+Table ct_tercero {
+  id_tercero int [pk, note: "Stub desde predial"]
+}
+
+Table ct_terreno {
+  id_terreno int [pk, note: "Stub desde predial"]
+}
+
+Table ct_operacion_predial {
+  id_operacion int [pk, note: "Stub desde predial"]
+}
+
+Table ct_tipo_solicitud {
+  id_tipo_solicitud int [pk, increment]
+  codigo nvarchar(50) [not null, unique]
+  nombre nvarchar(120) [not null]
+  descripcion nvarchar(500)
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_estado_solicitud {
+  id_estado_solicitud int [pk, increment]
+  codigo nvarchar(50) [not null, unique]
+  nombre nvarchar(120) [not null]
+  orden_visual int [not null, default: 0]
+  es_terminal bit [not null, default: 0]
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_area_solicitud {
+  id_area_solicitud int [pk, increment]
+  codigo nvarchar(50) [not null, unique]
+  nombre nvarchar(120) [not null]
+  descripcion nvarchar(500)
+  orden_visual int [not null, default: 0]
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_estado_area_solicitud {
+  id_estado_area_solicitud int [pk, increment]
+  codigo nvarchar(50) [not null, unique]
+  nombre nvarchar(120) [not null]
+  orden_visual int [not null, default: 0]
+  es_terminal bit [not null, default: 0]
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_rol_solicitud {
+  id_rol_solicitud int [pk, increment]
+  codigo nvarchar(50) [not null, unique]
+  nombre nvarchar(120) [not null]
+  descripcion nvarchar(500)
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_usuario_rol_solicitud {
+  id_usuario_rol_solicitud int [pk, increment]
+  id_rol_solicitud int [not null]
+  id_usuario int [not null]
+  activo bit [not null, default: 1]
+  fecha_desde datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_hasta datetime2
+  creado_en datetime2 [not null, default: `SYSUTCDATETIME()`]
+
+  Indexes {
+    (id_rol_solicitud, id_usuario) [unique]
+  }
+}
+
+Table ct_formulario_plantilla {
+  id_formulario_plantilla int [pk, increment]
+  codigo nvarchar(80) [not null, unique]
+  nombre nvarchar(150) [not null]
+  dominio nvarchar(50) [not null]
+  descripcion nvarchar(500)
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_formulario_plantilla_version {
+  id_formulario_plantilla_version int [pk, increment]
+  id_formulario_plantilla int [not null]
+  version_numero int [not null]
+  version_codigo nvarchar(50) [not null]
+  definicion_resumen nvarchar(max)
+  publicado bit [not null, default: 1]
+  vigente_desde datetime2 [not null, default: `SYSUTCDATETIME()`]
+  vigente_hasta datetime2
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+
+  Indexes {
+    (id_formulario_plantilla, version_numero) [unique]
+  }
+}
+
+Table ct_solicitud_tipo_area {
+  id_solicitud_tipo_area int [pk, increment]
+  id_tipo_solicitud int [not null]
+  id_area_solicitud int [not null]
+  id_formulario_plantilla int [not null]
+  orden_flujo int [not null, default: 0]
+  es_requerida bit [not null, default: 1]
+  habilita_automaticamente bit [not null, default: 1]
+  requiere_formulario_tipado bit [not null, default: 1]
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+
+  Indexes {
+    (id_tipo_solicitud, id_area_solicitud) [unique]
+  }
+}
+
+Table ct_solicitud_tipo_area_participante_default {
+  id_solicitud_tipo_area_participante_default int [pk, increment]
+  id_solicitud_tipo_area int [not null]
+  id_rol_solicitud int
+  id_usuario_default int
+  es_responsable bit [not null, default: 0]
+  orden_asignacion int [not null, default: 0]
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_solicitud {
+  id_solicitud int [pk, increment]
+  codigo_solicitud nvarchar(50)
+  id_tipo_solicitud int [not null]
+  id_estado_solicitud int [not null]
+  id_gerente_usuario int [not null]
+  resumen nvarchar(500)
+  prioridad tinyint [not null, default: 2, note: "CHECK 1..5"]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_cierre datetime2
+  id_terreno_generado int
+  id_operacion_generada int
+  payload_extra_json nvarchar(max)
+
+  Indexes {
+    codigo_solicitud [unique, name: "UX_ct_solicitud_codigo_informado", note: "Filtrado: WHERE codigo_solicitud IS NOT NULL"]
+  }
+}
+
+Table ct_participante_solicitud {
+  id_participante_solicitud int [pk, increment]
+  id_solicitud int [not null]
+  id_usuario int [not null]
+  id_rol_solicitud int
+  tipo_participacion nvarchar(50) [not null, default: 'COLABORADOR', note: "GERENTE/COLABORADOR/OBSERVADOR/APROBADOR"]
+  activo bit [not null, default: 1]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+
+  Indexes {
+    (id_solicitud, id_usuario, tipo_participacion) [unique]
+  }
+}
+
+Table ct_solicitud_terreno {
+  id_solicitud_terreno int [pk, increment]
+  id_solicitud int [not null]
+  id_terreno int [not null]
+  rol_relacion nvarchar(30) [not null, note: "ORIGEN/RESULTADO/AFECTADO/GENERADO"]
+  es_principal bit [not null, default: 0]
+  observacion nvarchar(500)
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+
+  Indexes {
+    (id_solicitud, id_terreno, rol_relacion) [unique]
+  }
+}
+
+Table ct_solicitud_area_instancia {
+  id_area_instancia int [pk, increment]
+  id_solicitud int [not null]
+  id_area_solicitud int [not null]
+  id_solicitud_tipo_area int
+  id_estado_area_solicitud int [not null]
+  id_formulario_plantilla_version int [not null]
+  es_requerida bit [not null, default: 1]
+  orden_flujo int [not null, default: 0]
+  habilitada_en datetime2
+  completada_en datetime2
+  cerrada_en datetime2
+  observacion_abierta nvarchar(1000)
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+
+  Indexes {
+    (id_solicitud, id_area_solicitud) [unique]
+  }
+}
+
+Table ct_solicitud_area_asignacion {
+  id_area_asignacion int [pk, increment]
+  id_area_instancia int [not null]
+  id_usuario_asignado int [not null]
+  id_participante_solicitud int
+  es_responsable bit [not null, default: 0]
+  activo bit [not null, default: 1]
+  fecha_asignacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_liberacion datetime2
+  observacion nvarchar(500)
+
+  Indexes {
+    (id_area_instancia, id_usuario_asignado) [unique]
+  }
+}
+
+Table ct_solicitud_historial_estado {
+  id_historial_estado int [pk, increment]
+  id_solicitud int [not null]
+  id_area_instancia int
+  tipo_entidad nvarchar(20) [not null, note: "SOLICITUD/AREA"]
+  id_estado_solicitud_anterior int
+  id_estado_solicitud_nuevo int
+  id_estado_area_anterior int
+  id_estado_area_nuevo int
+  id_usuario_accion int
+  comentario nvarchar(1000)
+  fecha_cambio datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_solicitud_comentario {
+  id_solicitud_comentario int [pk, increment]
+  id_solicitud int [not null]
+  id_area_instancia int
+  id_usuario int [not null]
+  tipo_comentario nvarchar(30) [not null, default: 'COMENTARIO', note: "COMENTARIO/OBSERVACION/RESPUESTA"]
+  comentario nvarchar(max) [not null]
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_solicitud_adjunto {
+  id_solicitud_adjunto int [pk, increment]
+  id_solicitud int [not null]
+  id_area_instancia int
+  nombre nvarchar(255) [not null]
+  tipo nvarchar(120)
+  referencia nvarchar(500) [not null]
+  nota nvarchar(500)
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_solicitud_notificacion {
+  id_solicitud_notificacion int [pk, increment]
+  id_solicitud int [not null]
+  id_area_instancia int
+  tipo_evento nvarchar(50) [not null]
+  id_usuario_destinatario int
+  destinatario nvarchar(180) [not null]
+  asunto nvarchar(255) [not null]
+  payload nvarchar(max)
+  estado nvarchar(30) [not null, default: 'PENDIENTE', note: "PENDIENTE/ENVIADA/ERROR/CANCELADA"]
+  intentos int [not null, default: 0]
+  fecha_ultimo_intento datetime2
+  fecha_envio datetime2
+  error_ultimo nvarchar(2000)
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_solicitud_adquisicion {
+  id_solicitud int [pk]
+  rol_propuesto varchar(30)
+  rol_matriz varchar(30)
+  identificacion_propiedad nvarchar(120)
+  superficie_m2 decimal(18,2)
+  id_comuna int
+  id_tipo_inmueble int
+  fecha_adquisicion date
+  documento_fuente nvarchar(255)
+  destino_uso nvarchar(200)
+  observaciones nvarchar(1000)
+  payload_extra_json nvarchar(max)
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_solicitud_adquisicion_titular {
+  id_solicitud_titular int [pk, increment]
+  id_solicitud int [not null]
+  id_tercero int [not null]
+  porcentaje_derecho decimal(9,2) [not null, note: "CHECK > 0 y <= 100"]
+  vigente_desde date [not null]
+  vigente_hasta date
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_solicitud_adquisicion_legal {
+  id_area_instancia int [pk]
+  id_solicitud int [not null]
+  estudio_titulos_ok bit
+  prohibiciones_hipotecas bit
+  litigios_vigentes bit
+  observaciones_legal nvarchar(2000)
+  payload_extra_json nvarchar(max)
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Table ct_solicitud_adquisicion_arquitectura {
+  id_area_instancia int [pk]
+  id_solicitud int [not null]
+  informe_tecnico_ok bit
+  superficie_validada_m2 decimal(18,2)
+  requiere_regularizacion bit
+  observaciones_arquitectura nvarchar(2000)
+  payload_extra_json nvarchar(max)
+  fecha_creacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+  fecha_actualizacion datetime2 [not null, default: `SYSUTCDATETIME()`]
+}
+
+Ref: ct_usuario_rol_solicitud.id_rol_solicitud > ct_rol_solicitud.id_rol_solicitud
+Ref: ct_usuario_rol_solicitud.id_usuario > cr_usuarios.id
+
+Ref: ct_formulario_plantilla_version.id_formulario_plantilla > ct_formulario_plantilla.id_formulario_plantilla
+
+Ref: ct_solicitud_tipo_area.id_tipo_solicitud > ct_tipo_solicitud.id_tipo_solicitud
+Ref: ct_solicitud_tipo_area.id_area_solicitud > ct_area_solicitud.id_area_solicitud
+Ref: ct_solicitud_tipo_area.id_formulario_plantilla > ct_formulario_plantilla.id_formulario_plantilla
+
+Ref: ct_solicitud_tipo_area_participante_default.id_solicitud_tipo_area > ct_solicitud_tipo_area.id_solicitud_tipo_area
+Ref: ct_solicitud_tipo_area_participante_default.id_rol_solicitud > ct_rol_solicitud.id_rol_solicitud
+Ref: ct_solicitud_tipo_area_participante_default.id_usuario_default > cr_usuarios.id
+
+Ref: ct_solicitud.id_tipo_solicitud > ct_tipo_solicitud.id_tipo_solicitud
+Ref: ct_solicitud.id_estado_solicitud > ct_estado_solicitud.id_estado_solicitud
+Ref: ct_solicitud.id_gerente_usuario > cr_usuarios.id
+Ref: ct_solicitud.id_terreno_generado > ct_terreno.id_terreno
+Ref: ct_solicitud.id_operacion_generada > ct_operacion_predial.id_operacion
+
+Ref: ct_participante_solicitud.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_participante_solicitud.id_usuario > cr_usuarios.id
+Ref: ct_participante_solicitud.id_rol_solicitud > ct_rol_solicitud.id_rol_solicitud
+
+Ref: ct_solicitud_terreno.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_solicitud_terreno.id_terreno > ct_terreno.id_terreno
+
+Ref: ct_solicitud_area_instancia.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_solicitud_area_instancia.id_area_solicitud > ct_area_solicitud.id_area_solicitud
+Ref: ct_solicitud_area_instancia.id_solicitud_tipo_area > ct_solicitud_tipo_area.id_solicitud_tipo_area
+Ref: ct_solicitud_area_instancia.id_estado_area_solicitud > ct_estado_area_solicitud.id_estado_area_solicitud
+Ref: ct_solicitud_area_instancia.id_formulario_plantilla_version > ct_formulario_plantilla_version.id_formulario_plantilla_version
+
+Ref: ct_solicitud_area_asignacion.id_area_instancia > ct_solicitud_area_instancia.id_area_instancia
+Ref: ct_solicitud_area_asignacion.id_usuario_asignado > cr_usuarios.id
+Ref: ct_solicitud_area_asignacion.id_participante_solicitud > ct_participante_solicitud.id_participante_solicitud
+
+Ref: ct_solicitud_historial_estado.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_solicitud_historial_estado.id_area_instancia > ct_solicitud_area_instancia.id_area_instancia
+Ref: ct_solicitud_historial_estado.id_estado_solicitud_anterior > ct_estado_solicitud.id_estado_solicitud
+Ref: ct_solicitud_historial_estado.id_estado_solicitud_nuevo > ct_estado_solicitud.id_estado_solicitud
+Ref: ct_solicitud_historial_estado.id_estado_area_anterior > ct_estado_area_solicitud.id_estado_area_solicitud
+Ref: ct_solicitud_historial_estado.id_estado_area_nuevo > ct_estado_area_solicitud.id_estado_area_solicitud
+Ref: ct_solicitud_historial_estado.id_usuario_accion > cr_usuarios.id
+
+Ref: ct_solicitud_comentario.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_solicitud_comentario.id_area_instancia > ct_solicitud_area_instancia.id_area_instancia
+Ref: ct_solicitud_comentario.id_usuario > cr_usuarios.id
+
+Ref: ct_solicitud_adjunto.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_solicitud_adjunto.id_area_instancia > ct_solicitud_area_instancia.id_area_instancia
+
+Ref: ct_solicitud_notificacion.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_solicitud_notificacion.id_area_instancia > ct_solicitud_area_instancia.id_area_instancia
+Ref: ct_solicitud_notificacion.id_usuario_destinatario > cr_usuarios.id
+
+Ref: ct_solicitud_adquisicion.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_solicitud_adquisicion.id_comuna > ct_comuna.id_comuna
+Ref: ct_solicitud_adquisicion.id_tipo_inmueble > ct_tipo_inmueble.id_tipo_inmueble
+
+Ref: ct_solicitud_adquisicion_titular.id_solicitud > ct_solicitud.id_solicitud
+Ref: ct_solicitud_adquisicion_titular.id_tercero > ct_tercero.id_tercero
+
+Ref: ct_solicitud_adquisicion_legal.id_area_instancia > ct_solicitud_area_instancia.id_area_instancia
+Ref: ct_solicitud_adquisicion_legal.id_solicitud > ct_solicitud.id_solicitud
+
+Ref: ct_solicitud_adquisicion_arquitectura.id_area_instancia > ct_solicitud_area_instancia.id_area_instancia
+Ref: ct_solicitud_adquisicion_arquitectura.id_solicitud > ct_solicitud.id_solicitud

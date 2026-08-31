@@ -1,0 +1,955 @@
+{
+  "version": "2.0.0",
+  "darkMode": true,
+  "gridEnabling": false,
+  "currentViewName": null,
+  "defaultView": {
+    "detailLevel": "All",
+    "tablePositions": [
+      {
+        "name": "cr_usuarios",
+        "schemaName": "public",
+        "x": 16,
+        "y": 16
+      },
+      {
+        "name": "ct_comuna",
+        "schemaName": "public",
+        "x": 16,
+        "y": 2152
+      },
+      {
+        "name": "ct_tipo_inmueble",
+        "schemaName": "public",
+        "x": 16,
+        "y": 2264
+      },
+      {
+        "name": "ct_tercero",
+        "schemaName": "public",
+        "x": 16,
+        "y": 2376
+      },
+      {
+        "name": "ct_terreno",
+        "schemaName": "public",
+        "x": 16,
+        "y": 392
+      },
+      {
+        "name": "ct_operacion_predial",
+        "schemaName": "public",
+        "x": 16,
+        "y": 808
+      },
+      {
+        "name": "ct_tipo_solicitud",
+        "schemaName": "public",
+        "x": 16,
+        "y": 912
+      },
+      {
+        "name": "ct_estado_solicitud",
+        "schemaName": "public",
+        "x": 16,
+        "y": 504
+      },
+      {
+        "name": "ct_area_solicitud",
+        "schemaName": "public",
+        "x": 16,
+        "y": 1216
+      },
+      {
+        "name": "ct_estado_area_solicitud",
+        "schemaName": "public",
+        "x": 16,
+        "y": 1520
+      },
+      {
+        "name": "ct_rol_solicitud",
+        "schemaName": "public",
+        "x": 16,
+        "y": 120
+      },
+      {
+        "name": "ct_usuario_rol_solicitud",
+        "schemaName": "public",
+        "x": 720,
+        "y": 136
+      },
+      {
+        "name": "ct_formulario_plantilla",
+        "schemaName": "public",
+        "x": 16,
+        "y": 1824
+      },
+      {
+        "name": "ct_formulario_plantilla_version",
+        "schemaName": "public",
+        "x": 720,
+        "y": 944
+      },
+      {
+        "name": "ct_solicitud_tipo_area",
+        "schemaName": "public",
+        "x": 720,
+        "y": 480
+      },
+      {
+        "name": "ct_solicitud_tipo_area_participante_default",
+        "schemaName": "public",
+        "x": 1496,
+        "y": 72
+      },
+      {
+        "name": "ct_solicitud",
+        "schemaName": "public",
+        "x": 720,
+        "y": 1312
+      },
+      {
+        "name": "ct_participante_solicitud",
+        "schemaName": "public",
+        "x": 1496,
+        "y": 408
+      },
+      {
+        "name": "ct_solicitud_terreno",
+        "schemaName": "public",
+        "x": 1496,
+        "y": 744
+      },
+      {
+        "name": "ct_solicitud_area_instancia",
+        "schemaName": "public",
+        "x": 1496,
+        "y": 1112
+      },
+      {
+        "name": "ct_solicitud_area_asignacion",
+        "schemaName": "public",
+        "x": 2320,
+        "y": 16
+      },
+      {
+        "name": "ct_solicitud_historial_estado",
+        "schemaName": "public",
+        "x": 2320,
+        "y": 376
+      },
+      {
+        "name": "ct_solicitud_comentario",
+        "schemaName": "public",
+        "x": 2320,
+        "y": 808
+      },
+      {
+        "name": "ct_solicitud_adjunto",
+        "schemaName": "public",
+        "x": 2320,
+        "y": 1112
+      },
+      {
+        "name": "ct_solicitud_notificacion",
+        "schemaName": "public",
+        "x": 2320,
+        "y": 1448
+      },
+      {
+        "name": "ct_solicitud_adquisicion",
+        "schemaName": "public",
+        "x": 1496,
+        "y": 1680
+      },
+      {
+        "name": "ct_solicitud_adquisicion_titular",
+        "schemaName": "public",
+        "x": 1496,
+        "y": 2200
+      },
+      {
+        "name": "ct_solicitud_adquisicion_legal",
+        "schemaName": "public",
+        "x": 2320,
+        "y": 1968
+      },
+      {
+        "name": "ct_solicitud_adquisicion_arquitectura",
+        "schemaName": "public",
+        "x": 2320,
+        "y": 2336
+      }
+    ],
+    "tableGroupCollapseStates": [],
+    "stickyNoteLayouts": [],
+    "referencePaths": [
+      {
+        "firstFieldNames": [
+          "id_rol_solicitud"
+        ],
+        "firstTableName": "ct_usuario_rol_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_rol_solicitud"
+        ],
+        "secondTableName": "ct_rol_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_usuario"
+        ],
+        "firstTableName": "ct_usuario_rol_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "cr_usuarios",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_formulario_plantilla"
+        ],
+        "firstTableName": "ct_formulario_plantilla_version",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_formulario_plantilla"
+        ],
+        "secondTableName": "ct_formulario_plantilla",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_tipo_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_tipo_area",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_tipo_solicitud"
+        ],
+        "secondTableName": "ct_tipo_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_tipo_area",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_solicitud"
+        ],
+        "secondTableName": "ct_area_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_formulario_plantilla"
+        ],
+        "firstTableName": "ct_solicitud_tipo_area",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_formulario_plantilla"
+        ],
+        "secondTableName": "ct_formulario_plantilla",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud_tipo_area"
+        ],
+        "firstTableName": "ct_solicitud_tipo_area_participante_default",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud_tipo_area"
+        ],
+        "secondTableName": "ct_solicitud_tipo_area",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_rol_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_tipo_area_participante_default",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_rol_solicitud"
+        ],
+        "secondTableName": "ct_rol_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_usuario_default"
+        ],
+        "firstTableName": "ct_solicitud_tipo_area_participante_default",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "cr_usuarios",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_tipo_solicitud"
+        ],
+        "firstTableName": "ct_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_tipo_solicitud"
+        ],
+        "secondTableName": "ct_tipo_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_estado_solicitud"
+        ],
+        "firstTableName": "ct_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_estado_solicitud"
+        ],
+        "secondTableName": "ct_estado_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_gerente_usuario"
+        ],
+        "firstTableName": "ct_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "cr_usuarios",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_terreno_generado"
+        ],
+        "firstTableName": "ct_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_terreno"
+        ],
+        "secondTableName": "ct_terreno",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_operacion_generada"
+        ],
+        "firstTableName": "ct_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_operacion"
+        ],
+        "secondTableName": "ct_operacion_predial",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_participante_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_usuario"
+        ],
+        "firstTableName": "ct_participante_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "cr_usuarios",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_rol_solicitud"
+        ],
+        "firstTableName": "ct_participante_solicitud",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_rol_solicitud"
+        ],
+        "secondTableName": "ct_rol_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_terreno",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_terreno"
+        ],
+        "firstTableName": "ct_solicitud_terreno",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_terreno"
+        ],
+        "secondTableName": "ct_terreno",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_area_instancia",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_area_instancia",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_solicitud"
+        ],
+        "secondTableName": "ct_area_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud_tipo_area"
+        ],
+        "firstTableName": "ct_solicitud_area_instancia",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud_tipo_area"
+        ],
+        "secondTableName": "ct_solicitud_tipo_area",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_estado_area_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_area_instancia",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_estado_area_solicitud"
+        ],
+        "secondTableName": "ct_estado_area_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_formulario_plantilla_version"
+        ],
+        "firstTableName": "ct_solicitud_area_instancia",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_formulario_plantilla_version"
+        ],
+        "secondTableName": "ct_formulario_plantilla_version",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_instancia"
+        ],
+        "firstTableName": "ct_solicitud_area_asignacion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_instancia"
+        ],
+        "secondTableName": "ct_solicitud_area_instancia",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_usuario_asignado"
+        ],
+        "firstTableName": "ct_solicitud_area_asignacion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "cr_usuarios",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_participante_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_area_asignacion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_participante_solicitud"
+        ],
+        "secondTableName": "ct_participante_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_historial_estado",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_instancia"
+        ],
+        "firstTableName": "ct_solicitud_historial_estado",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_instancia"
+        ],
+        "secondTableName": "ct_solicitud_area_instancia",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_estado_solicitud_anterior"
+        ],
+        "firstTableName": "ct_solicitud_historial_estado",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_estado_solicitud"
+        ],
+        "secondTableName": "ct_estado_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_estado_solicitud_nuevo"
+        ],
+        "firstTableName": "ct_solicitud_historial_estado",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_estado_solicitud"
+        ],
+        "secondTableName": "ct_estado_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_estado_area_anterior"
+        ],
+        "firstTableName": "ct_solicitud_historial_estado",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_estado_area_solicitud"
+        ],
+        "secondTableName": "ct_estado_area_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_estado_area_nuevo"
+        ],
+        "firstTableName": "ct_solicitud_historial_estado",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_estado_area_solicitud"
+        ],
+        "secondTableName": "ct_estado_area_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_usuario_accion"
+        ],
+        "firstTableName": "ct_solicitud_historial_estado",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "cr_usuarios",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_comentario",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_instancia"
+        ],
+        "firstTableName": "ct_solicitud_comentario",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_instancia"
+        ],
+        "secondTableName": "ct_solicitud_area_instancia",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_usuario"
+        ],
+        "firstTableName": "ct_solicitud_comentario",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "cr_usuarios",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_adjunto",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_instancia"
+        ],
+        "firstTableName": "ct_solicitud_adjunto",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_instancia"
+        ],
+        "secondTableName": "ct_solicitud_area_instancia",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_notificacion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_instancia"
+        ],
+        "firstTableName": "ct_solicitud_notificacion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_instancia"
+        ],
+        "secondTableName": "ct_solicitud_area_instancia",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_usuario_destinatario"
+        ],
+        "firstTableName": "ct_solicitud_notificacion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "cr_usuarios",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_comuna"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_comuna"
+        ],
+        "secondTableName": "ct_comuna",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_tipo_inmueble"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_tipo_inmueble"
+        ],
+        "secondTableName": "ct_tipo_inmueble",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion_titular",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_tercero"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion_titular",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_tercero"
+        ],
+        "secondTableName": "ct_tercero",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_instancia"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion_legal",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_instancia"
+        ],
+        "secondTableName": "ct_solicitud_area_instancia",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion_legal",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_area_instancia"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion_arquitectura",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_area_instancia"
+        ],
+        "secondTableName": "ct_solicitud_area_instancia",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_solicitud"
+        ],
+        "firstTableName": "ct_solicitud_adquisicion_arquitectura",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_solicitud"
+        ],
+        "secondTableName": "ct_solicitud",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      }
+    ]
+  },
+  "views": {}
+}

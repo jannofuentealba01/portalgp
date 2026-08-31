@@ -1,0 +1,178 @@
+{
+  "version": "2.0.0",
+  "darkMode": true,
+  "gridEnabling": false,
+  "currentViewName": null,
+  "defaultView": {
+    "detailLevel": "All",
+    "tablePositions": [
+      {
+        "name": "ct_tercero",
+        "schemaName": "public",
+        "x": 874.242015105189,
+        "y": 185.78521234678232
+      },
+      {
+        "name": "ct_terreno",
+        "schemaName": "public",
+        "x": 918.356722854757,
+        "y": 304
+      },
+      {
+        "name": "ct_rol_en_proyecto",
+        "schemaName": "public",
+        "x": 1150.942834220395,
+        "y": 334.9343180823246
+      },
+      {
+        "name": "ct_empresa_sanitaria",
+        "schemaName": "public",
+        "x": 492.01123046875,
+        "y": 849.9041199650345
+      },
+      {
+        "name": "ct_proyecto_construccion",
+        "schemaName": "public",
+        "x": 492.01123046875,
+        "y": 12
+      },
+      {
+        "name": "ct_construccion",
+        "schemaName": "public",
+        "x": 492.01123046875,
+        "y": -223.27844133102835
+      },
+      {
+        "name": "ct_proyecto_construccion_terreno",
+        "schemaName": "public",
+        "x": 1144.2587875916727,
+        "y": 80.22521563045115
+      },
+      {
+        "name": "ct_terreno_arquitectura_legal",
+        "schemaName": "public",
+        "x": 492.01123046875,
+        "y": 304
+      }
+    ],
+    "tableGroupCollapseStates": [],
+    "stickyNoteLayouts": [],
+    "referencePaths": [
+      {
+        "firstFieldNames": [
+          "id_tercero"
+        ],
+        "firstTableName": "ct_proyecto_construccion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_tercero"
+        ],
+        "secondTableName": "ct_tercero",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_proyecto"
+        ],
+        "firstTableName": "ct_construccion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_proyecto"
+        ],
+        "secondTableName": "ct_proyecto_construccion",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_proyecto"
+        ],
+        "firstTableName": "ct_proyecto_construccion_terreno",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_proyecto"
+        ],
+        "secondTableName": "ct_proyecto_construccion",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_terreno"
+        ],
+        "firstTableName": "ct_proyecto_construccion_terreno",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_terreno"
+        ],
+        "secondTableName": "ct_terreno",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_rol_en_proyecto"
+        ],
+        "firstTableName": "ct_proyecto_construccion_terreno",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_rol_en_proyecto"
+        ],
+        "secondTableName": "ct_rol_en_proyecto",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": [
+          {
+            "x": 1484.4141288925734,
+            "y": 224.22521563045115
+          },
+          {
+            "x": 1484.4141288925734,
+            "y": 382.9343180823246
+          }
+        ]
+      },
+      {
+        "firstFieldNames": [
+          "id_terreno"
+        ],
+        "firstTableName": "ct_terreno_arquitectura_legal",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_terreno"
+        ],
+        "secondTableName": "ct_terreno",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "id_empresa_sanitaria"
+        ],
+        "firstTableName": "ct_terreno_arquitectura_legal",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id_empresa_sanitaria"
+        ],
+        "secondTableName": "ct_empresa_sanitaria",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      }
+    ]
+  },
+  "views": {}
+}

@@ -1,0 +1,27 @@
+/config/database.local.php
+/msp/config/mail.php
+/ct/config/mail.php
+/microsoft_auth_config.local.php
+
+# Datos y artefactos locales: nunca versionar credenciales, respaldos ni logs.
+*.bak
+*.log
+/msp_storage/
+/storage/
+/tmp/
+/outputs/
+
+# Dependencias instalables y cachés de herramientas.
+/vendor/
+/.artifact-read/
+/.codex_work/
+/.vscode/
+/msp/.git.nested-backup/
+/ct/.git.nested-backup/
+
+# Artefactos locales de documentación y paquetes temporales.
+/_informe_render_src/
+/_completar_informe_semanal.py
+/_informe_base.docx
+/INFORME_SEMANAL_HABILITACION_PROFESIONAL_COMPLETADO.docx
+/msp/pagos/v18.zip

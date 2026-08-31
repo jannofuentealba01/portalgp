@@ -1,0 +1,60 @@
+Project ct_tributaria {
+  database_type: "SQLServer"
+  Note: "Capa tributaria. Fuente: ct/db/30_ct_capa_tributaria.sql y ct/db/50_ct_integridad.sql."
+}
+
+Table cr_usuarios {
+  id int [pk, note: "Stub externa. FK real a dbo.cr_usuarios."]
+}
+
+Table ct_terreno {
+  id_terreno int [pk, note: "Stub desde predial"]
+}
+
+Table ct_estado_sii {
+  id_estado_sii int [pk, increment]
+  nombre nvarchar(80) [not null, unique]
+}
+
+Table ct_condicion_rol {
+  id_condicion_rol int [pk, increment]
+  nombre nvarchar(80) [not null, unique]
+}
+
+Table ct_destino_sii {
+  id_destino_sii int [pk, increment]
+  nombre nvarchar(100) [not null, unique]
+}
+
+Table ct_terreno_tributario {
+  id_terreno int [pk]
+  rol_pagador varchar(30)
+  id_estado_sii int [not null]
+  id_condicion_rol int [not null]
+  id_destino_sii int [not null]
+  detalle_tgr nvarchar(400)
+}
+
+Table ct_avaluo_terreno {
+  id_avaluo int [pk, increment]
+  id_terreno int [not null]
+  anio_avaluo int [not null]
+  fecha_referencia date [not null]
+  avaluo_total decimal(18,2)
+  avaluo_exento decimal(18,2)
+  avaluo_afecto decimal(18,2)
+  valor_libro_contable_uf decimal(18,2)
+  id_usuario int [not null]
+
+  Indexes {
+    (id_terreno, anio_avaluo) [unique, name: "UX_ct_avaluo_terreno_anio"]
+  }
+}
+
+Ref: ct_terreno_tributario.id_terreno > ct_terreno.id_terreno
+Ref: ct_terreno_tributario.id_estado_sii > ct_estado_sii.id_estado_sii
+Ref: ct_terreno_tributario.id_condicion_rol > ct_condicion_rol.id_condicion_rol
+Ref: ct_terreno_tributario.id_destino_sii > ct_destino_sii.id_destino_sii
+
+Ref: ct_avaluo_terreno.id_terreno > ct_terreno.id_terreno
+Ref: ct_avaluo_terreno.id_usuario > cr_usuarios.id

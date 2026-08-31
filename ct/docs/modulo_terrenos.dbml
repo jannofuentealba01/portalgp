@@ -1,0 +1,603 @@
+Project modulo_terrenos {
+  database_type: "SQLServer"
+  Note: '''
+  Modelo base para el modulo de terrenos:
+  - Inventario de terrenos con estado actual
+  - Trazabilidad por adquisicion, subdivison, fusion, venta y cambios de uso
+  - Historial explicito entre terrenos origen y resultado
+  - Venta de un ct_terreno a uno o mas clientes por porcentaje
+  - Registro de contribuciones y ficha tecnica/legal del ct_terreno
+  - Se dejan obligatorios solo los datos minimos de operacion
+  - Convencion: todas las tablas del modulo usan prefijo ct_
+  '''
+}
+
+Enum estado_terreno {
+  DISPONIBLE
+  EN_GESTION
+  EN_USO
+  VENDIDO
+  SUBDIVIDIDO
+  FUSIONADO
+  INACTIVO
+}
+
+Enum tipo_movimiento_terreno {
+  ADQUISICION
+  SUBDIVISION
+  FUSION
+  VENTA
+  CAMBIO_USO
+  REGULARIZACION
+  AJUSTE
+  OTRO
+}
+
+Enum estado_movimiento {
+  BORRADOR
+  CONFIRMADO
+  ANULADO
+}
+
+Enum rol_terreno_movimiento {
+  ORIGEN
+  RESULTADO
+  AFECTADO
+}
+
+Enum tipo_cliente {
+  NATURAL
+  JURIDICA
+}
+
+Enum estado_venta {
+  BORRADOR
+  FORMALIZADA
+  ANULADA
+}
+
+Enum estado_pago_contribucion {
+  PENDIENTE
+  PAGADA
+  VENCIDA
+  EXENTA
+  ANULADA
+}
+
+Enum estado_ficha_terreno {
+  BORRADOR
+  VIGENTE
+  OBSOLETA
+}
+
+Enum fuente_avaluo {
+  ESTIMADO_SISTEMA
+  CERTIFICADO_SII
+  AVISO_PAGO
+  CARGA_MANUAL
+}
+
+Enum tipo_avaluo {
+  AGRICOLA
+  NO_AGRICOLA
+}
+
+Enum tipo_componente_avaluo {
+  TERRENO
+  CONSTRUCCION
+  AJUSTE
+  EXENCION
+  OTRO
+}
+
+Enum modo_calculo_exencion {
+  MONTO_FIJO
+  PORCENTAJE
+  TOTAL
+  REGLA
+}
+
+Enum origen_rol_pagado {
+  ROL_ASIGNADO
+  ROL_MATRIZ
+  MANUAL
+}
+
+Enum tipo_superficie_referencia {
+  TERRENO
+  NETA_ARQUITECTURA
+  TITULO
+  OTRA
+}
+
+Enum tipo_documento_terreno {
+  ESCRITURA
+  PLANO
+  CERTIFICADO
+  INFORME
+  COMPROBANTE
+  CONTRATO
+  OTRO
+}
+
+Table ct_terreno {
+  id_terreno                int             [pk, increment]
+  codigo                    nvarchar(50)    [not null, unique, note: 'Identificador interno del ct_terreno']
+  nombre                    nvarchar(150)
+  estado                    estado_terreno  [not null]
+  rol_asignado              nvarchar(50)
+  rol_matriz                nvarchar(50)
+  superficie_m2             decimal(18,2)
+  direccion                 nvarchar(255)
+  comuna                    nvarchar(100)
+  region                    nvarchar(100)
+  latitud                   decimal(10,7)
+  longitud                  decimal(10,7)
+  fecha_ingreso             datetime2       [not null]
+  fecha_salida              datetime2
+  observacion               nvarchar(1000)
+  fecha_creacion            datetime2       [not null]
+  fecha_actualizacion       datetime2
+
+  Indexes {
+    estado
+    rol_asignado
+    comuna
+  }
+
+  Note: '''
+  Tabla principal del inventario.
+  Muchos atributos quedan opcionales porque pueden completarse
+  a medida que avanza el estudio o regularizacion del ct_terreno.
+  Regla recomendada:
+  - rol_asignado: rol vigente del ct_terreno
+  - rol_matriz: usar cuando el ct_terreno nace por subdivison y existe una matriz unica
+  - en fusion, no forzar rol_matriz; el origen real debe salir desde ct_movimiento_terreno_historial
+  '''
+}
+
+Table ct_cliente {
+  id_cliente                int             [pk, increment]
+  tipo                      tipo_cliente    [not null]
+  rut                       nvarchar(20)
+  nombre                    nvarchar(200)   [not null]
+  telefono                  nvarchar(50)
+  email                     nvarchar(150)
+  direccion                 nvarchar(255)
+  observacion               nvarchar(1000)
+  activo                    bit             [not null, default: 1]
+  fecha_creacion            datetime2       [not null]
+  fecha_actualizacion       datetime2
+
+  Indexes {
+    rut [unique]
+    nombre
+  }
+}
+
+Table ct_movimiento_terreno {
+  id_movimiento             int                     [pk, increment]
+  tipo                      tipo_movimiento_terreno [not null]
+  estado                    estado_movimiento       [not null]
+  fecha_movimiento          datetime2               [not null]
+  referencia                nvarchar(100)
+  numero_expediente         nvarchar(100)
+  documento_fuente          nvarchar(255)
+  descripcion               nvarchar(1000)
+  fecha_creacion            datetime2               [not null]
+  fecha_actualizacion       datetime2
+
+  Indexes {
+    tipo
+    estado
+    fecha_movimiento
+  }
+
+  Note: '''
+  Registro transversal para todos los hitos relevantes del ct_terreno.
+  Permite construir una bitacora cronologica comun.
+  '''
+}
+
+Table ct_movimiento_terreno_detalle {
+  id_movimiento_detalle     int                     [pk, increment]
+  id_movimiento             int                     [not null]
+  id_terreno                int                     [not null]
+  rol_en_movimiento         rol_terreno_movimiento  [not null]
+  superficie_m2             decimal(18,2)
+  porcentaje_superficie     decimal(7,4)
+  observacion               nvarchar(1000)
+
+  Indexes {
+    (id_movimiento, id_terreno, rol_en_movimiento) [unique]
+    id_terreno
+  }
+
+  Note: '''
+  Participacion del ct_terreno dentro del movimiento.
+  Ejemplos:
+  - subdivison: un ct_terreno ORIGEN y varios RESULTADO
+  - fusion: varios ORIGEN y un RESULTADO
+  - venta: un ct_terreno AFECTADO
+  '''
+}
+
+Table ct_movimiento_terreno_historial {
+  id_movimiento_historial   int             [pk, increment]
+  id_movimiento             int             [not null]
+  id_terreno_origen         int             [not null]
+  id_terreno_resultado      int             [not null]
+  superficie_m2             decimal(18,2)
+  porcentaje_traspaso       decimal(7,4)
+  observacion               nvarchar(1000)
+
+  Indexes {
+    (id_movimiento, id_terreno_origen, id_terreno_resultado) [unique]
+    id_terreno_origen
+    id_terreno_resultado
+  }
+
+  Note: '''
+  Historial explicito entre terrenos.
+  Esta tabla resuelve la trazabilidad fina de subdivisiones y fusiones,
+  incluso cuando la relacion entre origen y resultado es muchos a muchos.
+  '''
+}
+
+Table ct_terreno_adquisicion {
+  id_adquisicion            int             [pk, increment]
+  id_movimiento             int             [not null, unique]
+  modalidad                 nvarchar(50)    [note: 'COMPRA, CESION, PERMUTA, HERENCIA, OTRO']
+  monto_total               decimal(18,2)
+  moneda                    nvarchar(10)
+  fecha_escritura           datetime2
+  notaria                   nvarchar(150)
+  repertorio                nvarchar(100)
+  fecha_inscripcion         datetime2
+  fojas                     nvarchar(100)
+  numero_inscripcion        nvarchar(100)
+  anio_inscripcion          int
+  observacion               nvarchar(1000)
+}
+
+Table ct_terreno_venta {
+  id_venta                  int             [pk, increment]
+  id_movimiento             int             [not null, unique]
+  estado                    estado_venta    [not null]
+  precio_total              decimal(18,2)
+  precio_total_uf           decimal(18,4)
+  moneda                    nvarchar(10)
+  fecha_valor_uf            datetime2
+  superficie_referencia_m2  decimal(18,2)
+  tipo_superficie_referencia tipo_superficie_referencia
+  valor_venta_uf_m2         decimal(18,4)
+  fecha_contrato            datetime2
+  numero_contrato           nvarchar(100)
+  notaria                   nvarchar(150)
+  repertorio                nvarchar(100)
+  observacion               nvarchar(1000)
+
+  Note: '''
+  La venta se modela como detalle de un movimiento.
+  El ct_terreno afectado se vincula mediante ct_movimiento_terreno_detalle.
+  '''
+}
+
+Table ct_terreno_venta_cliente {
+  id_venta_cliente          int             [pk, increment]
+  id_venta                  int             [not null]
+  id_cliente                int             [not null]
+  porcentaje_derecho        decimal(5,2)    [not null, note: 'Regla de negocio: la suma por venta debe ser 100.00']
+  monto_asignado            decimal(18,2)
+  es_principal              bit             [not null, default: 0]
+  observacion               nvarchar(1000)
+
+  Indexes {
+    (id_venta, id_cliente) [unique]
+    id_cliente
+  }
+}
+
+Table ct_terreno_tasacion {
+  id_tasacion               int             [pk, increment]
+  id_terreno                int             [not null]
+  fecha_tasacion            datetime2       [not null]
+  uf_m2_tasacion            decimal(18,4)
+  uf_total_tasacion         decimal(18,4)
+  uf_total_liquidacion      decimal(18,4)
+  tasador                   nvarchar(150)
+  mejor_tasacion            bit             [not null, default: 0]
+  hipotecado                bit
+  usufructuario             nvarchar(150)
+  observacion               nvarchar(1000)
+
+  Indexes {
+    id_terreno
+    fecha_tasacion
+    mejor_tasacion
+  }
+
+  Note: '''
+  Valores de tasacion usados por contabilidad/CDG.
+  Permite tener historico y marcar una mejor tasacion vigente.
+  '''
+}
+
+Table ct_terreno_valor_comercial {
+  id_valor_comercial        int             [pk, increment]
+  id_terreno                int             [not null]
+  fecha_valor               datetime2       [not null]
+  uf_m2_comercial           decimal(18,4)
+  uf_total_comercial        decimal(18,4)
+  vigente                   bit             [not null, default: 1]
+  observacion               nvarchar(1000)
+
+  Indexes {
+    id_terreno
+    fecha_valor
+    vigente
+  }
+
+  Note: '''
+  Valor comercial de referencia para gestion y seguimiento.
+  Puede diferir de la tasacion formal o del valor de venta pactado.
+  '''
+}
+
+Table ct_terreno_estado_historial {
+  id_estado_historial       int             [pk, increment]
+  id_terreno                int             [not null]
+  estado                    estado_terreno  [not null]
+  fecha_desde               datetime2       [not null]
+  fecha_hasta               datetime2
+  id_movimiento             int
+  observacion               nvarchar(1000)
+
+  Indexes {
+    id_terreno
+    fecha_desde
+  }
+
+  Note: '''
+  Permite reconstruir el estado del ct_terreno en cualquier fecha,
+  incluso si el cambio no vino desde una venta o una operacion predial.
+  '''
+}
+
+Table ct_terreno_uso_historial {
+  id_uso_historial          int             [pk, increment]
+  id_terreno                int             [not null]
+  tipo_uso                  nvarchar(100)   [not null, note: 'AGRICOLA, HABITACIONAL, EQUIPAMIENTO, RESERVA, OTRO']
+  descripcion_uso           nvarchar(255)
+  fecha_desde               datetime2       [not null]
+  fecha_hasta               datetime2
+  id_movimiento             int
+  observacion               nvarchar(1000)
+
+  Indexes {
+    id_terreno
+    fecha_desde
+  }
+}
+
+Table ct_terreno_avaluo {
+  id_avaluo                 int             [pk, increment]
+  id_terreno                int             [not null]
+  anio                      int             [not null]
+  semestre                  int             [not null, note: 'Usar 1 o 2 segun el periodo vigente']
+  tipo_avaluo               tipo_avaluo     [not null]
+  fuente                    fuente_avaluo   [not null]
+  es_oficial                bit             [not null, default: 0]
+  fecha_corte               datetime2
+  fecha_fuente              datetime2
+  avaluo_terreno            decimal(18,2)
+  avaluo_construcciones     decimal(18,2)
+  avaluo_total              decimal(18,2)
+  avaluo_exento             decimal(18,2)
+  avaluo_afecto             decimal(18,2)
+  tasa_aplicable            decimal(9,6)
+  numero_certificado        nvarchar(100)
+  observacion               nvarchar(1000)
+  fecha_creacion            datetime2       [not null]
+  fecha_actualizacion       datetime2
+
+  Indexes {
+    (id_terreno, anio, semestre, fuente)
+    id_terreno
+    es_oficial
+  }
+
+  Note: '''
+  Resultado del avaluo para un periodo.
+  Puede venir del SII o de una estimacion interna.
+  Regla esperada:
+  avaluo_total = avaluo_terreno + avaluo_construcciones
+  avaluo_afecto = avaluo_total - avaluo_exento
+  '''
+}
+
+Table ct_terreno_avaluo_detalle {
+  id_avaluo_detalle         int                    [pk, increment]
+  id_avaluo                 int                    [not null]
+  tipo_componente           tipo_componente_avaluo [not null]
+  descripcion               nvarchar(255)          [not null]
+  unidad                    nvarchar(50)
+  cantidad                  decimal(18,4)
+  valor_unitario            decimal(18,4)
+  factor                    decimal(18,6)
+  porcentaje                decimal(9,6)
+  monto                     decimal(18,2)
+  orden_visual              int
+  observacion               nvarchar(1000)
+
+  Indexes {
+    id_avaluo
+    tipo_componente
+  }
+
+  Note: '''
+  Desglose del avaluo para explicar el resultado.
+  Sirve tanto para calculo interno como para dejar trazado un valor cargado manualmente.
+  '''
+}
+
+Table ct_terreno_avaluo_exencion {
+  id_avaluo_exencion        int                    [pk, increment]
+  id_avaluo                 int                    [not null]
+  codigo_exencion           nvarchar(50)
+  nombre_exencion           nvarchar(150)          [not null]
+  fundamento_legal          nvarchar(255)
+  modo_calculo              modo_calculo_exencion  [not null]
+  monto_base                decimal(18,2)
+  porcentaje_exencion       decimal(9,6)
+  monto_exento_resultado    decimal(18,2)
+  prioridad                 int
+  es_aplicada               bit                    [not null, default: 0]
+  descripcion_regla         nvarchar(1000)
+  observacion               nvarchar(1000)
+
+  Indexes {
+    id_avaluo
+    es_aplicada
+  }
+
+  Note: '''
+  Permite registrar la causal y el calculo de la exencion.
+  Puedes guardar varias exenciones candidatas y marcar solo la aplicada.
+  '''
+}
+
+Table ct_terreno_contribucion {
+  id_contribucion           int                        [pk, increment]
+  id_terreno                int                        [not null]
+  id_avaluo                 int
+  anio                      int                        [not null]
+  cuota                     int                        [not null, note: 'Normalmente 1 a 4']
+  estado_pago               estado_pago_contribucion   [not null]
+  rol_pagado                nvarchar(50)
+  origen_rol_pagado         origen_rol_pagado
+  fecha_vencimiento         datetime2
+  fecha_pago                datetime2
+  monto_emitido             decimal(18,2)
+  interes                   decimal(18,2)
+  monto_pagado              decimal(18,2)
+  pagado_por                nvarchar(150)
+  numero_comprobante        nvarchar(100)
+  observacion               nvarchar(1000)
+
+  Indexes {
+    (id_terreno, anio, cuota) [unique]
+    estado_pago
+    fecha_vencimiento
+  }
+
+  Note: '''
+  rol_pagado es el rol efectivamente usado para pagar la contribucion.
+  Regla operativa sugerida:
+  - si el ct_terreno ya esta vendido, usar rol_asignado
+  - si no esta vendido, usar rol_matriz
+  - si rol_matriz no existe, usar rol_asignado
+  Aun asi conviene guardar el rol realmente pagado para mantener trazabilidad historica.
+  '''
+}
+
+Table ct_terreno_ficha {
+  id_ficha                  int                    [pk, increment]
+  id_terreno                int                    [not null]
+  version                   int                    [not null, default: 1]
+  estado                    estado_ficha_terreno   [not null]
+  fecha_emision             datetime2
+  vigente_desde             datetime2
+  vigente_hasta             datetime2
+  responsable_arquitectura  nvarchar(150)
+  responsable_legal         nvarchar(150)
+  superficie_titulo_m2      decimal(18,2)
+  superficie_levantada_m2   decimal(18,2)
+  superficie_neta_arquitectura_m2 decimal(18,2)
+  resolucion                nvarchar(150)
+  fecha_resolucion          datetime2
+  uso_suelo                 nvarchar(150)
+  zonificacion              nvarchar(150)
+  afectaciones              nvarchar(1000)
+  factibilidad_agua         nvarchar(200)
+  factibilidad_luz          nvarchar(200)
+  factibilidad_sanitaria    nvarchar(200)
+  factibilidad_alcantarillado nvarchar(200)
+  empresa_sanitaria         nvarchar(150)
+  garantia                  nvarchar(255)
+  resolucion_garantia       nvarchar(150)
+  fecha_vencimiento_garantia datetime2
+  modificacion_deslindes    nvarchar(255)
+  nueva_superficie_m2       decimal(18,2)
+  acceso_vial               nvarchar(255)
+  situacion_legal           nvarchar(1000)
+  restricciones_normativas  nvarchar(1000)
+  conclusion_arquitectura   nvarchar(1000)
+  conclusion_legal          nvarchar(1000)
+  observacion               nvarchar(1000)
+
+  Indexes {
+    (id_terreno, version) [unique]
+    estado
+  }
+
+  Note: '''
+  Ficha consolidada para estudio previo a construccion.
+  Mezcla antecedentes tecnicos y legales, pero mantiene versionado simple.
+  '''
+}
+
+Table ct_terreno_documento {
+  id_documento              int                     [pk, increment]
+  id_terreno                int                     [not null]
+  id_movimiento             int
+  id_ficha                  int
+  id_contribucion           int
+  tipo                      tipo_documento_terreno
+  nombre_archivo            nvarchar(255)           [not null]
+  ubicacion_archivo         nvarchar(500)
+  fecha_documento           datetime2
+  descripcion               nvarchar(500)
+
+  Indexes {
+    id_terreno
+    id_movimiento
+    id_ficha
+    id_contribucion
+  }
+}
+
+Ref: ct_movimiento_terreno_detalle.id_movimiento > ct_movimiento_terreno.id_movimiento
+Ref: ct_movimiento_terreno_detalle.id_terreno > ct_terreno.id_terreno
+
+Ref: ct_movimiento_terreno_historial.id_movimiento > ct_movimiento_terreno.id_movimiento
+Ref: ct_movimiento_terreno_historial.id_terreno_origen > ct_terreno.id_terreno
+Ref: ct_movimiento_terreno_historial.id_terreno_resultado > ct_terreno.id_terreno
+
+Ref: ct_terreno_adquisicion.id_movimiento > ct_movimiento_terreno.id_movimiento
+
+Ref: ct_terreno_venta.id_movimiento > ct_movimiento_terreno.id_movimiento
+Ref: ct_terreno_venta_cliente.id_venta > ct_terreno_venta.id_venta
+Ref: ct_terreno_venta_cliente.id_cliente > ct_cliente.id_cliente
+Ref: ct_terreno_tasacion.id_terreno > ct_terreno.id_terreno
+Ref: ct_terreno_valor_comercial.id_terreno > ct_terreno.id_terreno
+
+Ref: ct_terreno_estado_historial.id_terreno > ct_terreno.id_terreno
+Ref: ct_terreno_estado_historial.id_movimiento > ct_movimiento_terreno.id_movimiento
+
+Ref: ct_terreno_uso_historial.id_terreno > ct_terreno.id_terreno
+Ref: ct_terreno_uso_historial.id_movimiento > ct_movimiento_terreno.id_movimiento
+
+Ref: ct_terreno_avaluo.id_terreno > ct_terreno.id_terreno
+Ref: ct_terreno_avaluo_detalle.id_avaluo > ct_terreno_avaluo.id_avaluo
+Ref: ct_terreno_avaluo_exencion.id_avaluo > ct_terreno_avaluo.id_avaluo
+
+Ref: ct_terreno_contribucion.id_terreno > ct_terreno.id_terreno
+Ref: ct_terreno_contribucion.id_avaluo > ct_terreno_avaluo.id_avaluo
+
+Ref: ct_terreno_ficha.id_terreno > ct_terreno.id_terreno
+
+Ref: ct_terreno_documento.id_terreno > ct_terreno.id_terreno
+Ref: ct_terreno_documento.id_movimiento > ct_movimiento_terreno.id_movimiento
+Ref: ct_terreno_documento.id_ficha > ct_terreno_ficha.id_ficha
+Ref: ct_terreno_documento.id_contribucion > ct_terreno_contribucion.id_contribucion

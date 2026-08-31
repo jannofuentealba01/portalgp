@@ -1,0 +1,38 @@
+.ct-label {
+    font-size: 0.82rem;
+    color: #48606d;
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+}
+
+.ct-required {
+    color: #c62828;
+    font-weight: 700;
+}
+
+.ct-optional {
+    color: #6a7f8a;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.ct-help {
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: #607684;
+}
+
+.ct-error {
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: #c62828;
+}
+
+.ct-switch .form-check-label {
+    font-size: 0.82rem;
+    color: #3f5563;
+    font-weight: 600;
+}

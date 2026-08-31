@@ -1,0 +1,103 @@
+Project ct_predial {
+  database_type: "SQLServer"
+  Note: "Capa predial base de CT. Fuente: ct/db/10_ct_capa_predial.sql."
+}
+
+Table cr_usuarios {
+  id int [pk, note: "Stub externa. FK real a dbo.cr_usuarios."]
+}
+
+Table ct_comuna {
+  id_comuna int [pk, increment]
+  nombre nvarchar(120) [not null, unique]
+}
+
+Table ct_estado_terreno_predial {
+  id_estado_predial int [pk, increment]
+  nombre nvarchar(80) [not null, unique]
+}
+
+Table ct_tipo_inmueble {
+  id_tipo_inmueble int [pk, increment]
+  nombre nvarchar(80) [not null, unique]
+  activo bit [not null, default: 1]
+}
+
+Table ct_tercero {
+  id_tercero int [pk, increment]
+  tipo_persona char(1) [not null, note: "CHECK N/J"]
+  rut varchar(20)
+  nombre_razon_social nvarchar(200) [not null]
+}
+
+Table ct_estado_terreno_comercial {
+  id_estado_comercial int [pk, note: "Stub externa. FK real se agrega en contabilidad."]
+}
+
+Table ct_terreno {
+  id_terreno int [pk, increment]
+  rol_asignado varchar(30) [not null]
+  rol_matriz varchar(30)
+  identificacion_propiedad nvarchar(120)
+  superficie_m2 decimal(18,2) [not null, note: "CHECK > 0"]
+  id_comuna int [not null]
+  id_estado_predial int [not null]
+  id_estado_comercial int [not null, note: "FK cruzada a contabilidad"]
+  id_tipo_inmueble int [not null]
+}
+
+Table ct_titularidad_terreno {
+  id_titularidad int [pk, increment]
+  id_terreno int [not null]
+  id_tercero int [not null]
+  vigente_desde date [not null]
+  vigente_hasta date
+  porcentaje_derecho decimal(5,2) [not null, note: "CHECK > 0 y <= 100"]
+}
+
+Table ct_operacion_predial {
+  id_operacion int [pk, increment]
+  tipo_operacion nvarchar(50) [not null]
+  fecha_operacion date [not null]
+  fecha_registro datetime2 [not null, default: `SYSUTCDATETIME()`]
+  documento_fuente nvarchar(255)
+}
+
+Table ct_operacion_terreno {
+  id_operacion_terreno int [pk, increment]
+  id_operacion int [not null]
+  id_terreno int [not null]
+  rol_en_operacion nvarchar(30)
+}
+
+Table ct_historial_estado_terreno {
+  id_historial_estado int [pk, increment]
+  id_terreno int [not null]
+  id_estado_anterior int
+  id_estado_nuevo int [not null]
+  fecha_cambio datetime2 [not null, default: `SYSUTCDATETIME()`]
+  id_venta int [note: "FK cruzada a contabilidad"]
+  id_operacion int
+  id_usuario int [not null]
+  tipo_estado char(1) [not null, note: "CHECK P/C"]
+}
+
+Table ct_venta_terreno {
+  id_venta int [pk, note: "Stub externa. FK real se agrega en contabilidad."]
+}
+
+Ref: ct_terreno.id_comuna > ct_comuna.id_comuna
+Ref: ct_terreno.id_estado_predial > ct_estado_terreno_predial.id_estado_predial
+Ref: ct_terreno.id_tipo_inmueble > ct_tipo_inmueble.id_tipo_inmueble
+Ref: ct_terreno.id_estado_comercial > ct_estado_terreno_comercial.id_estado_comercial
+
+Ref: ct_titularidad_terreno.id_terreno > ct_terreno.id_terreno
+Ref: ct_titularidad_terreno.id_tercero > ct_tercero.id_tercero
+
+Ref: ct_operacion_terreno.id_operacion > ct_operacion_predial.id_operacion
+Ref: ct_operacion_terreno.id_terreno > ct_terreno.id_terreno
+
+Ref: ct_historial_estado_terreno.id_terreno > ct_terreno.id_terreno
+Ref: ct_historial_estado_terreno.id_operacion > ct_operacion_predial.id_operacion
+Ref: ct_historial_estado_terreno.id_usuario > cr_usuarios.id
+Ref: ct_historial_estado_terreno.id_venta > ct_venta_terreno.id_venta

@@ -1,0 +1,116 @@
+Project ct_contabilidad {
+  database_type: "SQLServer"
+  Note: "Capa contable/comercial. Fuente: ct/db/40_ct_capa_contabilidad.sql y ct/db/50_ct_integridad.sql."
+}
+
+Table cr_usuarios {
+  id int [pk, note: "Stub externa. FK real a dbo.cr_usuarios."]
+}
+
+Table ct_terreno {
+  id_terreno int [pk, note: "Stub desde predial"]
+}
+
+Table ct_tercero {
+  id_tercero int [pk, note: "Stub desde predial"]
+}
+
+Table ct_estado_terreno_comercial {
+  id_estado_comercial int [pk, increment]
+  nombre nvarchar(80) [not null, unique]
+}
+
+Table ct_tipo_tasacion {
+  id_tipo_tasacion int [pk, increment]
+  nombre nvarchar(80) [not null, unique]
+}
+
+Table ct_usufructuario_tipo {
+  id_usufructuario_tipo int [pk, increment]
+  nombre nvarchar(80) [not null, unique]
+  activo bit [not null, default: 1]
+}
+
+Table ct_entidad_financiera {
+  id_entidad_financiera int [pk, increment]
+  nombre nvarchar(120) [not null, unique]
+  activo bit [not null, default: 1]
+}
+
+Table ct_usufructo_terreno {
+  id_usufructo int [pk, increment]
+  id_terreno int [not null]
+  id_usufructuario_tipo int [not null]
+  fecha_inicio date
+  fecha_fin date
+  porcentaje decimal(5,2)
+  monto_referencia_uf decimal(18,2)
+  observacion nvarchar(300)
+}
+
+Table ct_hipoteca_terreno {
+  id_hipoteca int [pk, increment]
+  id_terreno int [not null]
+  id_entidad_financiera int [not null]
+  fecha_constitucion date [not null]
+  monto_uf decimal(18,2)
+  estado nvarchar(40)
+  observacion nvarchar(300)
+}
+
+Table ct_tasacion_terreno {
+  id_tasacion int [pk, increment]
+  id_terreno int [not null]
+  id_tipo_tasacion int [not null]
+  fecha_tasacion date [not null]
+  fecha_registro datetime2 [not null, default: `SYSUTCDATETIME()`]
+  valor_total_uf decimal(18,2) [not null]
+  valor_uf_m2 decimal(18,4)
+  id_entidad_financiera int
+  es_referencial bit [not null, default: 0]
+  vigente_desde date
+  vigente_hasta date
+  id_usuario int [not null]
+
+  Indexes {
+    id_terreno [name: "UX_ct_tasacion_terreno_referencial", unique, note: "Filtrado: WHERE es_referencial = 1"]
+  }
+}
+
+Table ct_venta_terreno {
+  id_venta int [pk, increment]
+  id_terreno int [not null]
+  fecha_venta date [not null]
+  valor_total_uf decimal(18,2) [not null]
+  valor_venta_uf_m2 decimal(18,4)
+  id_tasacion_referencial int
+
+  Indexes {
+    id_terreno [unique, name: "UX_ct_venta_terreno_unica"]
+  }
+}
+
+Table ct_venta_terreno_tercero {
+  id_venta_tercero int [pk, increment]
+  id_venta int [not null]
+  id_tercero int [not null]
+  porcentaje decimal(5,2) [not null]
+  rol_en_venta nvarchar(30)
+}
+
+Ref: ct_usufructo_terreno.id_terreno > ct_terreno.id_terreno
+Ref: ct_usufructo_terreno.id_usufructuario_tipo > ct_usufructuario_tipo.id_usufructuario_tipo
+
+Ref: ct_hipoteca_terreno.id_terreno > ct_terreno.id_terreno
+Ref: ct_hipoteca_terreno.id_entidad_financiera > ct_entidad_financiera.id_entidad_financiera
+
+Ref: ct_tasacion_terreno.id_terreno > ct_terreno.id_terreno
+Ref: ct_tasacion_terreno.id_tipo_tasacion > ct_tipo_tasacion.id_tipo_tasacion
+Ref: ct_tasacion_terreno.id_entidad_financiera > ct_entidad_financiera.id_entidad_financiera
+Ref: ct_tasacion_terreno.id_usuario > cr_usuarios.id
+
+Ref: ct_venta_terreno.id_terreno > ct_terreno.id_terreno
+Ref: ct_venta_terreno.id_tasacion_referencial > ct_tasacion_terreno.id_tasacion
+
+Ref: ct_venta_terreno_tercero.id_venta > ct_venta_terreno.id_venta
+Ref: ct_venta_terreno_tercero.id_tercero > ct_tercero.id_tercero

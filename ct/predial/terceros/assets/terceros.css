@@ -1,0 +1,321 @@
+.ct-terceros-modal .modal-content {
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+    overflow: hidden;
+}
+
+.ct-terceros-modal .modal-header {
+    border-bottom: 0;
+    padding: 1rem 1.2rem;
+    background: linear-gradient(135deg, #0f5f7a 0%, #1d8a84 100%);
+    color: #fff;
+}
+
+.ct-terceros-modal .modal-title {
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.ct-terceros-modal .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.ct-terceros-modal .modal-body {
+    padding: 1.2rem;
+    background: #f8fbfd;
+}
+
+.ct-terceros-modal .modal-footer {
+    border-top: 0;
+    padding: 0.9rem 1.2rem 1.2rem;
+    background: #f8fbfd;
+}
+
+.ct-terceros-modal .form-label {
+    font-size: 0.82rem;
+    color: #48606d;
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+}
+
+.ct-terceros-modal .form-control,
+.ct-terceros-modal .form-select {
+    border-radius: 10px;
+    border-color: #cdd9e2;
+}
+
+.ct-terceros-modal .ct-modal-hint {
+    font-size: 0.85rem;
+    color: #5f7480;
+    margin-bottom: 0.8rem;
+}
+
+.ct-terceros-toolbar,
+.ct-terceros-filtros {
+    --ct-control-height: 38px;
+}
+
+.ct-terceros-toolbar-title {
+    letter-spacing: 0.1px;
+}
+
+.ct-terceros-toolbar-hint {
+    margin-top: 0.1rem;
+    font-size: 0.78rem;
+}
+
+.ct-terceros-filtros {
+    background: #f8fafc;
+    border: 1px solid #e5ebf2;
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.ct-terceros-filtros .form-label {
+    font-size: 0.78rem;
+    color: #536878 !important;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.ct-terceros-filtros .ct-control-input {
+    min-height: var(--ct-control-height);
+    border-color: #ced8e2;
+    font-size: 0.875rem;
+}
+
+.ct-terceros-filtros [data-searchable-btn] {
+    min-height: var(--ct-control-height);
+    border-color: #ced8e2;
+    font-size: 0.875rem;
+}
+
+.ct-terceros-filtros .ct-filter-submit {
+    min-height: var(--ct-control-height);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.ct-terceros-table thead th {
+    background: #eef2f7;
+    color: #253646;
+    border-bottom-color: #d8e1eb;
+}
+
+.ct-terceros-table tbody td {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+}
+
+.ct-terceros-table tbody tr:hover {
+    background: #f8fbff;
+}
+
+.ct-crud-actions .dropdown-toggle::after {
+    margin-left: 0.25rem;
+}
+
+.ct-crud-actions .dropdown-menu {
+    min-width: 9rem;
+}
+
+.ct-import-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.ct-import-default-tipo-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.ct-import-default-tipo-group {
+    min-width: 260px;
+    max-width: 360px;
+}
+
+.ct-import-dropzone {
+    border: 1px dashed #9fb6c9;
+    border-radius: 12px;
+    background: #f7fbff;
+    padding: 16px 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ct-import-dropzone:hover,
+.ct-import-dropzone.is-dragover {
+    border-color: #3f77c8;
+    background: #eef5ff;
+    box-shadow: 0 0 0 3px rgba(63, 119, 200, 0.12);
+}
+
+.ct-import-dropzone:focus-visible {
+    outline: none;
+    border-color: #2e67b5;
+    box-shadow: 0 0 0 3px rgba(46, 103, 181, 0.2);
+}
+
+.ct-import-dropzone-icon {
+    font-size: 1.25rem;
+    color: #2f5f93;
+    margin-bottom: 0.25rem;
+}
+
+.ct-import-dropzone-title {
+    font-size: 0.88rem;
+    color: #314a5d;
+    font-weight: 600;
+}
+
+.ct-import-dropzone-meta {
+    margin-top: 0.25rem;
+    font-size: 0.76rem;
+    color: #5f7385;
+}
+
+.ct-import-dropzone-filename {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: #184f86;
+    font-weight: 700;
+    background: #e8f2ff;
+    border: 1px solid #c8dbfb;
+    border-radius: 8px;
+    padding: 0.35rem 0.55rem;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ct-import-dropzone-icon-check {
+    font-size: 1.35rem;
+    color: #227645;
+    margin-bottom: 0.25rem;
+}
+
+.ct-import-dropzone.has-file {
+    border-color: #2d8552;
+    background: #f1fbf5;
+    box-shadow: 0 0 0 3px rgba(45, 133, 82, 0.16);
+}
+
+.ct-template-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    border: 1px solid #c8d8ea;
+    background: #f3f8ff;
+    color: #1f4f83;
+    border-radius: 10px;
+    padding: 0.46rem 0.72rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.ct-template-btn:hover {
+    background: #e6f0ff;
+    border-color: #aac3e2;
+    color: #173e69;
+    text-decoration: none;
+}
+
+.ct-import-preview-table-wrap {
+    max-height: 58vh;
+    border: 1px solid #dbe5ef;
+    border-radius: 10px;
+    background: #fff;
+}
+
+#ct-modal-preview-importacion-terceros .modal-dialog {
+    max-width: min(1280px, 96vw);
+    height: calc(100vh - 1.5rem);
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+#ct-modal-preview-importacion-terceros .modal-content {
+    height: 100%;
+}
+
+#ct-modal-preview-importacion-terceros .modal-body {
+    overflow-y: auto;
+    min-height: 0;
+}
+
+#ct-modal-preview-importacion-terceros .modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    border-top: 1px solid #dbe5ef;
+}
+
+.ct-import-preview-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #eef3f8;
+    border-bottom-color: #d2deea;
+    font-size: 0.79rem;
+    color: #344b5d;
+}
+
+.ct-import-preview-table tbody td {
+    vertical-align: top;
+}
+
+.ct-import-row-ok {
+    background: #f5fff8;
+}
+
+.ct-import-row-error {
+    background: #fff7f7;
+}
+
+.ct-import-row-warning {
+    background: #fffdf1;
+}
+
+.ct-import-row-omitido {
+    background: #fffdf3;
+}
+
+.ct-import-errors {
+    font-size: 0.74rem;
+    color: #9e3030;
+    line-height: 1.28;
+}
+
+.ct-import-warnings {
+    font-size: 0.74rem;
+    color: #8a5b00;
+    line-height: 1.28;
+}
+
+@media (max-width: 767.98px) {
+    .ct-terceros-filtros {
+        padding: 10px;
+    }
+
+    .ct-crud-actions .btn {
+        min-width: 32px;
+        min-height: 32px;
+    }
+
+    #ct-modal-preview-importacion-terceros .modal-dialog {
+        height: calc(100vh - 1rem);
+        margin-top: 0.5rem;
+        margin-bottom: 0.5rem;
+        max-width: 98vw;
+    }
+}

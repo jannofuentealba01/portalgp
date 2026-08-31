@@ -1,0 +1,79 @@
+Project ct_construccion_legal {
+  database_type: "SQLServer"
+  Note: "Capa de construccion y ficha arquitectura/legal. Fuente: ct/db/20_ct_capa_construccion.sql y ct/db/50_ct_integridad.sql."
+}
+
+Table ct_tercero {
+  id_tercero int [pk, note: "Stub desde predial"]
+}
+
+Table ct_terreno {
+  id_terreno int [pk, note: "Stub desde predial"]
+}
+
+Table ct_rol_en_proyecto {
+  id_rol_en_proyecto int [pk, increment]
+  nombre nvarchar(80) [not null, unique]
+}
+
+Table ct_empresa_sanitaria {
+  id_empresa_sanitaria int [pk, increment]
+  nombre nvarchar(120) [not null, unique]
+  activo bit
+}
+
+Table ct_proyecto_construccion {
+  id_proyecto int [pk, increment]
+  nombre nvarchar(150) [not null]
+  id_tercero int [not null]
+  estado nvarchar(50)
+  fecha_inicio date
+  fecha_termino date
+}
+
+Table ct_construccion {
+  id_construccion int [pk, increment]
+  id_proyecto int [not null]
+  tipo_construccion nvarchar(80)
+  nombre nvarchar(150) [not null]
+  superficie_m2 decimal(18,2)
+}
+
+Table ct_proyecto_construccion_terreno {
+  id_proyecto_construccion_terreno int [pk, increment]
+  id_proyecto int [not null]
+  id_terreno int [not null]
+  id_rol_en_proyecto int [not null]
+  vigente_desde date
+  vigente_hasta date
+
+  Indexes {
+    (id_proyecto, id_terreno, id_rol_en_proyecto, vigente_desde) [unique, name: "UX_ct_proyecto_construccion_terreno_vigencia"]
+  }
+}
+
+Table ct_terreno_arquitectura_legal {
+  id_terreno int [pk]
+  superficie_neta_arquitectura_m2 decimal(18,2)
+  resolucion nvarchar(120)
+  fecha_resolucion date
+  direccion_arquitectura nvarchar(200)
+  factibilidad_electrica bit
+  factibilidad_sanitaria bit
+  id_empresa_sanitaria int
+  garantia bit
+  resolucion_garantia nvarchar(120)
+  vencimiento_garantia date
+  modificacion_deslindes bit
+  nueva_superficie_m2 decimal(18,2)
+  nueva_resolucion nvarchar(120)
+  fecha_nueva_resolucion date
+}
+
+Ref: ct_proyecto_construccion.id_tercero > ct_tercero.id_tercero
+Ref: ct_construccion.id_proyecto > ct_proyecto_construccion.id_proyecto
+Ref: ct_proyecto_construccion_terreno.id_proyecto > ct_proyecto_construccion.id_proyecto
+Ref: ct_proyecto_construccion_terreno.id_terreno > ct_terreno.id_terreno
+Ref: ct_proyecto_construccion_terreno.id_rol_en_proyecto > ct_rol_en_proyecto.id_rol_en_proyecto
+Ref: ct_terreno_arquitectura_legal.id_terreno > ct_terreno.id_terreno
+Ref: ct_terreno_arquitectura_legal.id_empresa_sanitaria > ct_empresa_sanitaria.id_empresa_sanitaria

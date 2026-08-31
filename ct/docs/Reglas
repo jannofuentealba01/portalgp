@@ -1,0 +1,130 @@
+7. Define la regla entre venta y titularidad
+
+Aquí está la decisión importante:
+
+Cuando se registra una venta, ¿qué pasa con Titularidad_Terreno?
+
+Yo haría esta regla:
+
+antes de la venta, el terreno puede tener como titular a la empresa
+al vender:
+se cierra la titularidad anterior (vigente_hasta)
+se crean nuevas titularidades para cada Parte compradora
+con el porcentaje correspondiente
+
+Eso te deja súper consistente.
+
+Ejemplo
+
+Venta 100 de terreno X:
+
+Parte A: 50%
+Parte B: 50%
+
+Entonces en Titularidad_Terreno quedan 2 registros nuevos:
+
+terreno X, parte A, 50%, vigente
+terreno X, parte B, 50%, vigente
+
+8. Venta_Terreno debería asumir una venta final por terreno
+
+Si tu lógica es que cuando se vende ustedes se desligan, entonces está bien que un terreno tenga una sola venta efectiva.
+
+Eso significa que en SQL después te convendría una restricción tipo:
+
+UNIQUE(id_terreno) en Venta_Terreno
+
+salvo que quieras soportar anulaciones/reventas futuras.
+
+Qué hacer con el estado comercial
+
+Aquí te conviene agregar un flujo más ordenado.
+
+Estado_Terreno_Comercial
+
+Yo lo dejaría algo así:
+
+BORRADOR
+PENDIENTE_TASACION
+TASADO
+DISPONIBLE
+RESERVADO
+VENDIDO
+Regla clave
+
+Para pasar a DISPONIBLE, el terreno debe tener:
+
+una tasación comercial vigente
+y una tasación externa vigente
+
+Si para ti basta con una sola, ajustas la regla.
+Pero por lo que cuentas, parece que quieres ambas.
+
+Regla de negocio importante
+Antes de Disponible
+
+No se puede cambiar Terreno.id_estado_comercial a DISPONIBLE si no existe tasación válida.
+
+Eso normalmente lo controlaría en la lógica de aplicación o en un procedimiento almacenado.
+
+Ejemplo de validación conceptual
+existe Tasacion_Terreno tipo COMERCIAL, vigente
+existe Tasacion_Terreno tipo EXTERNA, vigente
+
+recién ahí:
+
+estado_comercial = DISPONIBLE
+
+Qué pasa con subdivisión y fusión
+
+Aquí hay una regla súper importante que yo dejaría desde ya:
+
+Si un terreno se subdivide o se fusiona
+
+Las tasaciones antiguas no deberían dejar automáticamente disponible al terreno resultante.
+
+O sea:
+
+terreno A tenía tasación
+A se subdivide en B y C
+
+Entonces:
+
+B y C parten en PENDIENTE_TASACION
+no heredan como válida la tasación de A
+
+Porque comercialmente y técnicamente ya son otros terrenos.
+
+Qué haría con “mejor tasación”
+
+Vi en tu Excel algo como “mejor tasación”.
+Opción más controlada
+
+Agregar un flag:
+
+es_referencial bit
+es_mejor bit
+
+Yo prefiero es_referencial, porque “mejor” no siempre significa “más alta”; a veces el negocio elige una específica.
+
+Entonces en Tasacion_Terreno podrías tener:
+
+es_referencial
+
+y decir:
+
+esta es la tasación que usamos como referencia comercial actual
+
+Flujo recomendado
+1. Ingresa terreno
+se crea Terreno
+estado comercial = PENDIENTE_TASACION
+2. Se registra tasación comercial
+nueva fila en Tasacion_Terreno
+3. Se registra tasación externa
+nueva fila en Tasacion_Terreno
+4. Si cumple regla
+cambia a DISPONIBLE
+5. Luego
+RESERVADO
+VENDIDO

@@ -1,0 +1,13 @@
+.ct-catalogo-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid #dbe3ed;
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+
+.ct-catalogo-pill.is-active { color: #0f4a7d; border-color: #b7d4ee; background: #edf6ff; }
+.ct-catalogo-pill.is-inactive { color: #4b5563; border-color: #d7dce4; background: #f5f7fa; }

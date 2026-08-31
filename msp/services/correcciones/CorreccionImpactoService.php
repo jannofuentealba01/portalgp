@@ -1,0 +1,3 @@
+<?php
+declare(strict_types=1);
+final class CorreccionImpactoService{public static function registrar(PDO $conn,int $id,string $tipo,?int $registro,string $accion,mixed $antes,mixed $despues,bool $financiero=false):void{$q=$conn->prepare('INSERT dbo.msp_correcciones_impactos(id_correccion,tipo_entidad,id_registro,accion_prevista,valor_anterior,valor_nuevo,es_financiero) VALUES(:i,:t,:r,:a,:x,:n,:f)');$q->execute([':i'=>$id,':t'=>$tipo,':r'=>$registro,':a'=>$accion,':x'=>is_string($antes)?$antes:json_encode($antes,JSON_UNESCAPED_UNICODE),':n'=>is_string($despues)?$despues:json_encode($despues,JSON_UNESCAPED_UNICODE),':f'=>$financiero?1:0]);}}

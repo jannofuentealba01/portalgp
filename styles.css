@@ -1,0 +1,2372 @@
+/* Base enterprise styles (tokens + componentes) */
+:root {
+  --color-bg: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-surface-soft: #eef2f7;
+  --color-border: #d7dee8;
+  --color-border-strong: #08284b;
+  --color-text: #1f2937;
+  --color-text-muted: #5b6778;
+  --color-text-on-primary: #ffffff;
+  --color-primary: #0b3a6e;
+  --color-primary-hover: #0a325f;
+  --color-primary-soft: #e7eff8;
+  --color-success: #0f766e;
+  --color-warning: #b45309;
+  --color-danger: #b42318;
+  --color-info: #1d4ed8;
+  --shadow-sm: 0 2px 6px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --focus-ring: rgba(11, 58, 110, 0.3);
+  --shadow-soft: 0 2px 6px rgba(16, 24, 40, 0.06);
+  --color-focus: rgba(11, 58, 110, 0.32);
+  --content-max-width: 1200px;
+  --content-width: 95%;
+  --content-padding-x: 32px;
+  --content-padding-y: 24px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-primary-hover);
+}
+
+/* Header */
+.gp-header {
+  background-color: var(--color-primary);
+  border-bottom: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+  padding: 3px 16px;
+  position: relative;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.gp-header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.gp-nav-list {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gp-nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  color: var(--color-text-on-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.gp-nav-link:hover {
+  background-color: var(--color-primary-hover);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--color-text-on-primary);
+}
+
+.gp-nav-link:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+}
+
+.gp-nav-link.gp-nav-link-active {
+  background-color: var(--color-primary-soft);
+  border-color: var(--color-surface);
+  color: var(--color-primary);
+}
+
+.gp-nav-link.gp-nav-link-active:hover {
+  background-color: var(--color-surface);
+  border-color: var(--color-surface);
+  color: var(--color-primary);
+}
+
+@media (max-width: 768px) {
+  .gp-header {
+    padding: 4px 10px;
+  }
+
+  .gp-nav-list {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .gp-nav-link {
+    width: 100%;
+  }
+}
+
+/* Footer */
+.gp-footer {
+  margin-top: 24px;
+  padding: 12px 20px;
+  text-align: center;
+  background-color: var(--color-primary);
+  border-top: 1px solid var(--color-border-strong);
+  color: var(--color-text-on-primary);
+  box-shadow: 0 -2px 6px rgba(16, 24, 40, 0.06);
+}
+
+.gp-footer p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .gp-footer {
+    padding: 10px 16px;
+  }
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  color: var(--color-text-on-primary);
+}
+
+.btn-secondary {
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-secondary:hover,
+.btn-secondary:focus {
+  background-color: var(--color-surface-soft);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-success {
+  background-color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.btn-success:hover,
+.btn-success:focus {
+  background-color: #0c635d;
+  border-color: #0c635d;
+}
+
+.btn-danger {
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.btn-danger:hover,
+.btn-danger:focus {
+  background-color: #9a1d14;
+  border-color: #9a1d14;
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Forms */
+.form-label,
+label {
+  font-weight: 600;
+}
+
+.form-control,
+.form-select,
+input,
+select,
+textarea {
+  border-color: var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.form-control:focus,
+.form-select:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 0.15rem rgba(11, 58, 110, 0.2);
+}
+
+/* Tables */
+.table {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.table thead th {
+  background-color: var(--color-surface-soft);
+  color: var(--color-text);
+  font-weight: 600;
+  border-color: var(--color-border);
+}
+
+.table td,
+.table th {
+  border-color: var(--color-border);
+}
+
+.table-hover tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+/* Layout helpers */
+body.gp-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main.gp-main {
+  flex: 1;
+}
+
+/* Fondo general del sistema */
+body.bg-light {
+  background-color: var(--color-bg) !important;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+  color: var(--color-text) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 100vh !important;
+}
+
+/* Contenedor principal (NO afecta al header y footer) */
+.container.mt-4 {
+  background-color: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+  border-radius: var(--radius-lg) !important;
+  padding: var(--content-padding-y) var(--content-padding-x) !important;
+  max-width: var(--content-max-width) !important;
+  width: min(var(--content-width), var(--content-max-width)) !important;
+  text-align: left;
+  margin: 40px auto; /* Ajusta este margin si quieres también reducir el espacio vertical */
+}
+
+.container.my-4 {
+  background-color: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+  border-radius: var(--radius-lg) !important;
+  padding: var(--content-padding-y) var(--content-padding-x) !important;
+  width: min(var(--content-width), var(--content-max-width)) !important;
+  max-width: var(--content-max-width) !important;
+  margin: 32px auto !important;
+}
+
+.container.my-4 h2 {
+  color: var(--color-text) !important;
+  font-size: 24px !important;
+  font-weight: 600 !important;
+}
+
+/* Contenedor estandar para paginas */
+.gp-container {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-lg);
+  padding: var(--content-padding-y) var(--content-padding-x);
+  width: min(var(--content-width), var(--content-max-width));
+  max-width: var(--content-max-width);
+  margin: 32px auto;
+}
+
+.gp-container.gp-container--wide {
+  --content-max-width: 1400px;
+}
+
+/* Estilos para los títulos */
+h2.text-center.mb-4 {
+  color: var(--color-primary) !important;
+  font-size: 22px !important;
+  font-weight: 600;
+  margin-bottom: 20px;
+  text-align: center; /* Asegura que los títulos estén centrados */
+}
+
+/* Botón de acciones (Guardar, Consultar, etc.) */
+.btn.btn-primary {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-text-on-primary) !important;
+  padding: 10px 20px !important;
+  font-size: 14px !important;
+  font-weight: 600;
+  min-height: 40px !important;
+}
+
+.btn.btn-primary:hover {
+  background-color: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+}
+
+/* Botón de acción secundaria */
+.btn-secondary {
+  background-color: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+  padding: 10px 20px !important;
+  min-height: 40px !important;
+}
+.btn-secondary:hover {
+  background-color: var(--color-surface-soft) !important;
+  border-color: var(--color-border) !important;
+}
+
+.btn-success {
+    background-color: var(--color-success) !important;
+    border-color: var(--color-success) !important;
+    color: var(--color-text-on-primary) !important;
+}
+.btn-success:hover {
+    background-color: #0c635d !important;
+    border-color: #0c635d !important;
+}
+
+/* Formularios organizados */
+.form-group {
+  margin-bottom: 15px !important;
+}
+
+.form-group label {
+  font-weight: 600 !important;
+}
+
+.form-group input, .form-group select {
+  width: 100% !important;
+  padding: 8px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+/* Campos deshabilitados */
+input[readonly] {
+  background-color: var(--color-surface-soft) !important;
+  cursor: not-allowed;
+}
+
+/* Tabla con bordes y alineación */
+.table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.table th {
+  background-color: var(--color-surface-soft) !important;
+  color: var(--color-text) !important;
+  padding: 10px !important;
+  text-align: center;
+  border: 1px solid var(--color-border) !important;
+  font-weight: 600 !important;
+}
+
+.table td {
+  padding: 8px !important;
+  text-align: center !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+/* Botones de paginación */
+.pagination {
+  display: flex !important;
+  justify-content: center !important;
+  margin-top: 20px !important;
+}
+
+.pagination button {
+  padding: 5px 10px !important;
+  margin: 0 5px !important;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--color-border) !important;
+  background-color: var(--color-surface) !important;
+}
+
+/* Ajustes responsive */
+@media (max-width: 768px) {
+  .container.mt-4 {
+    padding: 15px !important;
+    width: 95% !important;
+  }
+
+  .table th, .table td {
+    font-size: 14px !important;
+    padding: 6px !important;
+  }
+
+  .btn {
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+  }
+}
+
+/* Scroll horizontal para tablas largas */
+.table-responsive {
+  overflow-x: auto;
+  width: 100%;
+}
+
+/* Ajuste para la columna Observaciones */
+td.observaciones-cell {
+  max-width: 250px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  text-align: left !important;
+  font-size: 14px;
+}
+
+/* Layout base para sticky footer en páginas enterprise */
+body.gp-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main.gp-main {
+  flex: 1;
+}
+
+/* ============================================
+   Module Menu Styles (Home, Contabilidad, TI, etc.)
+   ============================================ */
+
+html.module-menu,
+html.module-menu body {
+  height: 100%;
+}
+
+html.module-menu body {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  margin: 0;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+html.module-menu main {
+  flex: 1 0 auto;
+}
+
+html.module-menu footer {
+  flex-shrink: 0;
+}
+
+.menu-wrapper {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.menu-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 32px;
+}
+
+.menu-title {
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin: 0 0 8px 0;
+}
+
+.menu-subtitle {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  color: var(--color-text);
+}
+
+.menu-caption {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.module-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 68px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.module-link i {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--color-primary);
+  background: var(--color-surface-soft);
+  font-size: 18px;
+}
+
+.module-link:hover {
+  transform: translateY(-1px);
+  border-color: #bcc8d8;
+  background-color: #fbfcff;
+  color: var(--color-text);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+}
+
+.module-link:focus-visible {
+  outline: 3px solid rgba(11, 58, 110, 0.3);
+  outline-offset: 2px;
+}
+
+.module-link.back-link {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.module-link.back-link:hover {
+  background-color: #f8f9fa;
+}
+
+.module-link.module-link-disabled {
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  cursor: default;
+  box-shadow: none;
+}
+
+.module-link.module-link-disabled i {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.module-link.module-link-disabled:hover {
+  transform: none;
+  border-color: var(--color-border);
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  box-shadow: none;
+}
+
+@media (max-width: 767.98px) {
+  .menu-wrapper {
+    padding: 16px;
+  }
+
+  .menu-panel {
+    padding: 20px;
+  }
+
+  .menu-title {
+    font-size: 22px;
+  }
+}
+
+/* ============================================
+   Form Components & Layout Utilities
+   ============================================ */
+
+/* Layout Containers */
+.box-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  background-color: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 32px;
+  width: 95%;
+}
+
+.box-container-narrow {
+  max-width: 900px;
+  margin: 0 auto;
+  background-color: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 32px;
+}
+
+.box-container-wide {
+  max-width: 1400px;
+  margin: 0 auto;
+  background-color: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 32px;
+  width: 95%;
+}
+
+.box-container-full {
+  max-width: none;
+  margin: 8px auto;
+  background-color: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+  width: 98%;
+}
+
+.page-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+.page-container-wide {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 16px 32px;
+}
+
+/* Page Layout (Flexbox sticky footer) */
+html.h-100,
+html.h-100 body {
+  height: 100%;
+}
+
+html.h-100 body {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+html.h-100 main {
+  flex: 1 0 auto;
+}
+
+html.h-100 footer {
+  flex-shrink: 0;
+}
+
+/* Custom Buttons */
+.btn-gp-primary,
+.btn-custom {
+  background-color: #0288d1 !important;
+  border-color: #0288d1 !important;
+  color: #fff !important;
+  font-weight: 600;
+  transition: all 0.18s ease;
+}
+
+.btn-gp-primary:hover,
+.btn-custom:hover {
+  background-color: #0277bd !important;
+  border-color: #0277bd !important;
+  color: #fff !important;
+}
+
+.btn-gp-primary:focus-visible,
+.btn-custom:focus-visible {
+  outline: 3px solid rgba(2, 136, 209, 0.3);
+  outline-offset: 2px;
+}
+
+/* Autocomplete/Suggestions */
+.suggestions {
+  border: 1px solid #ccc;
+  max-height: 220px;
+  overflow-y: auto;
+  position: absolute;
+  background: var(--color-surface);
+  z-index: 10;
+  width: 100%;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-sm);
+}
+
+.suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.15s ease;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover {
+  background: #f8f9fa;
+}
+
+/* Sticky Elements */
+.sticky {
+  position: sticky;
+  top: 0;
+  background: #fafafa;
+  z-index: 5;
+}
+
+/* Utility Classes */
+.d-none {
+  display: none !important;
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.text-muted {
+  color: var(--color-text-muted) !important;
+}
+
+.section-kicker {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* Table Enhancements */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+table.table-sm td,
+table.table-sm th {
+  padding: 0.4rem;
+}
+
+table.table-compact td,
+table.table-compact th {
+  padding: 0.35rem;
+  font-size: 13px;
+}
+
+/* Gestión MSP: patrón plano y compacto para índices administrativos. */
+.msp-management-index {
+  max-width: 1640px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.msp-management-page-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: .75rem;
+  margin-bottom: 1.25rem;
+}
+
+.msp-management-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+
+.msp-management-page-header h1 {
+  margin: 0;
+  color: #003399;
+  font-size: clamp(1.6rem, 2.2vw, 2rem);
+  font-weight: 600;
+}
+
+.msp-management-actions {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+.msp-management-filters { margin-bottom: 1.25rem; }
+.msp-management-table-responsive { overflow-x: auto; }
+
+.msp-management-table {
+  min-width: 1120px;
+  margin-bottom: 0;
+  border-collapse: collapse;
+}
+
+.msp-management-table > :not(caption) > * > * {
+  padding: .75rem .7rem;
+  border: 0;
+  border-bottom: 1px solid #dfe6ef;
+  background: #fff;
+}
+
+.msp-management-table thead th {
+  background: #eef2f7;
+  border-bottom: 1px solid #cbd5e1;
+  color: #172b4d;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.msp-management-table tbody tr:hover > * { background: #f8fafc; }
+
+/* Gestión de contratos. */
+.msp-contracts-index {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.msp-contracts-index .msp-management-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: .85rem;
+}
+
+.msp-contracts-page-header .msp-contracts-back {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.msp-contracts-page-header h1 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.msp-contracts-page-header .msp-contracts-actions {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  justify-content: flex-end;
+  margin-left: 0;
+}
+
+.msp-contracts-actions .btn {
+  min-height: 34px !important;
+  padding: .35rem .65rem !important;
+  font-size: .825rem !important;
+  line-height: 1.2;
+}
+
+.msp-contracts-index .msp-contracts-filters {
+  margin-bottom: .85rem;
+}
+
+.msp-contracts-filters .form-label {
+  margin-bottom: .3rem;
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.msp-contracts-filters .form-control,
+.msp-contracts-filters .form-select {
+  min-height: 36px;
+  padding: .35rem .6rem;
+  font-family: inherit;
+  font-size: .9rem;
+}
+
+.msp-contracts-filters .msp-contract-filter-submit {
+  min-height: 36px !important;
+  padding: .35rem .75rem !important;
+  font-size: .875rem !important;
+}
+
+.msp-contracts-table {
+  min-width: 1060px;
+  font-family: inherit;
+  font-size: .9rem;
+}
+
+.msp-contracts-table > :not(caption) > * > * {
+  padding: .52rem .58rem;
+}
+
+.msp-contracts-table thead th {
+  font-size: .875rem;
+  line-height: 1.25;
+}
+
+.msp-contracts-table .contract-id,
+.msp-contracts-table .contract-locals,
+.msp-contracts-table .contract-date,
+.msp-contracts-table .contract-rent,
+.msp-contracts-table .contract-state,
+.msp-contracts-table .contract-actions { white-space: nowrap; }
+.msp-contracts-table .contract-tenant { min-width: 300px; }
+.msp-contracts-table .contract-locals { min-width: 160px; }
+.msp-contracts-table .contract-date { min-width: 96px; }
+.msp-contracts-table .contract-rent { min-width: 170px; }
+.msp-contracts-table .contract-actions { min-width: 170px; }
+
+/* Nuevo contrato: formulario compacto de una sola vista en escritorio. */
+.msp-new-contract-dialog {
+  width: min(1480px, calc(100vw - 1.5rem));
+  max-width: none;
+  margin-top: .5rem;
+  margin-bottom: .5rem;
+}
+
+.msp-new-contract-modal {
+  max-height: calc(100vh - 1rem);
+  font-size: .9rem;
+}
+
+.msp-new-contract-modal .modal-header,
+.msp-new-contract-modal .modal-footer {
+  min-height: 0;
+  padding: .55rem .85rem;
+}
+
+.msp-new-contract-modal .modal-title {
+  font-size: 1.15rem !important;
+  line-height: 1.2;
+}
+
+.msp-new-contract-modal .modal-body {
+  padding: .65rem .85rem;
+}
+
+.msp-new-contract-modal .form-label {
+  margin-bottom: .25rem;
+  font-size: .85rem;
+  font-weight: 600;
+}
+
+.msp-new-contract-modal .form-control,
+.msp-new-contract-modal .form-select,
+.msp-new-contract-modal [data-searchable-btn],
+.msp-new-contract-modal [data-msms-button] {
+  min-height: 34px;
+  padding: .32rem .55rem;
+  font-size: .875rem;
+  line-height: 1.2;
+}
+
+.msp-new-contract-modal .form-text {
+  margin-top: .2rem;
+  font-size: .76rem;
+  line-height: 1.25;
+}
+
+#crear_local_picker > .form-text {
+  display: none;
+}
+
+#crear_locales_container > .text-muted:only-child {
+  display: none;
+}
+
+#crear_locales_container {
+  gap: .25rem !important;
+}
+
+#crear_locales_container .badge {
+  padding: .25rem .5rem !important;
+}
+
+.msp-new-contract-local-table {
+  max-height: 190px;
+  overflow: auto;
+}
+
+.msp-new-contract-local-table table {
+  min-width: 850px;
+  font-size: .82rem;
+}
+
+.msp-new-contract-local-table th,
+.msp-new-contract-local-table td {
+  padding: .35rem .45rem;
+}
+
+.msp-new-contract-modal .modal-footer .btn {
+  min-height: 34px !important;
+  padding: .35rem .75rem !important;
+  font-size: .85rem !important;
+}
+
+@media (max-width: 1199.98px) {
+  .msp-new-contract-dialog {
+    width: auto;
+    max-width: calc(100vw - 1rem);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .msp-new-contract-dialog {
+    max-width: calc(100vw - .5rem);
+    margin: .25rem auto;
+  }
+
+  .msp-new-contract-modal {
+    max-height: calc(100vh - .5rem);
+  }
+
+  .msp-new-contract-local-table {
+    max-height: 170px;
+  }
+}
+
+@media (max-width: 700px) {
+  .msp-contracts-index .msp-contracts-page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .msp-contracts-page-header h1 {
+    align-self: center;
+  }
+
+  .msp-contracts-page-header .msp-contracts-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* Gestión de arrendatarios. */
+.msp-tenants-index {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.msp-tenants-index .msp-management-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: .85rem;
+}
+
+.msp-tenants-page-header .msp-tenants-back {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.msp-tenants-page-header h1 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.msp-tenants-page-header .msp-tenants-actions {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  justify-content: flex-end;
+  margin-left: 0;
+}
+
+.msp-tenants-actions .btn {
+  min-height: 34px !important;
+  padding: .35rem .65rem !important;
+  font-size: .825rem !important;
+  line-height: 1.2;
+}
+
+.msp-tenants-index .msp-tenants-filters {
+  margin-bottom: .85rem;
+}
+
+.msp-tenants-filters .form-label {
+  margin-bottom: .3rem;
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.msp-tenants-filters .form-control,
+.msp-tenants-filters .form-select {
+  min-height: 36px;
+  padding: .35rem .6rem;
+  font-family: inherit;
+  font-size: .9rem;
+}
+
+.msp-tenants-filters .msp-tenant-filter-submit {
+  min-height: 36px !important;
+  padding: .35rem .75rem !important;
+  font-size: .875rem !important;
+}
+
+.msp-tenants-table {
+  width: 100%;
+  min-width: 920px;
+  table-layout: fixed;
+  font-family: inherit;
+  font-size: .9rem;
+}
+
+.msp-tenants-table > :not(caption) > * > * {
+  padding: .52rem .58rem;
+}
+
+.msp-tenants-table thead th {
+  font-size: .875rem;
+  line-height: 1.25;
+}
+
+.msp-tenants-table .tenant-name {
+  width: 25%;
+  min-width: 220px;
+  overflow-wrap: anywhere;
+}
+.msp-tenants-table .tenant-rut,
+.msp-tenants-table .tenant-contract,
+.msp-tenants-table .tenant-actions { white-space: nowrap; }
+.msp-tenants-table .tenant-rut { width: 10%; }
+.msp-tenants-table .tenant-local {
+  width: 31%;
+  min-width: 180px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.msp-tenants-table .tenant-contract { width: 10%; }
+.msp-tenants-table .tenant-actions { width: 24%; }
+
+.msp-tenants-table .tenant-actions .table-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: .35rem;
+}
+
+.msp-tenants-table .tenant-actions .btn {
+  min-height: 34px !important;
+  padding: .32rem .55rem !important;
+  font-size: .825rem !important;
+  line-height: 1.2;
+}
+
+.msp-tenants-table .tenant-actions .js-edit-arrendatario {
+  width: 34px;
+  padding-inline: 0 !important;
+}
+
+/* Formularios de arrendatarios: más información visible sin perder lectura. */
+.msp-tenant-dialog {
+  width: min(1140px, calc(100vw - 1rem));
+  max-width: none;
+  margin-top: .5rem;
+  margin-bottom: .5rem;
+}
+
+.msp-tenant-modal .modal-content {
+  max-height: calc(100vh - 1rem);
+  font-size: .9rem;
+}
+
+.msp-tenant-modal .modal-header,
+.msp-tenant-modal .modal-footer {
+  min-height: 0;
+  padding: .55rem .8rem;
+}
+
+.msp-tenant-modal .modal-body {
+  padding: .65rem .8rem;
+}
+
+.msp-tenant-modal .modal-title {
+  font-size: 1.1rem !important;
+  line-height: 1.2;
+}
+
+.msp-tenant-modal .form-label {
+  margin-bottom: .22rem;
+  font-size: .85rem;
+  font-weight: 600;
+}
+
+.msp-tenant-modal .form-control,
+.msp-tenant-modal .form-select,
+.msp-tenant-modal .input-group-text {
+  min-height: 34px;
+  padding: .3rem .5rem;
+  font-size: .875rem;
+}
+
+.msp-tenant-modal .form-text {
+  margin-top: .18rem;
+  font-size: .74rem;
+  line-height: 1.25;
+}
+
+.msp-tenant-modal hr {
+  margin: .25rem 0 !important;
+}
+
+.msp-tenant-contact-group .vstack {
+  gap: .35rem !important;
+}
+
+.msp-tenant-contact-group .btn {
+  margin-top: .35rem !important;
+}
+
+.msp-tenant-modal .modal-footer .btn {
+  min-height: 34px !important;
+  padding: .35rem .7rem !important;
+  font-size: .85rem !important;
+}
+
+@media (max-width: 850px) {
+  .msp-tenants-index .msp-tenants-page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .msp-tenants-page-header h1 {
+    align-self: center;
+  }
+
+  .msp-tenants-page-header .msp-tenants-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
+
+  .msp-tenant-dialog {
+    width: auto;
+    max-width: calc(100vw - .5rem);
+    margin: .25rem auto;
+  }
+
+  .msp-tenant-modal .modal-content {
+    max-height: calc(100vh - .5rem);
+  }
+}
+
+/* Gestión de tiendas: misma composición plana de contratos y arrendatarios. */
+.msp-stores-index {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.msp-stores-index .msp-management-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: .85rem;
+}
+
+.msp-stores-page-header .msp-stores-back {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.msp-stores-page-header h1 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.msp-stores-page-header .msp-stores-actions {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  justify-content: flex-end;
+  margin-left: 0;
+}
+
+.msp-stores-actions .btn {
+  min-height: 34px !important;
+  padding: .35rem .6rem !important;
+  font-size: .8rem !important;
+  line-height: 1.2;
+}
+
+.msp-stores-index .msp-stores-filters {
+  margin-bottom: .85rem;
+}
+
+.msp-stores-filters .form-label {
+  margin-bottom: .3rem;
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.msp-stores-filters .form-control,
+.msp-stores-filters .form-select {
+  min-height: 36px;
+  padding: .35rem .6rem;
+  font-family: inherit;
+  font-size: .9rem;
+}
+
+.msp-stores-filters .msp-store-filter-submit {
+  min-height: 36px !important;
+  padding: .35rem .75rem !important;
+  font-size: .875rem !important;
+}
+
+.msp-stores-table {
+  min-width: 1080px;
+  font-family: inherit;
+  font-size: .85rem;
+}
+
+.msp-stores-table > :not(caption) > * > * {
+  padding: .48rem .5rem;
+}
+
+.msp-stores-table thead th {
+  font-size: .82rem;
+  line-height: 1.2;
+}
+
+.msp-stores-table .store-number { width: 48px; }
+.msp-stores-table .store-name { min-width: 210px; }
+.msp-stores-table .store-tenant { min-width: 210px; }
+.msp-stores-table .store-date { min-width: 96px; }
+.msp-stores-table .store-locals { min-width: 170px; }
+.msp-stores-table .store-actions { min-width: 210px; }
+.msp-stores-table .store-contract { min-width: 110px; }
+
+.msp-stores-table .store-number,
+.msp-stores-table .store-date,
+.msp-stores-table .store-actions,
+.msp-stores-table .store-contract {
+  white-space: nowrap;
+}
+
+.msp-stores-table .table-actions {
+  gap: .3rem;
+  flex-wrap: nowrap;
+}
+
+.msp-stores-table .table-actions .btn {
+  min-width: 32px;
+  min-height: 32px !important;
+  padding: .28rem .45rem !important;
+  font-size: .8rem !important;
+}
+
+/* Crear/editar tienda: formulario ancho, compacto y con scroll interno seguro. */
+.msp-store-dialog {
+  width: min(1180px, calc(100vw - 1rem));
+  max-width: none;
+  margin-top: .5rem;
+  margin-bottom: .5rem;
+}
+
+.msp-store-modal .modal-content {
+  max-height: calc(100vh - 1rem);
+  font-size: .9rem;
+}
+
+.msp-store-modal .modal-header,
+.msp-store-modal .modal-footer {
+  min-height: 0;
+  padding: .55rem .8rem;
+}
+
+.msp-store-modal .modal-body {
+  padding: .65rem .8rem;
+}
+
+.msp-store-modal .modal-title {
+  font-size: 1.1rem !important;
+  line-height: 1.2;
+}
+
+.msp-store-modal .form-label {
+  margin-bottom: .22rem;
+  font-size: .84rem;
+  font-weight: 600;
+}
+
+.msp-store-modal .form-control,
+.msp-store-modal .form-select,
+.msp-store-modal .picker-select-btn {
+  min-height: 34px;
+  padding: .3rem .5rem;
+  font-size: .875rem;
+  line-height: 1.2;
+}
+
+.msp-store-modal .form-text {
+  margin-top: .18rem;
+  font-size: .74rem;
+  line-height: 1.2;
+}
+
+.msp-store-modal .modal-footer .btn {
+  min-height: 34px !important;
+  padding: .35rem .7rem !important;
+  font-size: .85rem !important;
+}
+
+@media (max-width: 1199.98px) {
+  .msp-stores-index .msp-stores-page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .msp-stores-page-header h1 {
+    align-self: center;
+  }
+
+  .msp-stores-page-header .msp-stores-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
+  .msp-store-dialog {
+    width: auto;
+    max-width: calc(100vw - .5rem);
+    margin: .25rem auto;
+  }
+
+  .msp-store-modal .modal-content {
+    max-height: calc(100vh - .5rem);
+  }
+}
+
+/* Catálogo de locales: vista plana, compacta y responsive. */
+.msp-locals-index {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.msp-locals-index .msp-management-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: .85rem;
+}
+
+.msp-locals-page-header .msp-locals-back {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.msp-locals-page-header h1 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.msp-locals-page-header .msp-locals-actions {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  justify-content: flex-end;
+  margin-left: 0;
+}
+
+.msp-locals-actions .btn {
+  min-height: 34px !important;
+  padding: .35rem .6rem !important;
+  font-size: .8rem !important;
+  line-height: 1.2;
+}
+
+.msp-locals-index .msp-locals-filters {
+  margin-bottom: .85rem;
+}
+
+.msp-locals-filters .form-label {
+  margin-bottom: .3rem;
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.msp-locals-filters .form-control,
+.msp-locals-filters .form-select {
+  min-height: 36px;
+  padding: .35rem .6rem;
+  font-family: inherit;
+  font-size: .9rem;
+}
+
+.msp-locals-filters .msp-local-filter-submit {
+  min-height: 36px !important;
+  padding: .35rem .75rem !important;
+  font-size: .875rem !important;
+}
+
+.msp-locals-table {
+  min-width: 1080px;
+  font-family: inherit;
+  font-size: .86rem;
+}
+
+.msp-locals-table > :not(caption) > * > * {
+  padding: .48rem .5rem;
+}
+
+.msp-locals-table thead th {
+  font-size: .82rem;
+  line-height: 1.2;
+}
+
+.msp-locals-table .local-number { width: 48px; }
+.msp-locals-table .local-code { min-width: 90px; }
+.msp-locals-table .local-area { min-width: 80px; }
+.msp-locals-table .local-rent { min-width: 150px; }
+.msp-locals-table .local-state { min-width: 95px; }
+.msp-locals-table .local-meters { min-width: 310px; }
+.msp-locals-table .local-actions { min-width: 105px; }
+
+.msp-locals-table .local-number,
+.msp-locals-table .local-code,
+.msp-locals-table .local-area,
+.msp-locals-table .local-rent,
+.msp-locals-table .local-state,
+.msp-locals-table .local-actions {
+  white-space: nowrap;
+}
+
+.msp-locals-table .table-actions {
+  gap: .3rem;
+  flex-wrap: nowrap;
+}
+
+.msp-locals-table .table-actions .btn {
+  min-width: 32px;
+  min-height: 32px !important;
+  padding: .28rem .45rem !important;
+}
+
+.msp-local-meter-summary {
+  display: grid;
+  gap: .28rem;
+}
+
+.msp-local-meter-summary-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto auto;
+  align-items: center;
+  gap: .55rem;
+  min-height: 30px;
+}
+
+.msp-local-meter-summary-row + .msp-local-meter-summary-row {
+  padding-top: .28rem;
+  border-top: 1px solid #edf1f5;
+}
+
+.msp-local-meter-service {
+  font-weight: 600;
+}
+
+.msp-local-meter-summary-row .btn,
+.msp-local-meter-empty .btn {
+  min-height: 29px !important;
+  padding: .2rem .55rem !important;
+  font-size: .78rem !important;
+  white-space: nowrap;
+}
+
+.msp-local-meter-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+}
+
+.msp-meter-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .65rem;
+  padding: .55rem .65rem;
+  border: 1px solid #dfe6ef;
+  border-radius: .45rem;
+  background: #fff;
+}
+
+.msp-meter-detail-data {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+
+/* Formularios de locales y medidores. */
+.msp-local-modal .modal-content {
+  max-height: calc(100vh - 1rem);
+  font-size: .9rem;
+}
+
+.msp-local-modal .modal-header,
+.msp-local-modal .modal-footer {
+  min-height: 0;
+  padding: .55rem .8rem;
+}
+
+.msp-local-modal .modal-body {
+  padding: .65rem .8rem;
+}
+
+.msp-local-modal .modal-title {
+  font-size: 1.1rem !important;
+  line-height: 1.2;
+}
+
+.msp-local-modal .form-label {
+  margin-bottom: .22rem;
+  font-size: .84rem;
+  font-weight: 600;
+}
+
+.msp-local-modal .form-control,
+.msp-local-modal .form-select {
+  min-height: 34px;
+  padding: .3rem .5rem;
+  font-size: .875rem;
+}
+
+.msp-local-modal .form-text {
+  margin-top: .18rem;
+  font-size: .74rem;
+  line-height: 1.2;
+}
+
+.msp-local-modal .modal-footer .btn {
+  min-height: 34px !important;
+  padding: .35rem .7rem !important;
+  font-size: .85rem !important;
+}
+
+.msp-meter-dialog {
+  width: min(1120px, calc(100vw - 1rem));
+  max-width: none;
+  margin-top: .5rem;
+  margin-bottom: .5rem;
+}
+
+@media (max-width: 1050px) {
+  .msp-locals-index .msp-locals-page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .msp-locals-page-header h1 {
+    align-self: center;
+  }
+
+  .msp-locals-page-header .msp-locals-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
+  .msp-meter-dialog {
+    width: auto;
+    max-width: calc(100vw - .5rem);
+    margin: .25rem auto;
+  }
+
+  .msp-local-modal .modal-content {
+    max-height: calc(100vh - .5rem);
+  }
+
+  .msp-meter-detail-row {
+    align-items: stretch;
+  }
+
+  .msp-meter-detail-data {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: start;
+    width: 100%;
+    gap: .28rem;
+  }
+
+  .msp-meter-detail-row > .d-flex:last-child {
+    width: 100%;
+  }
+
+  .msp-meter-detail-row > .d-flex:last-child .btn {
+    flex: 1 1 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .msp-management-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .msp-management-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+}
+
+/* Cargos extra: vista plana, compacta y alineada con las gestiones MSP. */
+.msp-extra-charges-index {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.msp-extra-charges-index .msp-extra-charges-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: .85rem;
+}
+
+.msp-extra-charges-page-header .msp-extra-charges-back {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.msp-extra-charges-page-header h1 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.msp-extra-charges-page-header .msp-extra-charges-actions {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.msp-extra-charges-period {
+  margin-bottom: .55rem;
+  padding-bottom: .6rem;
+  border-bottom: 1px solid #e4eaf1;
+}
+
+.msp-extra-charges-section {
+  position: relative;
+  margin-bottom: .85rem;
+  padding: .8rem .9rem .85rem;
+  overflow: hidden;
+  background: #fff;
+  border-radius: .65rem;
+  box-shadow: 0 1px 5px rgba(30, 50, 75, .09);
+}
+
+.msp-extra-charges-section::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  content: "";
+}
+
+.msp-extra-charges-section--register::before {
+  background: #0d6efd;
+}
+
+.msp-extra-charges-section--pending::before {
+  background: #d97706;
+}
+
+.msp-extra-charges-section--assigned::before {
+  background: #198754;
+}
+
+.msp-extra-charges-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .65rem 1rem;
+  margin-bottom: .65rem;
+}
+
+.msp-extra-charges-section-header h2 {
+  margin: 0;
+  color: #24364b;
+  font-size: 1.03rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.msp-extra-charges-section-header p {
+  margin: .12rem 0 0;
+  color: #617086;
+  font-size: .8rem;
+  line-height: 1.35;
+}
+
+.msp-extra-charges-summary {
+  display: flex;
+  align-items: stretch;
+  gap: .45rem;
+}
+
+.msp-extra-charges-summary span {
+  display: grid;
+  min-width: 92px;
+  padding: .3rem .55rem;
+  background: #f4f7fa;
+  border-radius: .45rem;
+  text-align: right;
+}
+
+.msp-extra-charges-summary small {
+  color: #617086;
+  font-size: .7rem;
+  line-height: 1.15;
+}
+
+.msp-extra-charges-summary strong {
+  color: #24364b;
+  font-size: .84rem;
+  line-height: 1.35;
+}
+
+.msp-extra-charges-index .form-label {
+  margin-bottom: .22rem;
+  font-size: .84rem;
+  font-weight: 600;
+}
+
+.msp-extra-charges-index .form-control,
+.msp-extra-charges-index .form-select,
+.msp-extra-charges-index .msp-searchable-select-toggle,
+.msp-extra-charges-index .ce-picker-btn {
+  min-height: 36px;
+  padding-top: .35rem;
+  padding-bottom: .35rem;
+  font-size: .88rem;
+}
+
+.msp-extra-charge-entry {
+  margin-bottom: 0 !important;
+  padding: 0;
+}
+
+.msp-extra-charge-entry h3 {
+  color: #24364b;
+  font-weight: 650;
+}
+
+.msp-extra-charges-index .btn {
+  min-height: 34px;
+  padding: .32rem .65rem;
+  font-size: .84rem;
+}
+
+.msp-extra-charges-table {
+  min-width: 980px;
+  font-size: .82rem;
+}
+
+.msp-extra-charges-table > :not(caption) > * > * {
+  padding: .44rem .5rem;
+}
+
+.msp-extra-charges-table thead th {
+  background: #eef2f7;
+  font-size: .78rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.msp-extra-charges-table td:first-child,
+.msp-extra-charges-table td:nth-child(2),
+.msp-extra-charges-table td:nth-child(3),
+.msp-extra-charges-table td:nth-child(4),
+.msp-extra-charges-table td:nth-last-child(-n+2) {
+  white-space: nowrap;
+}
+
+.msp-extra-charges-index .modal-content {
+  max-height: calc(100vh - 1rem);
+  font-size: .9rem;
+}
+
+.msp-extra-charges-index .modal-header,
+.msp-extra-charges-index .modal-footer {
+  min-height: 0;
+  padding: .55rem .8rem;
+}
+
+.msp-extra-charges-index .modal-body {
+  padding: .65rem .8rem;
+}
+
+@media (max-width: 850px) {
+  .msp-extra-charges-index .msp-extra-charges-page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .msp-extra-charges-page-header h1 {
+    align-self: center;
+  }
+
+  .msp-extra-charges-page-header .msp-extra-charges-actions {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .msp-extra-charges-page-header .msp-extra-charges-actions,
+  .msp-extra-charges-page-header .msp-extra-charges-actions .btn {
+    width: 100%;
+  }
+
+  .msp-extra-charges-section {
+    padding: .72rem .7rem .75rem;
+  }
+
+  .msp-extra-charges-section-header,
+  .msp-extra-charges-summary {
+    width: 100%;
+  }
+
+  .msp-extra-charges-summary span {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: left;
+  }
+}
+
+/* Respaldo de PDFs: misma composición visual de las gestiones MSP. */
+.msp-pdf-backups-index {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.msp-pdf-backups-index .msp-pdf-backups-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: .85rem;
+}
+
+.msp-pdf-backups-page-header .msp-pdf-backups-back {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.msp-pdf-backups-page-header h1 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.msp-pdf-backups-page-header .msp-pdf-backups-actions {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.msp-pdf-backups-filters {
+  margin-bottom: .6rem;
+}
+
+.msp-pdf-backups-filters .form-label {
+  margin-bottom: .25rem;
+  font-size: .86rem;
+  font-weight: 600;
+}
+
+.msp-pdf-backups-filters .form-control,
+.msp-pdf-backups-filters .form-select,
+.msp-pdf-backups-filters .msp-searchable-select-toggle {
+  min-height: 36px;
+  padding-top: .35rem;
+  padding-bottom: .35rem;
+  font-size: .88rem;
+}
+
+.msp-pdf-backups-filter-actions .btn,
+.msp-pdf-backups-actions .btn {
+  min-height: 36px !important;
+  padding: .35rem .7rem !important;
+  font-size: .85rem !important;
+}
+
+.msp-pdf-backups-table {
+  min-width: 1120px;
+  font-size: .82rem;
+}
+
+.msp-pdf-backups-table > :not(caption) > * > * {
+  padding: .45rem .5rem;
+}
+
+.msp-pdf-backups-table thead th {
+  font-size: .78rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.msp-pdf-backups-table td:first-child,
+.msp-pdf-backups-table td:nth-child(2),
+.msp-pdf-backups-table td:nth-child(4),
+.msp-pdf-backups-table td:nth-child(6),
+.msp-pdf-backups-table td:nth-child(8),
+.msp-pdf-backups-table td:nth-child(9),
+.msp-pdf-backups-table td:last-child {
+  white-space: nowrap;
+}
+
+.msp-pdf-backups-table td:last-child .btn {
+  min-width: 31px;
+  min-height: 31px !important;
+  padding: .25rem .4rem !important;
+}
+
+@media (max-width: 850px) {
+  .msp-pdf-backups-index .msp-pdf-backups-page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .msp-pdf-backups-page-header h1 {
+    align-self: center;
+  }
+
+  .msp-pdf-backups-page-header .msp-pdf-backups-actions {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .msp-pdf-backups-filter-actions {
+    flex-wrap: wrap;
+  }
+
+}
+
+.management-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.management-toolbar .input-group {
+  max-width: 420px;
+}
+
+.management-summary {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.management-empty {
+  padding: 32px 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.table-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.table-actions .btn {
+  min-width: 38px;
+}
+
+.flash-stack {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+/* Headings in Forms */
+h1.form-title {
+  color: #003399;
+  font-size: 26px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+h2.form-subtitle {
+  color: var(--color-text);
+  font-size: 20px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+/* Badge & Alert Utilities */
+.badge-level-1,
+.bg-level-1 { background-color: #0d6efd !important; }
+
+.badge-level-2,
+.bg-level-2 { background-color: #198754 !important; }
+
+.badge-level-3,
+.bg-level-3 { background-color: #fd7e14 !important; }
+
+.badge-level-4,
+.bg-level-4 { background-color: #6f42c1 !important; }
+
+.badge-level-5,
+.bg-level-5 { background-color: #d63384 !important; }
+
+/* Dot indicators */
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.dot-primary { background-color: var(--color-primary); }
+.dot-success { background-color: var(--color-success); }
+.dot-warning { background-color: var(--color-warning); }
+.dot-danger { background-color: var(--color-danger); }
+.dot-info { background-color: var(--color-info); }
+
+/* Responsive Form Container */
+@media (max-width: 640px) {
+  .box-container,
+  .box-container-narrow,
+  .box-container-wide,
+  .box-container-full {
+    padding: 20px;
+    width: 98%;
+  }
+
+  .page-container,
+  .page-container-wide {
+    padding: 16px 12px 24px;
+  }
+
+  h1.form-title {
+    font-size: 22px;
+  }
+
+  h2.form-subtitle {
+    font-size: 18px;
+  }
+
+  .management-toolbar .input-group {
+    max-width: 100%;
+  }
+}
+
+/* ============================================
+   MÓDULOS DE PRESUPUESTO
+   ============================================ */
+
+/* Cards principales */
+.card-ppto {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  border: none;
+  border-radius: 0.5rem;
+}
+
+/* Card de filtros */
+.filters-ppto .form-label {
+  font-weight: 600;
+  color: #0f3a6d;
+  font-size: 0.875rem;
+}
+
+.filters-ppto .filter-checkboxes {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  background-color: #f8f9fa;
+}
+
+.filters-ppto .form-check-sm {
+  margin-bottom: 0.25rem;
+}
+
+/* Cards de métricas */
+.card-ppto-metric {
+  border-left: 4px solid var(--bs-primary, #0d6efd);
+  transition: transform 0.2s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.card-ppto-metric:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.card-ppto-metric .metric-icon i {
+  font-size: 2rem;
+}
+
+/* Tablas de presupuesto */
+.table-ppto {
+  font-size: 0.875rem;
+}
+
+.table-ppto thead th {
+  position: sticky;
+  top: 0;
+  background-color: #f8f9fa;
+  z-index: 10;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* Columnas sticky (izquierda) */
+.table-ppto .sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 9;
+  background-color: #ffffff;
+  font-weight: 600;
+  min-width: 150px;
+}
+
+.table-ppto .sticky-col-2 {
+  position: sticky;
+  left: 150px;
+  z-index: 9;
+  background-color: #ffffff;
+  min-width: 120px;
+}
+
+/* Columnas de meses */
+.table-ppto th[class*="text-end"],
+.table-ppto td[class*="text-end"] {
+  min-width: 100px;
+}
+
+/* Fila de totales */
+.table-ppto tfoot td {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+/* Hover en filas */
+.table-ppto tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Pills/Badges de estado */
+.badge-ppto {
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Loading spinner para importaciones */
+.import-loading {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid var(--bs-primary, #0d6efd);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive para presupuestos */
+@media (max-width: 768px) {
+  .table-ppto {
+    font-size: 0.75rem;
+  }
+
+  .table-ppto .sticky-col {
+    min-width: 100px;
+    font-size: 0.7rem;
+  }
+
+  .table-ppto .sticky-col-2 {
+    left: 100px;
+    min-width: 90px;
+  }
+}
