@@ -27,7 +27,6 @@ $idTienda = filter_input(INPUT_POST, 'id_tienda', FILTER_VALIDATE_INT, [
 $idTipoCargoSalida = filter_input(INPUT_POST, 'id_tipo_cargo_salida', FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
 ]);
-$codLocalCargo = msp2NormalizeLocalCode((string) ($_POST['cod_local_cargo'] ?? ''));
 $fechaCargoRaw = trim((string) ($_POST['fecha_cargo'] ?? ''));
 $periodoReferenciaMesRaw = trim((string) ($_POST['periodo_referencia_mes'] ?? ''));
 $servicioReferencia = msp2NormalizeText((string) ($_POST['servicio_referencia'] ?? ''));
@@ -42,11 +41,6 @@ if ($idTienda === false || $idTienda === null) {
 
 if ($idTipoCargoSalida === false || $idTipoCargoSalida === null) {
     msp2SetFlash('warning', 'Debes seleccionar un tipo de cargo.');
-    msp2TiendasCargoRedirectFromPost();
-}
-
-if ($codLocalCargo === '' || mb_strlen($codLocalCargo) > 20) {
-    msp2SetFlash('warning', 'Debes seleccionar un local válido.');
     msp2TiendasCargoRedirectFromPost();
 }
 
@@ -101,8 +95,6 @@ if ($periodoReferenciaMesRaw !== '') {
 try {
     $requiredTables = [
         'msp_tiendas',
-        'msp_locales',
-        'msp_ocupacion_locales',
         'msp_contratos_arriendo',
         'msp_tipos_cargo_salida',
         'msp_cargos_salida',
@@ -132,31 +124,6 @@ try {
     $idContratoArriendo = (int) $stmtContrato->fetchColumn();
     if ($idContratoArriendo <= 0) {
         throw new RuntimeException('La tienda no tiene contrato activo para registrar cargos.');
-    }
-
-    $stmtLocal = $conn->prepare(
-        'SELECT TOP 1 id_local
-         FROM dbo.msp_locales
-         WHERE UPPER(LTRIM(RTRIM(cdo_local))) = :codigo_key'
-    );
-    $stmtLocal->bindValue(':codigo_key', msp2LocalCodeKey($codLocalCargo), PDO::PARAM_STR);
-    $stmtLocal->execute();
-    $idLocal = (int) $stmtLocal->fetchColumn();
-    if ($idLocal <= 0) {
-        throw new RuntimeException('El local seleccionado no existe.');
-    }
-
-    $stmtOcupacion = $conn->prepare(
-        'SELECT COUNT(*)
-         FROM dbo.msp_ocupacion_locales
-         WHERE id_tienda = :id_tienda
-           AND id_local = :id_local'
-    );
-    $stmtOcupacion->bindValue(':id_tienda', $idTienda, PDO::PARAM_INT);
-    $stmtOcupacion->bindValue(':id_local', $idLocal, PDO::PARAM_INT);
-    $stmtOcupacion->execute();
-    if ((int) $stmtOcupacion->fetchColumn() <= 0) {
-        throw new RuntimeException('El local no está asociado a la tienda seleccionada.');
     }
 
     $stmtTipo = $conn->prepare(
@@ -197,13 +164,12 @@ try {
         'INSERT INTO dbo.msp_cargos_salida
             (id_contrato_arriendo, id_local, id_tipo_cargo_salida, fecha_cargo, origen_cargo, id_documento_cobro, periodo_referencia, servicio_referencia, descripcion_cargo, monto_cargo, es_estimado, estado_cargo, observaciones)
          VALUES
-            (:id_contrato_arriendo, :id_local, :id_tipo_cargo_salida, :fecha_cargo, :origen_cargo, NULL, :periodo_referencia, :servicio_referencia, :descripcion_cargo, :monto_cargo, :es_estimado, 1, :observaciones)'
+            (:id_contrato_arriendo, NULL, :id_tipo_cargo_salida, :fecha_cargo, :origen_cargo, NULL, :periodo_referencia, :servicio_referencia, :descripcion_cargo, :monto_cargo, :es_estimado, 1, :observaciones)'
     );
 
     $conn->beginTransaction();
 
     $stmtInsertCargo->bindValue(':id_contrato_arriendo', $idContratoArriendo, PDO::PARAM_INT);
-    $stmtInsertCargo->bindValue(':id_local', $idLocal, PDO::PARAM_INT);
     $stmtInsertCargo->bindValue(':id_tipo_cargo_salida', $idTipoCargoSalida, PDO::PARAM_INT);
     $stmtInsertCargo->bindValue(':fecha_cargo', $fechaCargo, PDO::PARAM_STR);
     $stmtInsertCargo->bindValue(':origen_cargo', $origenCargo, PDO::PARAM_INT);
@@ -216,7 +182,7 @@ try {
     $stmtInsertCargo->execute();
 
     $conn->commit();
-    msp2SetFlash('success', 'El cargo fue registrado correctamente.');
+    msp2SetFlash('success', 'El cargo fue registrado para la tienda correctamente.');
 } catch (Throwable $exception) {
     if ($conn->inTransaction()) {
         $conn->rollBack();

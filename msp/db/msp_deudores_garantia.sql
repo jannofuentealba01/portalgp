@@ -204,7 +204,8 @@ CREATE INDEX IX_msp_garantias_contrato
 GO
 
 /* =========================================================================
-   6. CARGOS POR LOCAL
+   6. CARGOS POR CONTRATO / TIENDA
+   id_local es opcional: NULL representa un cargo aplicado a toda la tienda.
    Origen:
      1 = Documento
      2 = Estimacion manual
@@ -222,7 +223,7 @@ GO
 CREATE TABLE dbo.msp_cargos_salida (
     id_cargo_salida          INT IDENTITY(1,1) NOT NULL,
     id_contrato_arriendo     INT NOT NULL,
-    id_local                 INT NOT NULL,
+    id_local                 INT NULL,
     id_tipo_cargo_salida     INT NOT NULL,
     fecha_cargo              DATE NOT NULL CONSTRAINT DF_msp_cargos_fecha DEFAULT (CONVERT(DATE, SYSDATETIME())),
     origen_cargo             TINYINT NOT NULL,
@@ -259,6 +260,25 @@ GO
 
 CREATE INDEX IX_msp_cargos_documento
     ON dbo.msp_cargos_salida (id_documento_cobro, id_cargo_salida DESC);
+GO
+
+CREATE OR ALTER TRIGGER dbo.TR_msp_cargos_multa_alcance_tienda
+ON dbo.msp_cargos_salida
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE cs
+    SET cs.id_local = NULL
+    FROM dbo.msp_cargos_salida cs
+    INNER JOIN inserted i
+        ON i.id_cargo_salida = cs.id_cargo_salida
+    INNER JOIN dbo.msp_tipos_cargo_salida tc
+        ON tc.id_tipo_cargo_salida = cs.id_tipo_cargo_salida
+    WHERE UPPER(LTRIM(RTRIM(tc.codigo_tipo_cargo))) = N'MULTA'
+      AND cs.id_local IS NOT NULL;
+END;
 GO
 
 /* =========================================================================
@@ -349,7 +369,8 @@ BEGIN
         LEFT JOIN dbo.msp_ocupacion_locales ol
             ON ol.id_tienda = c.id_tienda
            AND ol.id_local = i.id_local
-        WHERE ol.id_ocupacion_local IS NULL
+        WHERE i.id_local IS NOT NULL
+          AND ol.id_ocupacion_local IS NULL
     )
     BEGIN
         ;THROW 50302, 'El cargo debe asociarse a un local que pertenezca a la tienda del contrato.', 1;

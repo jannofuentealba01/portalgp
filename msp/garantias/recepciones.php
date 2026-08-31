@@ -12,6 +12,11 @@ $recepciones = [];
 $archivosByRecepcion = [];
 $totales = ['pactado'=>0.0,'recibido'=>0.0,'pendiente'=>0.0];
 $idContratoPreseleccionado = filter_input(INPUT_GET, 'id_contrato_arriendo', FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: 0;
+$returnTo = trim((string) ($_GET['return_to'] ?? ''));
+if ($returnTo === '' || preg_match('#^pendientes/index\.php(?:\?[A-Za-z0-9_\-\.\[\]%=&]*)?$#', $returnTo) !== 1) {
+    $returnTo = 'garantias/index.php';
+}
+$returnLabel = str_starts_with($returnTo, 'pendientes/index.php') ? 'Volver a pendientes' : 'Volver a Garantías';
 
 function msp2GarFmtMonto(mixed $value): string { return '$ ' . number_format((float) $value, 0, ',', '.'); }
 function msp2GarFmtFecha(mixed $value): string {
@@ -85,6 +90,7 @@ try {
     <title>Recepción de garantías | MSP</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode((string) filemtime(dirname(__DIR__, 2) . '/styles.css')); ?>">
     <style>
         .recepcion-card .card-header {
             padding: .55rem .8rem;
@@ -120,10 +126,20 @@ try {
         }
     </style>
 </head>
-<body class="bg-light">
-<nav class="navbar navbar-dark bg-dark"><div class="container-fluid"><a class="navbar-brand" href="<?php echo msp2Escape(msp2Url('garantias/index.php')); ?>">MSP / Garantías</a><div class="d-flex gap-2"><a class="btn btn-outline-light btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/index.php')); ?>"><i class="bi bi-arrow-left me-1"></i>Volver a Garantías</a><a class="btn btn-outline-light btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>">Contratos</a></div></div></nav>
-<main class="container-fluid py-4 px-lg-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h1 class="h3 mb-1">Recepción de garantías</h1></div></div>
+<body class="gp-layout bg-light">
+<?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
+<main class="gp-main container-fluid py-3 px-lg-4">
+    <header class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3" data-gp-commandbar>
+        <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url($returnTo)); ?>">
+            <i class="bi bi-arrow-left me-1" aria-hidden="true"></i><?php echo msp2Escape($returnLabel); ?>
+        </a>
+        <div><h1 class="h3 mb-0">Recepción de garantías</h1></div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>">
+                <i class="bi bi-file-earmark-text me-1" aria-hidden="true"></i>Contratos
+            </a>
+        </div>
+    </header>
     <?php if (is_array($flash)): ?><div class="alert alert-<?php echo msp2Escape((string)($flash['type']??'info')); ?> alert-dismissible fade show"><?php echo msp2Escape((string)($flash['message']??'')); ?><button class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
     <?php if ($error !== null): ?><div class="alert alert-danger"><?php echo msp2Escape($error); ?></div><?php endif; ?>
 

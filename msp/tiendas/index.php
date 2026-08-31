@@ -393,7 +393,7 @@ if ($tablaExiste) {
                     FROM dbo.msp_cargos_salida cs
                     INNER JOIN dbo.msp_contratos_arriendo c
                         ON c.id_contrato_arriendo = cs.id_contrato_arriendo
-                    INNER JOIN dbo.msp_locales l
+                    LEFT JOIN dbo.msp_locales l
                         ON l.id_local = cs.id_local
                     INNER JOIN dbo.msp_tipos_cargo_salida tc
                         ON tc.id_tipo_cargo_salida = cs.id_tipo_cargo_salida
@@ -696,10 +696,6 @@ function msp2CargoEstadoBadge(int $estado): string
                                 $fechaInicio = $tienda['fecha_inicio'] ? (new DateTimeImmutable((string) $tienda['fecha_inicio']))->format('d-m-Y') : '-';
                                 $fechaInicioInput = $tienda['fecha_inicio'] ? (new DateTimeImmutable((string) $tienda['fecha_inicio']))->format('Y-m-d') : '';
                                 $contratoData = $contratosPorTienda[$idTienda] ?? null;
-                                $localesCargo = $localesActivos;
-                                $localesCargo = array_values(array_unique($localesCargo));
-                                sort($localesCargo);
-                                $localesCargoInput = $localesCargo === [] ? '' : implode(';', $localesCargo);
                                 $cargosTienda = $cargosPorTienda[$idTienda] ?? [];
                                 $cantidadCargosTienda = count($cargosTienda);
                                 ?>
@@ -745,7 +741,6 @@ function msp2CargoEstadoBadge(int $estado): string
                                                     data-bs-target="#modalCrearCargo"
                                                     data-id="<?php echo $idTienda; ?>"
                                                     data-label="<?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>"
-                                                    data-locales-cargo="<?php echo msp2Escape($localesCargoInput); ?>"
                                                     aria-label="Registrar cargo en <?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>">
                                                     <i class="bi bi-cash-coin" aria-hidden="true"></i>
                                                 </button>
@@ -1167,7 +1162,7 @@ function msp2CargoEstadoBadge(int $estado): string
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('tiendas/guardar_cargo.php')); ?>">
                 <div class="modal-header">
-                    <h2 class="modal-title fs-5">Registrar cargo por local</h2>
+                    <h2 class="modal-title fs-5">Registrar cargo a tienda</h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
@@ -1175,13 +1170,7 @@ function msp2CargoEstadoBadge(int $estado): string
                     <input type="hidden" name="redirect_to" value="tiendas/index.php">
                     <p class="mb-3">Tienda: <strong id="cargo_tienda_label">-</strong></p>
                     <div class="row g-3">
-                        <div class="col-12 col-md-4">
-                            <label for="cargo_cod_local" class="form-label">Local</label>
-                            <select id="cargo_cod_local" name="cod_local_cargo" class="form-select" required>
-                                <option value="">Seleccionar local</option>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6">
                             <label for="cargo_id_tipo" class="form-label">Tipo de cargo</label>
                             <select id="cargo_id_tipo" name="id_tipo_cargo_salida" class="form-select" required>
                                 <option value="">Seleccionar tipo</option>
@@ -1204,7 +1193,7 @@ function msp2CargoEstadoBadge(int $estado): string
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6">
                             <label for="cargo_fecha" class="form-label">Fecha cargo</label>
                             <input type="date" id="cargo_fecha" name="fecha_cargo" class="form-control" required>
                         </div>
@@ -1230,7 +1219,7 @@ function msp2CargoEstadoBadge(int $estado): string
                         </div>
                     </div>
                     <div class="alert alert-info mt-3 mb-0">
-                        Esta etapa registra cargos manuales por local. Los cargos que requieren documento se gestionarán en la siguiente etapa.
+                        El cargo se aplicará una sola vez a la tienda y a su contrato vigente. Los cargos que requieren documento se gestionarán en la siguiente etapa.
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1245,7 +1234,7 @@ function msp2CargoEstadoBadge(int $estado): string
         <div class="modal-dialog modal-xl modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2 class="modal-title fs-5">Cargos por local - <span id="ver_cargos_tienda_label">-</span></h2>
+                    <h2 class="modal-title fs-5">Cargos de la tienda - <span id="ver_cargos_tienda_label">-</span></h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
@@ -1254,7 +1243,7 @@ function msp2CargoEstadoBadge(int $estado): string
                             <thead class="table-light text-center">
                                 <tr>
                                     <th>Fecha</th>
-                                    <th>Local</th>
+                                    <th>Alcance</th>
                                     <th>Tipo</th>
                                     <th>Descripción</th>
                                     <th>Periodo</th>
@@ -1293,12 +1282,7 @@ function msp2CargoEstadoBadge(int $estado): string
                     <input type="hidden" name="id_cargo_salida" id="edit_cargo_id">
                     <input type="hidden" name="redirect_to" value="tiendas/index.php">
                     <div class="row g-3">
-                        <div class="col-12 col-md-4">
-                            <label for="edit_cargo_cod_local" class="form-label">Local</label>
-                            <input type="text" id="edit_cargo_cod_local" class="form-control" readonly>
-                            <input type="hidden" id="edit_cargo_cod_local_hidden" name="cod_local_cargo">
-                        </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6">
                             <label for="edit_cargo_id_tipo" class="form-label">Tipo de cargo</label>
                             <select id="edit_cargo_id_tipo" name="id_tipo_cargo_salida" class="form-select" required>
                                 <option value="">Seleccionar tipo</option>
@@ -1321,7 +1305,7 @@ function msp2CargoEstadoBadge(int $estado): string
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-6">
                             <label for="edit_cargo_fecha" class="form-label">Fecha cargo</label>
                             <input type="date" id="edit_cargo_fecha" name="fecha_cargo" class="form-control" required>
                         </div>
@@ -1779,7 +1763,6 @@ function msp2CargoEstadoBadge(int $estado): string
     if (modalCrearCargo) {
         const inputCargoIdTienda = document.getElementById('cargo_id_tienda');
         const labelCargoTienda = document.getElementById('cargo_tienda_label');
-        const selectCargoLocal = document.getElementById('cargo_cod_local');
         const selectCargoTipo = document.getElementById('cargo_id_tipo');
         const inputCargoFecha = document.getElementById('cargo_fecha');
         const inputCargoPeriodo = document.getElementById('cargo_periodo_mes');
@@ -1819,28 +1802,12 @@ function msp2CargoEstadoBadge(int $estado): string
             button.addEventListener('click', () => {
                 const tiendaId = String(button.dataset.id || '').trim();
                 const tiendaLabel = String(button.dataset.label || '').trim();
-                const locales = parseCodes(button.dataset.localesCargo || '');
 
                 if (inputCargoIdTienda) {
                     inputCargoIdTienda.value = tiendaId;
                 }
                 if (labelCargoTienda) {
                     labelCargoTienda.textContent = tiendaLabel || '-';
-                }
-
-                if (selectCargoLocal) {
-                    selectCargoLocal.innerHTML = '';
-                    const optionDefault = document.createElement('option');
-                    optionDefault.value = '';
-                    optionDefault.textContent = 'Seleccionar local';
-                    selectCargoLocal.appendChild(optionDefault);
-
-                    locales.forEach((codigoLocal) => {
-                        const option = document.createElement('option');
-                        option.value = codigoLocal;
-                        option.textContent = codigoLocal;
-                        selectCargoLocal.appendChild(option);
-                    });
                 }
 
                 const today = new Date();
@@ -1881,8 +1848,6 @@ function msp2CargoEstadoBadge(int $estado): string
         const modalEditarCargo = document.getElementById('modalEditarCargo');
         const editCargoForm = modalEditarCargo ? modalEditarCargo.querySelector('form') : null;
         const editCargoId = document.getElementById('edit_cargo_id');
-        const editCargoLocal = document.getElementById('edit_cargo_cod_local');
-        const editCargoLocalHidden = document.getElementById('edit_cargo_cod_local_hidden');
         const editCargoTipo = document.getElementById('edit_cargo_id_tipo');
         const editCargoFecha = document.getElementById('edit_cargo_fecha');
         const editCargoPeriodo = document.getElementById('edit_cargo_periodo_mes');
@@ -1931,7 +1896,9 @@ function msp2CargoEstadoBadge(int $estado): string
                 const estadoBadge = String(cargo.estado_badge || 'bg-light text-dark');
                 const estadoLabel = escapeHtml(cargo.estado_label || 'Sin estado');
                 const fechaCargo = escapeHtml(cargo.fecha_cargo_label || '-');
-                const local = escapeHtml(cargo.codigo_local || '-');
+                const alcance = cargo.codigo_local
+                    ? `Local ${escapeHtml(cargo.codigo_local)}`
+                    : 'Tienda';
                 const tipo = escapeHtml(cargo.tipo_cargo_label || '-');
                 const descripcion = escapeHtml(cargo.descripcion_cargo || '-');
                 const periodo = escapeHtml(cargo.periodo_referencia_label || '-');
@@ -1947,7 +1914,6 @@ function msp2CargoEstadoBadge(int $estado): string
                             class="btn btn-outline-primary btn-sm js-btn-editar-cargo"
                             data-id-cargo="${idCargo}"
                             data-id-tipo="${escapeAttr(cargo.id_tipo_cargo_salida || '')}"
-                            data-cod-local="${escapeAttr(cargo.codigo_local || '')}"
                             data-fecha-cargo="${escapeAttr(cargo.fecha_cargo_input || '')}"
                             data-periodo="${escapeAttr(cargo.periodo_referencia_input || '')}"
                             data-servicio="${escapeAttr(cargo.servicio_referencia || '')}"
@@ -1971,7 +1937,7 @@ function msp2CargoEstadoBadge(int $estado): string
 
                 return `<tr>
                     <td class="text-center">${fechaCargo}</td>
-                    <td class="text-center">${local}</td>
+                    <td class="text-center">${alcance}</td>
                     <td>${tipo}</td>
                     <td>${descripcion}</td>
                     <td class="text-center">${periodo}</td>
@@ -2006,12 +1972,6 @@ function msp2CargoEstadoBadge(int $estado): string
 
                 if (editCargoId) {
                     editCargoId.value = String(button.dataset.idCargo || '');
-                }
-                if (editCargoLocal) {
-                    editCargoLocal.value = String(button.dataset.codLocal || '');
-                }
-                if (editCargoLocalHidden) {
-                    editCargoLocalHidden.value = String(button.dataset.codLocal || '');
                 }
                 if (editCargoTipo) {
                     editCargoTipo.value = String(button.dataset.idTipo || '');

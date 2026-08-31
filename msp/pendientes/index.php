@@ -202,7 +202,7 @@ function pendientesUrlAccion(string $url): string
             $gestionId = 'gestion-' . $index;
             $detalles = (array) ($item['detalles'] ?? []);
             $urlAccionPendiente = (string) ($item['url_accion'] ?? '');
-            if (($item['modulo_origen'] ?? '') === 'COBRANZA' && $urlAccionPendiente !== '') {
+            if ($urlAccionPendiente !== '') {
                 $returnQuery = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
                 $returnPath = 'pendientes/index.php' . ($returnQuery !== '' ? '?' . $returnQuery : '');
                 $urlAccionPendiente .= (str_contains($urlAccionPendiente, '?') ? '&' : '?') . 'return_to=' . rawurlencode($returnPath);

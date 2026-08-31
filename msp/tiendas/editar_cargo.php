@@ -27,7 +27,6 @@ $idCargoSalida = filter_input(INPUT_POST, 'id_cargo_salida', FILTER_VALIDATE_INT
 $idTipoCargoSalida = filter_input(INPUT_POST, 'id_tipo_cargo_salida', FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
 ]);
-$codLocalCargo = msp2NormalizeLocalCode((string) ($_POST['cod_local_cargo'] ?? ''));
 $fechaCargoRaw = trim((string) ($_POST['fecha_cargo'] ?? ''));
 $periodoReferenciaMesRaw = trim((string) ($_POST['periodo_referencia_mes'] ?? ''));
 $servicioReferencia = msp2NormalizeText((string) ($_POST['servicio_referencia'] ?? ''));
@@ -42,11 +41,6 @@ if ($idCargoSalida === false || $idCargoSalida === null) {
 
 if ($idTipoCargoSalida === false || $idTipoCargoSalida === null) {
     msp2SetFlash('warning', 'Debes seleccionar un tipo de cargo.');
-    msp2TiendasEditarCargoRedirectFromPost();
-}
-
-if ($codLocalCargo === '' || mb_strlen($codLocalCargo) > 20) {
-    msp2SetFlash('warning', 'Debes seleccionar un local válido.');
     msp2TiendasEditarCargoRedirectFromPost();
 }
 
@@ -103,8 +97,6 @@ try {
         'msp_cargos_salida',
         'msp_contratos_arriendo',
         'msp_tipos_cargo_salida',
-        'msp_locales',
-        'msp_ocupacion_locales',
     ];
     foreach ($requiredTables as $tableName) {
         if (!msp2TableExists($conn, $tableName)) {
@@ -138,31 +130,6 @@ try {
 
     if ($estadoCargo !== 1) {
         throw new RuntimeException('Solo se pueden editar cargos en estado pendiente.');
-    }
-
-    $stmtLocal = $conn->prepare(
-        'SELECT TOP 1 id_local
-         FROM dbo.msp_locales
-         WHERE UPPER(LTRIM(RTRIM(cdo_local))) = :codigo_key'
-    );
-    $stmtLocal->bindValue(':codigo_key', msp2LocalCodeKey($codLocalCargo), PDO::PARAM_STR);
-    $stmtLocal->execute();
-    $idLocal = (int) $stmtLocal->fetchColumn();
-    if ($idLocal <= 0) {
-        throw new RuntimeException('El local seleccionado no existe.');
-    }
-
-    $stmtOcupacion = $conn->prepare(
-        'SELECT COUNT(*)
-         FROM dbo.msp_ocupacion_locales
-         WHERE id_tienda = :id_tienda
-           AND id_local = :id_local'
-    );
-    $stmtOcupacion->bindValue(':id_tienda', $idTienda, PDO::PARAM_INT);
-    $stmtOcupacion->bindValue(':id_local', $idLocal, PDO::PARAM_INT);
-    $stmtOcupacion->execute();
-    if ((int) $stmtOcupacion->fetchColumn() <= 0) {
-        throw new RuntimeException('El local no está asociado a la tienda del cargo.');
     }
 
     $stmtTipo = $conn->prepare(
@@ -200,7 +167,7 @@ try {
 
     $stmtUpdateCargo = $conn->prepare(
         'UPDATE dbo.msp_cargos_salida
-         SET id_local = :id_local,
+         SET id_local = NULL,
              id_tipo_cargo_salida = :id_tipo_cargo_salida,
              fecha_cargo = :fecha_cargo,
              origen_cargo = :origen_cargo,
@@ -217,7 +184,6 @@ try {
 
     $conn->beginTransaction();
 
-    $stmtUpdateCargo->bindValue(':id_local', $idLocal, PDO::PARAM_INT);
     $stmtUpdateCargo->bindValue(':id_tipo_cargo_salida', $idTipoCargoSalida, PDO::PARAM_INT);
     $stmtUpdateCargo->bindValue(':fecha_cargo', $fechaCargo, PDO::PARAM_STR);
     $stmtUpdateCargo->bindValue(':origen_cargo', $origenCargo, PDO::PARAM_INT);

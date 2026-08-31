@@ -386,10 +386,42 @@ if ($tablaExiste) {
             text-underline-offset: 2px;
             font-weight: 600;
         }
-        .ag-col-main { width: 28%; min-width: 240px; }
+        .ag-table-wrap,
+        .ag-subtable-wrap { overflow-x: hidden; }
+        .ag-table,
+        .ag-subtable {
+            width: 100% !important;
+            min-width: 0 !important;
+            table-layout: fixed;
+        }
+        .ag-table th,
+        .ag-table td,
+        .ag-subtable th,
+        .ag-subtable td {
+            min-width: 0 !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ag-col-main { width: 28%; min-width: 0; }
+        .ag-table th:nth-child(2) { width: 6%; }
+        .ag-table th:nth-child(3),
+        .ag-table th:nth-child(4),
+        .ag-table th:nth-child(5),
+        .ag-table th:nth-child(6) { width: 11%; }
+        .ag-table th:nth-child(7) { width: 13%; }
+        .ag-table th:nth-child(8) { width: 9%; }
+        .ag-subtable th:nth-child(1) { width: 13%; }
+        .ag-subtable th:nth-child(2) { width: 8%; }
+        .ag-subtable th:nth-child(3),
+        .ag-subtable th:nth-child(4) { width: 13%; }
+        .ag-subtable th:nth-child(5) { width: 14%; }
+        .ag-subtable th:nth-child(6) { width: 10%; }
+        .ag-subtable th:nth-child(7),
+        .ag-subtable th:nth-child(8) { width: 14.5%; }
         .ag-arr-name {
             display: inline-block;
-            max-width: 320px;
+            max-width: 52%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -397,14 +429,16 @@ if ($tablaExiste) {
         }
         .ag-locales {
             display: inline-block;
-            max-width: 320px;
+            max-width: 28%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             vertical-align: bottom;
         }
         @media (max-width: 992px) {
-            .ag-col-main { width: 40%; min-width: 220px; }
+            .ag-table-wrap, .ag-subtable-wrap { overflow-x: auto; }
+            .ag-table, .ag-subtable { min-width: 850px !important; }
+            .ag-col-main { width: 40%; }
             .ag-arr-name, .ag-locales { max-width: 220px; }
         }
     </style>
@@ -500,8 +534,8 @@ if ($tablaExiste) {
             </div>
 
             <div class="card shadow-sm">
-                <div class="table-responsive">
-                    <table class="table table-sm mb-0">
+                <div class="table-responsive ag-table-wrap">
+                    <table class="table table-sm mb-0 ag-table">
                         <thead>
                             <tr>
                                 <th class="ag-col-main">Locales / Arrendatario</th>
@@ -545,7 +579,7 @@ if ($tablaExiste) {
                                             <?php if ($detalles === []): ?>
                                                 <div class="text-muted">Sin documentos pendientes para este arrendatario.</div>
                                             <?php else: ?>
-                                                <div class="table-responsive">
+                                                <div class="table-responsive ag-subtable-wrap">
                                                     <table class="table table-sm ag-subtable mb-0">
                                                         <thead>
                                                             <tr>

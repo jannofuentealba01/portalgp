@@ -241,8 +241,8 @@ if ($loadError === null) {
                 </div>
             </div>
 
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
+            <div class="table-responsive msp-ledger-table-responsive">
+                <table class="table table-sm table-hover align-middle msp-ledger-table">
                     <thead class="table-light">
                         <tr>
                             <th>Fecha</th>
@@ -267,7 +267,7 @@ if ($loadError === null) {
                             <tr>
                                 <td><?php echo msp2Escape(lbFmtFecha((string) ($row['fecha_contable'] ?? ''))); ?></td>
                                 <td><?php echo msp2Escape((string) ($row['periodo_ym'] ?? '')); ?></td>
-                                <td>#<?php echo (int) ($row['id_asiento_contable'] ?? 0); ?> / <?php echo (int) ($row['linea'] ?? 0); ?></td>
+                                <td><?php echo (int) ($row['id_asiento_contable'] ?? 0); ?> / <?php echo (int) ($row['linea'] ?? 0); ?></td>
                                 <td>
                                     <div class="fw-semibold"><?php echo msp2Escape((string) ($row['codigo_movimiento'] ?? '')); ?></div>
                                     <div class="small text-muted"><?php echo msp2Escape((string) ($row['glosa'] ?? '')); ?></div>

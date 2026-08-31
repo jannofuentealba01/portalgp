@@ -175,7 +175,6 @@ function corrMonto(mixed $value): string
         <div>
             <p class="text-muted mb-1">MSP / Operación</p>
             <h1 class="h3 mb-1">Correcciones selectivas</h1>
-            <p class="text-muted mb-0">Corrige un registro puntual sin borrar ni reabrir el período completo.</p>
         </div>
         <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>">Volver al menú MSP</a>
     </div>

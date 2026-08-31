@@ -177,7 +177,7 @@ try {
 <link rel="stylesheet" href="/portalgp/styles.css"></head>
 <body class="gp-layout bg-light"><?php include dirname(__DIR__,2).'/templates/header.php'; ?>
 <main class="gp-main container-fluid py-4 px-lg-4">
-<div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><div><p class="text-muted mb-1">MSP / Garantías</p><h1 class="h3">Aplicar garantía a deuda</h1></div><a class="btn btn-outline-dark btn-sm align-self-start" href="<?php echo msp2Escape(msp2Url('garantias/index.php'));?>"><i class="bi bi-arrow-left me-1"></i>Volver a Garantías</a></div>
+<div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><div><h1 class="h3">Aplicar garantía a deuda</h1></div><a class="btn btn-outline-dark btn-sm align-self-start" href="<?php echo msp2Escape(msp2Url('garantias/index.php'));?>"><i class="bi bi-arrow-left me-1"></i>Volver a Garantías</a></div>
 <?php if(is_array($flash)):?><div class="alert alert-<?php echo msp2Escape((string)($flash['type']??'info'));?>"><?php echo msp2Escape((string)($flash['message']??''));?></div><?php endif;?>
 <?php if($error):?><div class="alert alert-danger"><?php echo msp2Escape($error);?></div><?php endif;?>
 

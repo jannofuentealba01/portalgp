@@ -91,11 +91,14 @@ $pagoUrl = msp2Url('cobranza/registrar_pago_contrato.php?' . http_build_query([
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main p-4"><div class="box-container-full gcc-shell mx-auto">
-    <div class="d-flex flex-wrap justify-content-between gap-2 mb-3 no-print">
+    <header class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 no-print" data-gp-commandbar>
         <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url($returnTo)); ?>"><i class="bi bi-arrow-left me-1"></i>Volver al listado</a>
+        <div class="text-center">
+            <p class="section-kicker text-center">MSP / Cobranza</p>
+            <h1 class="form-title text-center mb-0">Gestión de cobranza por contrato</h1>
+        </div>
         <div class="d-flex gap-2"><a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('cobranza/configuracion_gestion.php'));?>"><i class="bi bi-gear me-1"></i>Configurar</a><button class="btn btn-outline-dark btn-sm" onclick="window.print()"><i class="bi bi-printer me-1"></i>Imprimir estado de cuenta</button><?php if ($idContrato): ?><a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?id_contrato_arriendo=' . (int) $idContrato)); ?>">Ver contrato completo</a><?php endif; ?></div>
-    </div>
-    <p class="section-kicker text-center">MSP / Cobranza</p><h1 class="form-title text-center mb-2">Gestión de cobranza por contrato</h1>
+    </header>
     <p class="text-muted text-center mb-4">Situación financiera real y acciones disponibles para este caso.</p>
     <?php msp2RenderFlash($flash); ?>
     <?php if ($error !== null): ?><div class="alert alert-danger"><?php echo msp2Escape($error); ?></div><?php endif; ?>

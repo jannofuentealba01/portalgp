@@ -136,7 +136,7 @@ final class PendientesService
                 $titulo = 'Garantía sin monto pactado';
                 $descripcion = 'El contrato/local requiere definir el monto de garantía.';
                 $accion = 'Definir garantía';
-                $url = 'garantias/ficha.php?id_garantia=' . (int) $row['id_garantia'];
+                $url = 'garantias/recepciones.php?id_contrato_arriendo=' . (int) $row['id_contrato_arriendo'];
             } elseif ($recibido <= 0) {
                 $subtipo = 'NO_RECIBIDA';
                 $prioridad = self::PRIORIDAD_NORMAL;

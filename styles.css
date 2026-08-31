@@ -2229,6 +2229,31 @@ h2.form-subtitle {
   }
 }
 
+/* MSP: use the full content area for page-level shells.
+   Functional cards inside each view keep their own surface and spacing. */
+.gp-module-msp main > :is(
+  .box-container,
+  .box-container-narrow,
+  .box-container-wide,
+  .box-container-full,
+  .container
+):not(.mspv2-shell),
+.gp-module-msp main > .container > :is(
+  .box-container,
+  .box-container-narrow,
+  .box-container-wide,
+  .box-container-full
+) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 /* ============================================
    MÓDULOS DE PRESUPUESTO
    ============================================ */
@@ -2410,6 +2435,22 @@ a.gp-page-back {
   text-decoration: none;
 }
 
+/* Operación mensual usa una cabecera azul: el regreso conserva el contraste
+   del estado interactivo para que siempre sea reconocible. */
+.gp-page-msp-cobros-operacion-mensual-php .gp-page-back,
+.gp-page-msp-cobros-operacion-mensual-php a.gp-page-back {
+  border-color: #cbd5e1;
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.gp-page-msp-cobros-operacion-mensual-php .gp-page-back:hover,
+.gp-page-msp-cobros-operacion-mensual-php .gp-page-back:focus-visible {
+  border-color: #fff;
+  background: #fff;
+  color: #0b3a6e;
+}
+
 .gp-page-back:focus-visible {
   outline: 3px solid rgba(37, 99, 235, 0.24);
   outline-offset: 2px;
@@ -2522,6 +2563,12 @@ a.gp-page-back {
 
 .gp-module-msp .gp-breadcrumbs-replaced-kicker { display: none !important; }
 
+/* Estas pantallas ya expresan su contexto en el título y en el botón volver. */
+.gp-page-msp-control-diario-index-php .gp-breadcrumbs,
+.gp-page-msp-garantias-aplicaciones-php .gp-breadcrumbs {
+  display: none !important;
+}
+
 /* El reporte integral prioriza métricas y tabla; la explicación ya es implícita. */
 .gp-page-msp-garantias-reporte-php .gp-page-commandbar__title > p {
   display: none !important;
@@ -2599,6 +2646,110 @@ a.gp-page-back {
   padding: .2rem .45rem !important;
   font-size: .8rem !important;
   line-height: 1.15 !important;
+}
+
+/* Tablas de gestión que deben caber completas en escritorio. Los textos
+   extensos conservan una sola línea y ceden espacio con elipsis. */
+.gp-module-msp main .msp-stores-table,
+.gp-module-msp main .msp-contracts-table,
+.gp-module-msp main .msp-pdf-backups-table,
+.gp-module-msp main .msp-extra-charges-table,
+.gp-module-msp main .msp-ledger-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.gp-module-msp .msp-stores-index > .msp-management-table-responsive,
+.gp-module-msp .msp-contracts-index > .msp-management-table-responsive,
+.gp-module-msp .msp-pdf-backups-index .msp-management-table-responsive,
+.gp-module-msp .msp-extra-charges-index .msp-management-table-responsive {
+  overflow-x: hidden;
+}
+
+.gp-module-msp .msp-stores-table th,
+.gp-module-msp .msp-stores-table td,
+.gp-module-msp .msp-contracts-table th,
+.gp-module-msp .msp-contracts-table td,
+.gp-module-msp .msp-pdf-backups-table th,
+.gp-module-msp .msp-pdf-backups-table td,
+.gp-module-msp .msp-extra-charges-table th,
+.gp-module-msp .msp-extra-charges-table td,
+.gp-module-msp .msp-ledger-table th,
+.gp-module-msp .msp-ledger-table td {
+  min-width: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gp-module-msp .msp-stores-table .store-number { width: 4%; }
+.gp-module-msp .msp-stores-table .store-name { width: 18%; }
+.gp-module-msp .msp-stores-table .store-tenant { width: 20%; }
+.gp-module-msp .msp-stores-table .store-date { width: 9%; }
+.gp-module-msp .msp-stores-table .store-locals { width: 15%; }
+.gp-module-msp .msp-stores-table .store-actions { width: 24%; }
+.gp-module-msp .msp-stores-table .store-contract { width: 10%; }
+.gp-module-msp .msp-stores-table .store-locals > .d-flex { flex-wrap: nowrap !important; }
+
+.gp-module-msp .msp-contracts-table .contract-id { width: 4%; }
+.gp-module-msp .msp-contracts-table .contract-tenant { width: 24%; }
+.gp-module-msp .msp-contracts-table .contract-locals { width: 10%; }
+.gp-module-msp .msp-contracts-table .contract-date { width: 8%; }
+.gp-module-msp .msp-contracts-table .contract-rent { width: 16%; }
+.gp-module-msp .msp-contracts-table .contract-state { width: 10%; }
+.gp-module-msp .msp-contracts-table .contract-actions { width: 20%; }
+
+.gp-module-msp .msp-pdf-backups-table th:nth-child(1) { width: 8%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(2) { width: 7%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(3) { width: 18%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(4) { width: 8%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(5) { width: 11%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(6) { width: 10%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(7) { width: 10%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(8) { width: 7%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(9) { width: 7%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(10) { width: 14%; }
+.gp-module-msp .msp-pdf-backups-table td:last-child .d-flex { flex-wrap: nowrap !important; }
+
+.gp-module-msp .msp-extra-charges-table th:nth-child(1) { width: 9%; }
+.gp-module-msp .msp-extra-charges-table th:nth-child(2) { width: 14%; }
+.gp-module-msp .msp-extra-charges-table th:nth-child(3) { width: 8%; }
+.gp-module-msp .msp-extra-charges-table th:nth-child(4) { width: 20%; }
+.gp-module-msp .msp-extra-charges-table th:nth-child(5) { width: 24%; }
+.gp-module-msp .msp-extra-charges-table th:nth-child(6) { width: 10%; }
+.gp-module-msp .msp-extra-charges-table th:nth-child(7) { width: 15%; }
+
+.gp-module-msp .msp-ledger-table-responsive { overflow-x: hidden; }
+.gp-module-msp .msp-ledger-table th:nth-child(1) { width: 7%; }
+.gp-module-msp .msp-ledger-table th:nth-child(2) { width: 6%; }
+.gp-module-msp .msp-ledger-table th:nth-child(3) { width: 6%; }
+.gp-module-msp .msp-ledger-table th:nth-child(4) { width: 31%; }
+.gp-module-msp .msp-ledger-table th:nth-child(5) { width: 14%; }
+.gp-module-msp .msp-ledger-table th:nth-child(6) { width: 10%; }
+.gp-module-msp .msp-ledger-table th:nth-child(7) { width: 10%; }
+.gp-module-msp .msp-ledger-table th:nth-child(8) { width: 8%; }
+.gp-module-msp .msp-ledger-table th:nth-child(9) { width: 8%; }
+.gp-module-msp .msp-ledger-table td > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 991.98px) {
+  .gp-module-msp .msp-stores-index > .msp-management-table-responsive,
+  .gp-module-msp .msp-contracts-index > .msp-management-table-responsive,
+  .gp-module-msp .msp-pdf-backups-index .msp-management-table-responsive,
+  .gp-module-msp .msp-extra-charges-index .msp-management-table-responsive,
+  .gp-module-msp .msp-ledger-table-responsive {
+    overflow-x: auto;
+  }
+
+  .gp-module-msp main .msp-stores-table,
+  .gp-module-msp main .msp-contracts-table,
+  .gp-module-msp main .msp-pdf-backups-table,
+  .gp-module-msp main .msp-extra-charges-table,
+  .gp-module-msp main .msp-ledger-table {
+    min-width: 900px !important;
+  }
 }
 
 @media print {

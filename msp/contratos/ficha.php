@@ -2153,33 +2153,27 @@ if ($totalPaginasDocumentos > 1) {
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main d-flex align-items-center justify-content-center p-4">
     <div class="box-container-wide">
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-            <div class="d-flex flex-wrap gap-2">
-                <a href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a contratos
-                </a>
+        <header class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2" data-gp-commandbar>
+            <a href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a contratos
+            </a>
+            <div class="text-center">
+                <p class="section-kicker text-center">MSP / Contratos</p>
+                <h1 class="form-title text-center mb-0">Ficha Centralizada de Contrato</h1>
+            </div>
+            <div class="d-flex flex-nowrap align-items-center gap-2">
                 <a href="#documentos" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-receipt me-1" aria-hidden="true"></i>Documentos
                 </a>
                 <a href="<?php echo msp2Escape(msp2Url('cobranza/registrar_pago_contrato.php?id_contrato_arriendo=' . (int) $idContratoArriendo . '&contexto_contrato=1')); ?>" class="btn btn-outline-success btn-sm">
                     <i class="bi bi-cash-stack me-1" aria-hidden="true"></i>Registrar pago
                 </a>
-            </div>
-            <div class="d-flex flex-wrap gap-2">
                 <a href="<?php echo msp2Escape(msp2Url('contabilidad/libro.php')); ?>" class="btn btn-outline-dark btn-sm">
                     <i class="bi bi-journal-text me-1" aria-hidden="true"></i>Libro diario
                 </a>
+                <span class="badge text-bg-primary fs-6">Contrato #<?php echo (int) $idContratoArriendo; ?></span>
             </div>
-        </div>
-
-        <div class="position-relative mb-4">
-            <p class="section-kicker text-center">MSP / Contratos</p>
-            <h1 class="form-title text-center mb-0">Ficha Centralizada de Contrato</h1>
-            <div class="position-absolute top-0 end-0 text-end">
-                <div class="small text-muted text-uppercase">Contrato</div>
-                <div class="display-6 fw-bold text-primary lh-1">#<?php echo (int) $idContratoArriendo; ?></div>
-            </div>
-        </div>
+        </header>
 
         <?php msp2RenderFlash($flash); ?>
 
