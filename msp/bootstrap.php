@@ -8,27 +8,111 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-function msp2RequireAccess(string $permission = 'MSP Arriendos'): void
+function msp2PermissionExists(string $permission): bool
+{
+    static $cache = [];
+    if (array_key_exists($permission, $cache)) {
+        return $cache[$permission];
+    }
+    try {
+        $stmt = $GLOBALS['conn']->prepare('SELECT COUNT(*) FROM dbo.cr_permisos WHERE nombre_permiso = :permiso');
+        $stmt->execute([':permiso' => $permission]);
+        return $cache[$permission] = (int) $stmt->fetchColumn() > 0;
+    } catch (Throwable) {
+        return $cache[$permission] = false;
+    }
+}
+
+function msp2CurrentUserHasPermission(string $permission): bool
+{
+    static $cache = [];
+    $idUsuario = (int) ($_SESSION['usuario']['id'] ?? 0);
+    if ($idUsuario <= 0) {
+        return false;
+    }
+    $cacheKey = $idUsuario . '|' . $permission;
+    if (array_key_exists($cacheKey, $cache)) {
+        return $cache[$cacheKey];
+    }
+    if (tienePermiso($idUsuario, $permission)) {
+        return $cache[$cacheKey] = true;
+    }
+    // Compatibilidad antes de instalar el patch: cuando el permiso específico
+    // aún no existe, conserva temporalmente el acceso MSP anterior.
+    return $cache[$cacheKey] = str_starts_with($permission, 'MSP ')
+        && $permission !== 'MSP Arriendos'
+        && !msp2PermissionExists($permission)
+        && tienePermiso($idUsuario, 'MSP Arriendos');
+}
+
+function msp2FunctionalPermissions(): array
+{
+    return ['MSP Operacion', 'MSP Cobranza', 'MSP Cierre Mensual', 'MSP Reportes', 'MSP Configuracion'];
+}
+
+function msp2PermissionForCurrentRoute(): string
+{
+    $route = strtolower(str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '')));
+
+    if (str_ends_with($route, '/msp/msp_menu.php') || str_ends_with($route, '/msp/ayuda/index.php')) {
+        return '';
+    }
+    if (str_contains($route, '/msp/configuracion/')
+        || str_ends_with($route, '/msp/catalogo_menu.php')
+        || preg_match('#/msp/(rubros|comunas|estados_arrendatarios|estados_tiendas|estados_locales)/#', $route) === 1
+        || preg_match('#/msp/catalogos/(feriados|bancos)\.php$#', $route) === 1
+        || str_ends_with($route, '/msp/cobros/reglas_cobro_auto.php')) {
+        return 'MSP Configuracion';
+    }
+    if (str_contains($route, '/msp/cierre_mensual/')) {
+        return 'MSP Cierre Mensual';
+    }
+    if (str_contains($route, '/msp/dashboard/')
+        || str_contains($route, '/msp/reportes/')
+        || str_contains($route, '/msp/contabilidad/')
+        || preg_match('#/msp/garantias/(reporte|exportar_reporte)\.php$#', $route) === 1
+        || preg_match('#/msp/cobros/reporte_consumo_(agua|gas|electrico)\.php$#', $route) === 1) {
+        return 'MSP Reportes';
+    }
+    if (str_contains($route, '/msp/cobranza/')
+        || str_contains($route, '/msp/pagos/')
+        || str_contains($route, '/msp/documentos_cobro/')
+        || str_contains($route, '/msp/garantias/')
+        || str_contains($route, '/msp/deuda_garantia/')) {
+        return 'MSP Cobranza';
+    }
+    return 'MSP Operacion';
+}
+
+function msp2RequireAnyAccess(array $permissions): void
+{
+    if (!isset($_SESSION['usuario']['id'])) {
+        echo "<script>alert('Debes iniciar sesión.'); window.location.href = '/portalgp/login.php';</script>";
+        exit();
+    }
+    foreach ($permissions as $permission) {
+        if (is_string($permission) && msp2CurrentUserHasPermission($permission)) {
+            msp2RequireValidCsrfToken();
+            return;
+        }
+    }
+    echo "<script>alert('No tienes permiso para esta sección.'); window.location.href = '/portalgp/msp/msp_menu.php';</script>";
+    exit();
+}
+
+function msp2RequireAccess(?string $permission = null): void
 {
     if (!isset($_SESSION['usuario']['id'])) {
         echo "<script>alert('Debes iniciar sesión.'); window.location.href = '/portalgp/login.php';</script>";
         exit();
     }
 
-    $idUsuario = (int) $_SESSION['usuario']['id'];
-
-    if (tienePermiso($idUsuario, $permission)) {
-        msp2RequireValidCsrfToken();
+    $permission = $permission ?? msp2PermissionForCurrentRoute();
+    if ($permission === '') {
+        msp2RequireAnyAccess(array_merge(msp2FunctionalPermissions(), ['MSP Arriendos']));
         return;
     }
-
-    // Fallback para no bloquear acceso mientras se crea el permiso nuevo.
-    if ($permission === 'MSP Arriendos' && tienePermiso($idUsuario, 'MSP Arriendos')) {
-        return;
-    }
-
-    echo "<script>alert('No tienes permiso para esta sección.'); window.location.href = '/portalgp/index.php';</script>";
-    exit();
+    msp2RequireAnyAccess([$permission]);
 }
 
 function msp2Url(string $path = ''): string
@@ -72,46 +156,44 @@ function msp2QuickAccessMainSections(): array
 {
     return [
         [
-            'id' => 'admin',
-            'label' => 'Administración',
+            'id' => 'alta',
+            'label' => 'Gestión comercial y alta',
             'accent' => 'sect-admin',
-            'icon' => 'bi-gear-fill',
+            'icon' => 'bi-person-plus-fill',
             'items' => [
-                [
-                    'label' => 'Contratos',
-                    'icon' => 'bi-file-earmark-text',
-                    'href' => msp2Url('contratos/index.php'),
-                    'enabled' => true,
-                ],
                 [
                     'label' => 'Gestionar Arrendatarios',
                     'icon' => 'bi-people-fill',
                     'href' => msp2Url('arrendatarios/index.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Operacion',
                 ],
                 [
-                    'label' => 'Gestión de Tiendas',
+                    'label' => 'Locales y tiendas disponibles',
                     'icon' => 'bi-shop',
-                    'href' => msp2Url('tiendas/index.php'),
+                    'href' => msp2Url('locales_tiendas/index.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Operacion',
                 ],
                 [
-                    'label' => 'Catálogos',
-                    'icon' => 'bi-collection-fill',
-                    'href' => msp2Url('catalogo_menu.php'),
+                    'label' => 'Contratos y asociación',
+                    'icon' => 'bi-file-earmark-text',
+                    'href' => msp2Url('contratos/index.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Operacion',
                 ],
                 [
-                    'label' => 'Configuración Correos',
-                    'icon' => 'bi-envelope-check',
-                    'href' => msp2Url('configuracion/correos.php'),
-                    'enabled' => true,
+                    'label' => 'Garantías',
+                    'icon' => 'bi-shield-check',
+                    'href' => msp2Url('garantias/index.php'),
+                    'enabled' => msp2ModuleAvailable('garantias/index.php'),
+                    'permission' => 'MSP Cobranza',
                 ],
             ],
         ],
         [
-            'id' => 'facturacion',
-            'label' => 'Operación y facturación',
+            'id' => 'operacion',
+            'label' => 'Operación mensual',
             'accent' => 'sect-facturacion',
             'icon' => 'bi-receipt-cutoff',
             'items' => [
@@ -121,80 +203,106 @@ function msp2QuickAccessMainSections(): array
                     'href' => msp2Url('pendientes/index.php'),
                     'enabled' => msp2ModuleAvailable('pendientes/index.php'),
                     'badge' => msp2PendingBadgeCount(),
+                    'permission' => 'MSP Operacion',
                 ],
                 [
-                    'label' => 'Correcciones selectivas',
-                    'icon' => 'bi-funnel',
-                    'href' => msp2Url('correcciones/index.php'),
+                    'label' => 'Medidores y lecturas',
+                    'icon' => 'bi-speedometer2',
+                    'href' => msp2Url('catalogos/medidores.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Operacion',
                 ],
                 [
                     'label' => 'Generar documento de cobro',
                     'icon' => 'bi-lightning-charge-fill',
                     'href' => msp2Url('cobros/operacion_mensual.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Operacion',
+                ],
+                [
+                    'label' => 'Correcciones selectivas',
+                    'icon' => 'bi-funnel',
+                    'href' => msp2Url('correcciones/index.php'),
+                    'enabled' => true,
+                    'permission' => 'MSP Operacion',
                 ],
                 [
                     'label' => 'Control diario',
                     'icon' => 'bi-table',
                     'href' => msp2Url('control_diario/index.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Operacion',
+                ],
+                [
+                    'label' => 'Cierre mensual',
+                    'icon' => 'bi-calendar-check',
+                    'href' => msp2Url('cierre_mensual/index.php'),
+                    'enabled' => msp2ModuleAvailable('cierre_mensual/index.php'),
+                    'permission' => 'MSP Cierre Mensual',
                 ],
             ],
         ],
         [
             'id' => 'cobranza',
-            'label' => 'Cobranza',
+            'label' => 'Cobranza y tesorería',
             'accent' => 'sect-cobranza',
             'icon' => 'bi-cash-stack',
             'items' => [
                 [
-                    'label' => 'Documentos',
+                    'label' => 'Documentos de cobro',
                     'icon' => 'bi-receipt',
                     'href' => msp2Url('documentos_cobro/index.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Cobranza',
                 ],
                 [
-                    'label' => 'Registrar Pago',
+                    'label' => 'Registrar pago',
                     'icon' => 'bi-cash-coin',
                     'href' => msp2Url('cobranza/registrar_pago_contrato.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Cobranza',
+                ],
+                [
+                    'label' => 'Ajustes de cobranza',
+                    'icon' => 'bi-sliders2',
+                    'href' => msp2Url('cobranza/ajustes.php'),
+                    'enabled' => true,
+                    'permission' => 'MSP Cobranza',
                 ],
                 [
                     'label' => 'Respaldo PDFs',
                     'icon' => 'bi-archive',
                     'href' => msp2Url('pagos/archivos_pdf.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Cobranza',
                 ],
+            ],
+        ],
+        [
+            'id' => 'cierre',
+            'label' => 'Cierre y salida',
+            'accent' => 'sect-cierre',
+            'icon' => 'bi-box-arrow-right',
+            'items' => [
                 [
-                    'label' => 'Cargos Extra',
-                    'icon' => 'bi-plus-circle',
-                    'href' => msp2Url('cobranza/cargos_extra.php'),
+                    'label' => 'Término y cierre de contratos',
+                    'icon' => 'bi-door-closed-fill',
+                    'href' => msp2Url('cierre/index.php'),
                     'enabled' => true,
-                ],
-                [
-                    'label' => 'Saldo a Favor',
-                    'icon' => 'bi-wallet2',
-                    'href' => msp2Url('cobranza/saldo_favor_manual.php'),
-                    'enabled' => true,
+                    'permission' => 'MSP Operacion',
                 ],
                 [
                     'label' => 'Deudores exarrendatarios',
                     'icon' => 'bi-person-x-fill',
                     'href' => msp2Url('cobranza/deudores_exarrendatarios.php'),
                     'enabled' => true,
-                ],
-                [
-                    'label' => 'Garantías',
-                    'icon' => 'bi-shield-check',
-                    'href' => msp2Url('garantias/index.php'),
-                    'enabled' => msp2ModuleAvailable('garantias/index.php'),
+                    'permission' => 'MSP Cobranza',
                 ],
             ],
         ],
         [
             'id' => 'reportes',
-            'label' => 'Reportes',
+            'label' => 'Reportes y control',
             'accent' => 'sect-reportes',
             'icon' => 'bi-clipboard-data',
             'items' => [
@@ -203,24 +311,50 @@ function msp2QuickAccessMainSections(): array
                     'icon' => 'bi-speedometer2',
                     'href' => msp2Url('dashboard/index.php'),
                     'enabled' => true,
-                ],
-                [
-                    'label' => 'Control Garantías',
-                    'icon' => 'bi-shield-check',
-                    'href' => msp2Url('garantias/reporte.php'),
-                    'enabled' => msp2ModuleAvailable('garantias/reporte.php'),
+                    'permission' => 'MSP Reportes',
                 ],
                 [
                     'label' => 'Libro Diario',
                     'icon' => 'bi-journal-text',
                     'href' => msp2Url('contabilidad/libro.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Reportes',
                 ],
                 [
                     'label' => 'Aging de Deudores',
                     'icon' => 'bi-hourglass-split',
                     'href' => msp2Url('contabilidad/aging.php'),
                     'enabled' => true,
+                    'permission' => 'MSP Reportes',
+                ],
+                [
+                    'label' => 'Trazabilidad de cobros',
+                    'icon' => 'bi-list-check',
+                    'href' => msp2Url('reportes/trazabilidad.php'),
+                    'enabled' => msp2ModuleAvailable('reportes/trazabilidad.php'),
+                    'permission' => 'MSP Reportes',
+                ],
+            ],
+        ],
+        [
+            'id' => 'configuracion',
+            'label' => 'Configuración',
+            'accent' => 'sect-catalogos',
+            'icon' => 'bi-sliders',
+            'items' => [
+                [
+                    'label' => 'Catálogos maestros',
+                    'icon' => 'bi-collection-fill',
+                    'href' => msp2Url('catalogo_menu.php'),
+                    'enabled' => true,
+                    'permission' => 'MSP Configuracion',
+                ],
+                [
+                    'label' => 'Configuración de correos',
+                    'icon' => 'bi-envelope-check',
+                    'href' => msp2Url('configuracion/correos.php'),
+                    'enabled' => true,
+                    'permission' => 'MSP Configuracion',
                 ],
             ],
         ],
@@ -245,7 +379,7 @@ function msp2QuickAccessMenuSections(): array
             }
 
             if (str_contains($href, '/cobranza/registrar_pago_contrato.php')) {
-                $item['label'] = 'Registrar Pago';
+                $item['label'] = 'Registrar pago';
             }
 
             $normalizedItems[] = $item;
@@ -254,6 +388,22 @@ function msp2QuickAccessMenuSections(): array
         $section['items'] = $normalizedItems;
     }
     unset($section);
+
+    foreach ($sections as &$section) {
+        $section['items'] = array_values(array_filter(
+            (array) ($section['items'] ?? []),
+            static function (array $item): bool {
+                $permission = (string) ($item['permission'] ?? '');
+                return $permission === '' || msp2CurrentUserHasPermission($permission);
+            }
+        ));
+    }
+    unset($section);
+
+    $sections = array_values(array_filter(
+        $sections,
+        static fn (array $section): bool => (array) ($section['items'] ?? []) !== []
+    ));
 
     return $sections;
 }
@@ -297,13 +447,6 @@ function msp2QuickAccessCatalogItems(): array
             'enabled' => true,
         ],
         [
-            'label' => 'Medidores',
-            'caption' => 'Gestión de medidores y descarga de plantilla de lecturas.',
-            'icon' => 'bi-speedometer2',
-            'href' => msp2Url('catalogos/medidores.php'),
-            'enabled' => true,
-        ],
-        [
             'label' => 'Feriados',
             'caption' => 'Mantén el calendario de feriados para vencimientos.',
             'icon' => 'bi-calendar-event',
@@ -324,40 +467,21 @@ function msp2QuickAccessCatalogItems(): array
             'href' => msp2Url('cobros/reglas_cobro_auto.php'),
             'enabled' => true,
         ],
-        [
-            'label' => 'Cierre Mensual',
-            'caption' => 'Periodo mensual, valor UF y estado del ciclo de cobro.',
-            'icon' => 'bi-calendar-check',
-            'href' => msp2Url('cierre_mensual/index.php'),
-            'enabled' => msp2ModuleAvailable('cierre_mensual/index.php'),
-        ],
-        [
-            'label' => 'Trazabilidad Cobros',
-            'caption' => 'Reporte por local y servicio con lectura, cobro y documento.',
-            'icon' => 'bi-list-check',
-            'href' => msp2Url('reportes/trazabilidad.php'),
-            'enabled' => msp2ModuleAvailable('reportes/trazabilidad.php'),
-        ],
-        [
-            'label' => 'Correcciones selectivas',
-            'caption' => 'Análisis de impacto y revisión de dependencias antes de corregir.',
-            'icon' => 'bi-funnel',
-            'href' => msp2Url('correcciones/index.php'),
-            'enabled' => true,
-        ],
     ];
 }
 
 function msp2QuickAccessSections(): array
 {
     $sections = msp2QuickAccessMenuSections();
-    $sections[] = [
-        'id' => 'catalogos',
-        'label' => 'Catálogos',
-        'accent' => 'sect-catalogos',
-        'icon' => 'bi-collection-fill',
-        'items' => msp2QuickAccessCatalogItems(),
-    ];
+    if (msp2CurrentUserHasPermission('MSP Configuracion')) {
+        $sections[] = [
+            'id' => 'catalogos',
+            'label' => 'Catálogos maestros',
+            'accent' => 'sect-catalogos',
+            'icon' => 'bi-collection-fill',
+            'items' => msp2QuickAccessCatalogItems(),
+        ];
+    }
 
     return $sections;
 }
@@ -783,6 +907,80 @@ function msp2TableExists(PDO $conn, string $tableName, string $schema = 'dbo'): 
     $exists = (int) $stmt->fetchColumn() > 0;
     $cache[$cacheKey] = $exists;
     return $exists;
+}
+
+/**
+ * Mantiene la derivación histórica alineada con el saldo operativo real.
+ * Los importes originales de la liquidación no se modifican porque constituyen
+ * la fotografía del momento del cierre.
+ */
+function msp2SyncHistoricalDebt(PDO $conn, int $idContratoArriendo): void
+{
+    if ($idContratoArriendo <= 0 || !msp2TableExists($conn, 'msp_deudas_historicas')) {
+        return;
+    }
+
+    $saldoCargosSql = 'CAST(0 AS DECIMAL(18,2))';
+    if (msp2TableExists($conn, 'msp_cargos_contrato_local') && msp2TableExists($conn, 'msp_contrato_locales')) {
+        $saldoCargosSql = "ISNULL((
+            SELECT SUM(CASE
+                WHEN ccl.estado_cargo IN (1,2) AND ccl.id_documento_cobro IS NULL
+                THEN CASE
+                    WHEN ISNULL(ccl.monto_cargo,0)-ISNULL(ccl.monto_aplicado_garantia,0)-ISNULL(ccl.monto_pagado_directo,0)>0
+                    THEN ISNULL(ccl.monto_cargo,0)-ISNULL(ccl.monto_aplicado_garantia,0)-ISNULL(ccl.monto_pagado_directo,0)
+                    ELSE 0
+                END
+                ELSE 0
+            END)
+            FROM dbo.msp_cargos_contrato_local ccl
+            INNER JOIN dbo.msp_contrato_locales cl ON cl.id_contrato_local=ccl.id_contrato_local
+            WHERE cl.id_contrato_arriendo=:id_contrato_cargos
+        ),0)";
+    }
+
+    $sql = "UPDATE dh
+            SET saldo_residual=saldo.saldo_actual,
+                estado_deuda=CASE WHEN saldo.saldo_actual<=0.005 THEN N'SALDADA' ELSE N'ACTIVA' END,
+                fecha_actualizacion=SYSDATETIME()
+            FROM dbo.msp_deudas_historicas dh
+            CROSS APPLY (
+                SELECT CAST(
+                    ISNULL((SELECT SUM(CASE WHEN dc.estado_documento IN (2,3) AND dc.saldo_pendiente>0
+                                           THEN dc.saldo_pendiente ELSE 0 END)
+                            FROM dbo.msp_documentos_cobro dc
+                            WHERE dc.id_contrato_arriendo=:id_contrato_documentos),0)
+                    + {$saldoCargosSql}
+                    AS DECIMAL(18,2)
+                ) AS saldo_actual
+            ) saldo
+            WHERE dh.id_contrato_arriendo=:id_contrato_deuda
+              AND dh.estado_deuda=N'ACTIVA'";
+    $stmt = $conn->prepare($sql);
+    $stmt->bindValue(':id_contrato_documentos', $idContratoArriendo, PDO::PARAM_INT);
+    if (str_contains($sql, ':id_contrato_cargos')) {
+        $stmt->bindValue(':id_contrato_cargos', $idContratoArriendo, PDO::PARAM_INT);
+    }
+    $stmt->bindValue(':id_contrato_deuda', $idContratoArriendo, PDO::PARAM_INT);
+    $stmt->execute();
+}
+
+function msp2SyncHistoricalDebtByDocument(PDO $conn, int $idDocumentoCobro): void
+{
+    if ($idDocumentoCobro <= 0 || !msp2TableExists($conn, 'msp_documentos_cobro')) {
+        return;
+    }
+
+    $stmt = $conn->prepare(
+        'SELECT id_contrato_arriendo
+         FROM dbo.msp_documentos_cobro
+         WHERE id_documento_cobro=:id_documento_cobro'
+    );
+    $stmt->bindValue(':id_documento_cobro', $idDocumentoCobro, PDO::PARAM_INT);
+    $stmt->execute();
+    $idContratoArriendo = (int) ($stmt->fetchColumn() ?: 0);
+    if ($idContratoArriendo > 0) {
+        msp2SyncHistoricalDebt($conn, $idContratoArriendo);
+    }
 }
 
 /**

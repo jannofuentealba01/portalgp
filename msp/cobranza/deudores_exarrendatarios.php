@@ -251,7 +251,7 @@ foreach ($registros as $registro) {
     <div class="dex-shell">
         <header class="dex-page-header no-print">
             <div class="dex-page-back">
-                <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>"><i class="bi bi-arrow-left me-1"></i>Volver a MSP</a>
+                <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('cierre/index.php')); ?>"><i class="bi bi-arrow-left me-1"></i>Volver a término y cierre</a>
             </div>
             <h1>Deudores exarrendatarios</h1>
             <div class="dex-page-actions">

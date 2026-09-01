@@ -8,7 +8,7 @@
         return;
     }
 
-    var storageKey = 'msp_tour_menu_v1_seen';
+    var storageKey = 'msp_tour_menu_v2_seen';
 
     function getDriverFactory() {
         if (window.driver && window.driver.js && typeof window.driver.js.driver === 'function') {
@@ -55,31 +55,45 @@
                 }
             },
             {
-                element: '[data-tour="menu-admin"]',
+                element: '[data-tour="menu-alta"]',
                 popover: {
-                    title: 'Administración',
-                    description: 'Configura contratos, arrendatarios, locales y catálogos base.'
+                    title: 'Gestión comercial y alta',
+                    description: 'Registra al arrendatario, revisa locales y tiendas, crea el contrato y gestiona garantías.'
                 }
             },
             {
-                element: '[data-tour="menu-facturacion"]',
+                element: '[data-tour="menu-operacion"]',
                 popover: {
-                    title: 'Facturación',
-                    description: 'Inicia la operación mensual y revisa control diario.'
+                    title: 'Operación mensual',
+                    description: 'Sigue el trabajo del período desde los pendientes y lecturas hasta el cierre mensual.'
                 }
             },
             {
                 element: '[data-tour="menu-cobranza"]',
                 popover: {
-                    title: 'Cobranza',
-                    description: 'Gestiona documentos, pagos, cargos extra y saldos a favor.'
+                    title: 'Cobranza y tesorería',
+                    description: 'Gestiona documentos, pagos, cargos adicionales, saldos a favor y respaldos.'
+                }
+            },
+            {
+                element: '[data-tour="menu-cierre"]',
+                popover: {
+                    title: 'Cierre y salida',
+                    description: 'Consulta los casos que llegan al final del ciclo contractual y sus deudas posteriores.'
                 }
             },
             {
                 element: '[data-tour="menu-reportes"]',
                 popover: {
-                    title: 'Reportes',
-                    description: 'Consulta reportes contables y de consumo para seguimiento.'
+                    title: 'Reportes y control',
+                    description: 'Consulta el dashboard, libro diario, aging y trazabilidad sin modificar la operación.'
+                }
+            },
+            {
+                element: '[data-tour="menu-configuracion"]',
+                popover: {
+                    title: 'Configuración',
+                    description: 'Administra catálogos maestros y la configuración de correos según tus permisos.'
                 }
             },
             {

@@ -245,7 +245,7 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
         </div>
         <div class="d-flex flex-wrap gap-2">
             <a class="btn btn-outline-dark btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?' . $queryRetorno)); ?>"><i class="bi bi-arrow-left me-1"></i>Volver a ficha</a>
-            <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>">Volver a contratos</a>
+            <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('cierre/index.php')); ?>">Volver a término y cierre</a>
         </div>
     </div>
 

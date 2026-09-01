@@ -81,6 +81,8 @@ try {
             t.nombre_comercial,
             CASE WHEN ca.id_contrato_arriendo IS NULL THEN 0 ELSE 1 END AS tiene_contrato_activo
          FROM dbo.msp_tiendas t
+         INNER JOIN dbo.msp_estado_tiendas et
+            ON et.id_estado_tienda = t.id_estado_tienda
          OUTER APPLY (
             SELECT TOP (1) c.id_contrato_arriendo
             FROM dbo.msp_contratos_arriendo c
@@ -88,6 +90,8 @@ try {
               AND c.estado_contrato IN (1,2)
             ORDER BY c.id_contrato_arriendo DESC
          ) ca
+         WHERE UPPER(LTRIM(RTRIM(et.desc_estado))) NOT IN (N\'INACTIVO\', N\'CERRADO\')
+           AND (t.fecha_termino IS NULL OR t.fecha_termino >= CONVERT(date, SYSDATETIME()))
          ORDER BY t.nombre_comercial ASC, t.id_tienda ASC'
     );
     $tiendas = $tiendaCatalogoStmt->fetchAll();
@@ -822,7 +826,6 @@ $fmtFecha = static function (mixed $value): string {
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="redirect_to" value="<?php echo msp2Escape($redirectToIndex); ?>">
-                    <input type="hidden" name="id_tienda" id="crear_id_tienda" value="">
                     <div class="row g-2">
                             <?php
                             $crearArrOptions = [];
@@ -864,6 +867,47 @@ $fmtFecha = static function (mixed $value): string {
                                 'options' => $crearArrOptions,
                             ]);
                             ?>
+                            <?php
+                            $crearTiendaOptions = [];
+                            foreach ($tiendas as $tienda) {
+                                $tiendaId = (int) ($tienda['id_tienda'] ?? 0);
+                                $tiendaArrendatarioId = (int) ($tienda['id_arrendatario'] ?? 0);
+                                if ($tiendaId <= 0 || $tiendaArrendatarioId <= 0) {
+                                    continue;
+                                }
+                                $tiendaNombre = trim((string) ($tienda['nombre_comercial'] ?? ''));
+                                $tieneContratoActivo = ((int) ($tienda['tiene_contrato_activo'] ?? 0)) === 1;
+                                $crearTiendaOptions[] = [
+                                    'value' => (string) $tiendaId,
+                                    'label' => $tiendaNombre !== '' ? $tiendaNombre : ('Tienda #' . $tiendaId),
+                                    'search' => mb_strtolower($tiendaNombre, 'UTF-8'),
+                                    'attrs' => [
+                                        'arrendatario' => (string) $tiendaArrendatarioId,
+                                        'contrato-activo' => $tieneContratoActivo ? '1' : '0',
+                                    ],
+                                ];
+                            }
+                            msp2RenderSearchableSelectField([
+                                'wrapper_class' => 'col-12 col-lg-6',
+                                'label' => 'Tienda',
+                                'input_name' => 'id_tienda',
+                                'input_id' => 'crear_id_tienda',
+                                'picker_id' => 'crear_tienda_picker',
+                                'button_id' => 'crear_tienda_dropdown_btn',
+                                'filter_id' => 'crear_tienda_dropdown_filter',
+                                'list_id' => 'crear_tienda_dropdown_list',
+                                'error_id' => 'crear_tienda_error',
+                                'error_message' => 'Debes seleccionar una tienda activa y sin contrato vigente.',
+                                'button_placeholder' => 'Primero selecciona un arrendatario...',
+                                'filter_placeholder' => 'Buscar por nombre comercial',
+                                'empty_message' => 'No hay tiendas registradas.',
+                                'required' => true,
+                                'options' => $crearTiendaOptions,
+                            ]);
+                            ?>
+                            <div class="col-12 mt-0">
+                                <div class="form-text">Si el arrendatario aún no tiene una tienda, <a href="<?php echo msp2Escape(msp2Url('tiendas/index.php')); ?>">regístrala en Gestión de Tiendas</a> antes de crear el contrato.</div>
+                            </div>
                             <?php
                             $crearLocalesOptions = [];
                             foreach ($localesCatalogo as $local) {
@@ -961,7 +1005,6 @@ $fmtFecha = static function (mixed $value): string {
                 <div class="modal-body">
                     <input type="hidden" name="id_contrato_arriendo" id="edit_id_contrato_arriendo">
                     <input type="hidden" name="redirect_to" value="<?php echo msp2Escape($redirectToIndex); ?>">
-                    <input type="hidden" name="id_tienda" id="edit_id_tienda" value="">
                     <div class="row g-3">
                         <div class="col-12">
                             <?php
@@ -1002,6 +1045,44 @@ $fmtFecha = static function (mixed $value): string {
                                 'empty_message' => 'No hay arrendatarios disponibles.',
                                 'required' => true,
                                 'options' => $editArrOptions,
+                            ]);
+                            ?>
+                            <?php
+                            $editTiendaOptions = [];
+                            foreach ($tiendas as $tienda) {
+                                $tiendaId = (int) ($tienda['id_tienda'] ?? 0);
+                                $tiendaArrendatarioId = (int) ($tienda['id_arrendatario'] ?? 0);
+                                if ($tiendaId <= 0 || $tiendaArrendatarioId <= 0) {
+                                    continue;
+                                }
+                                $tiendaNombre = trim((string) ($tienda['nombre_comercial'] ?? ''));
+                                $tieneContratoActivo = ((int) ($tienda['tiene_contrato_activo'] ?? 0)) === 1;
+                                $editTiendaOptions[] = [
+                                    'value' => (string) $tiendaId,
+                                    'label' => $tiendaNombre !== '' ? $tiendaNombre : ('Tienda #' . $tiendaId),
+                                    'search' => mb_strtolower($tiendaNombre, 'UTF-8'),
+                                    'attrs' => [
+                                        'arrendatario' => (string) $tiendaArrendatarioId,
+                                        'contrato-activo' => $tieneContratoActivo ? '1' : '0',
+                                    ],
+                                ];
+                            }
+                            msp2RenderSearchableSelectField([
+                                'wrapper_class' => 'col-12',
+                                'label' => 'Tienda',
+                                'input_name' => 'id_tienda',
+                                'input_id' => 'edit_id_tienda',
+                                'picker_id' => 'edit_tienda_picker',
+                                'button_id' => 'edit_tienda_dropdown_btn',
+                                'filter_id' => 'edit_tienda_dropdown_filter',
+                                'list_id' => 'edit_tienda_dropdown_list',
+                                'error_id' => 'edit_tienda_error',
+                                'error_message' => 'Debes seleccionar una tienda válida del arrendatario.',
+                                'button_placeholder' => 'Selecciona tienda...',
+                                'filter_placeholder' => 'Buscar por nombre comercial',
+                                'empty_message' => 'No hay tiendas registradas.',
+                                'required' => true,
+                                'options' => $editTiendaOptions,
                             ]);
                             ?>
                         </div>
@@ -1833,6 +1914,67 @@ $fmtFecha = static function (mixed $value): string {
     const crearGarantiaState = {};
     const editGarantiaState = {};
 
+    let editCurrentTiendaId = '';
+    const resetSearchablePicker = (hiddenId, buttonId, placeholder) => {
+        const hidden = document.getElementById(hiddenId);
+        const button = document.getElementById(buttonId);
+        if (hidden instanceof HTMLInputElement) {
+            hidden.value = '';
+            hidden.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (button instanceof HTMLButtonElement) {
+            button.textContent = placeholder;
+            button.title = placeholder;
+        }
+    };
+
+    const filterTiendasByArrendatario = (mode, keepTiendaId = '') => {
+        const arrInput = document.getElementById(`${mode}_id_arrendatario`);
+        const tiendaInput = document.getElementById(`${mode}_id_tienda`);
+        const tiendaButton = document.getElementById(`${mode}_tienda_dropdown_btn`);
+        const tiendaList = document.getElementById(`${mode}_tienda_dropdown_list`);
+        if (!(arrInput instanceof HTMLInputElement) || !(tiendaInput instanceof HTMLInputElement) || !(tiendaList instanceof HTMLElement)) {
+            return;
+        }
+
+        const arrendatarioId = String(arrInput.value || '');
+        const currentValue = String(tiendaInput.value || '');
+        let currentStillAllowed = false;
+        tiendaList.querySelectorAll('.js-searchable-option').forEach((option) => {
+            if (!(option instanceof HTMLButtonElement)) return;
+            const sameTenant = arrendatarioId !== '' && String(option.dataset.arrendatario || '') === arrendatarioId;
+            const optionId = String(option.dataset.value || '');
+            const unavailable = option.dataset.contratoActivo === '1' && optionId !== String(keepTiendaId || '');
+            const visible = sameTenant && !unavailable;
+            option.hidden = !visible;
+            option.classList.toggle('d-none', !visible);
+            if (visible && optionId === currentValue) currentStillAllowed = true;
+        });
+
+        if (!currentStillAllowed) {
+            const placeholder = arrendatarioId === ''
+                ? 'Primero selecciona un arrendatario...'
+                : 'Selecciona una tienda...';
+            resetSearchablePicker(`${mode}_id_tienda`, `${mode}_tienda_dropdown_btn`, placeholder);
+        } else if (tiendaButton instanceof HTMLButtonElement) {
+            const selected = tiendaList.querySelector(`.js-searchable-option[data-value="${CSS.escape(currentValue)}"]`);
+            if (selected instanceof HTMLButtonElement) {
+                tiendaButton.textContent = String(selected.dataset.label || 'Tienda seleccionada');
+            }
+        }
+    };
+
+    const crearArrInput = document.getElementById('crear_id_arrendatario');
+    if (crearArrInput instanceof HTMLInputElement) {
+        crearArrInput.addEventListener('change', () => filterTiendasByArrendatario('crear'));
+    }
+    const editArrInput = document.getElementById('edit_id_arrendatario');
+    if (editArrInput instanceof HTMLInputElement) {
+        editArrInput.addEventListener('change', () => filterTiendasByArrendatario('edit', editCurrentTiendaId));
+    }
+    filterTiendasByArrendatario('crear');
+    filterTiendasByArrendatario('edit');
+
     const crearLocalesPicker = window.MspSearchableMultiSelect
         ? window.MspSearchableMultiSelect.get('crear_local_picker')
         : null;
@@ -1883,10 +2025,8 @@ $fmtFecha = static function (mixed $value): string {
             const fechaInicio = document.getElementById('crear_fecha_inicio');
             if (fechaInicio) fechaInicio.value = hoy;
             selectSearchableValue({ hiddenId: 'crear_id_arrendatario', listId: 'crear_arr_dropdown_list', buttonId: 'crear_arr_dropdown_btn', value: '' });
-            const crearIdTiendaInput = document.getElementById('crear_id_tienda');
-            if (crearIdTiendaInput instanceof HTMLInputElement) {
-                crearIdTiendaInput.value = '';
-            }
+            resetSearchablePicker('crear_id_tienda', 'crear_tienda_dropdown_btn', 'Primero selecciona un arrendatario...');
+            filterTiendasByArrendatario('crear');
             if (crearLocalesPicker) crearLocalesPicker.clear();
             Object.keys(crearArriendoState).forEach((key) => delete crearArriendoState[key]);
             Object.keys(crearGarantiaState).forEach((key) => delete crearGarantiaState[key]);
@@ -1969,14 +2109,32 @@ $fmtFecha = static function (mixed $value): string {
 
     const crearForm = document.querySelector('#modalNuevoContrato form');
     if (crearForm instanceof HTMLFormElement) {
-        crearForm.addEventListener('submit', () => {
+        crearForm.addEventListener('submit', (event) => {
+            const tiendaInput = document.getElementById('crear_id_tienda');
+            if (!(tiendaInput instanceof HTMLInputElement) || String(tiendaInput.value || '') === '') {
+                event.preventDefault();
+                const button = document.getElementById('crear_tienda_dropdown_btn');
+                const error = document.getElementById('crear_tienda_error');
+                if (button instanceof HTMLButtonElement) button.classList.add('is-invalid');
+                if (error instanceof HTMLElement) error.classList.remove('d-none');
+                return;
+            }
             crearForm.querySelectorAll('input[data-money-decimals]').forEach((inputEl) => normalizeMoneyInputForSubmit(inputEl));
         });
     }
 
     const editForm = document.querySelector('#modalEditarContrato form');
     if (editForm instanceof HTMLFormElement) {
-        editForm.addEventListener('submit', () => {
+        editForm.addEventListener('submit', (event) => {
+            const tiendaInput = document.getElementById('edit_id_tienda');
+            if (!(tiendaInput instanceof HTMLInputElement) || String(tiendaInput.value || '') === '') {
+                event.preventDefault();
+                const button = document.getElementById('edit_tienda_dropdown_btn');
+                const error = document.getElementById('edit_tienda_error');
+                if (button instanceof HTMLButtonElement) button.classList.add('is-invalid');
+                if (error instanceof HTMLElement) error.classList.remove('d-none');
+                return;
+            }
             editForm.querySelectorAll('input[data-money-decimals]').forEach((inputEl) => normalizeMoneyInputForSubmit(inputEl));
         });
     }
@@ -1987,11 +2145,10 @@ $fmtFecha = static function (mixed $value): string {
             document.getElementById('edit_id_contrato_arriendo').value = idContrato;
             const idArrendatario = String(btn.dataset.idArrendatario || '');
             const idTienda = String(btn.dataset.idTienda || '');
+            editCurrentTiendaId = idTienda;
             selectSearchableValue({ hiddenId: 'edit_id_arrendatario', listId: 'edit_arr_dropdown_list', buttonId: 'edit_arr_dropdown_btn', value: idArrendatario });
-            const editIdTiendaInput = document.getElementById('edit_id_tienda');
-            if (editIdTiendaInput instanceof HTMLInputElement) {
-                editIdTiendaInput.value = idTienda;
-            }
+            filterTiendasByArrendatario('edit', editCurrentTiendaId);
+            selectSearchableValue({ hiddenId: 'edit_id_tienda', listId: 'edit_tienda_dropdown_list', buttonId: 'edit_tienda_dropdown_btn', value: idTienda });
             document.getElementById('edit_fecha_inicio').value = String(btn.dataset.fechaInicio || '');
             document.getElementById('edit_fecha_termino').value = String(btn.dataset.fechaTermino || '');
             document.getElementById('edit_monto_arriendo').value = String(btn.dataset.montoArriendo || '');

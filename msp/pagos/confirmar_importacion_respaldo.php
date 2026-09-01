@@ -401,6 +401,7 @@ try {
             );
         }
 
+        msp2SyncHistoricalDebtByDocument($conn, $idDocumentoCobro);
         $registrados++;
     }
 

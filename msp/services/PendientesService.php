@@ -205,7 +205,7 @@ final class PendientesService
         foreach ($this->rows(
             'SELECT id_cierre_mensual,periodo_facturacion,valor_uf,estado_cierre,fecha_registro
              FROM dbo.msp_cierre_mensual
-             WHERE estado_cierre IN (1,2) AND (valor_uf IS NULL OR valor_uf<=0)'
+             WHERE estado_cierre IN (1,2,5) AND (valor_uf IS NULL OR valor_uf<=0)'
         ) as $row) {
             $periodo = substr((string) $row['periodo_facturacion'], 0, 7);
             $items[] = $this->item('OPERACION_MENSUAL', 'UF_FALTANTE', self::PRIORIDAD_ALTA,
@@ -240,12 +240,13 @@ final class PendientesService
         foreach ($this->rows(
             "SELECT id_cierre_mensual,periodo_facturacion,estado_cierre,fecha_registro
              FROM dbo.msp_cierre_mensual
-             WHERE estado_cierre=2 AND DATEDIFF(DAY,EOMONTH(periodo_facturacion),CONVERT(date,SYSDATETIME()))>:dias",
+             WHERE estado_cierre IN (2,5) AND DATEDIFF(DAY,EOMONTH(periodo_facturacion),CONVERT(date,SYSDATETIME()))>:dias",
             [':dias' => $diasAtraso]
         ) as $row) {
             $periodo = substr((string) $row['periodo_facturacion'], 0, 7);
             $items[] = $this->item('CIERRE_MENSUAL', 'LISTO_SIN_CERRAR', self::PRIORIDAD_ALTA,
-                'Período calculado sin cerrar', 'El período ' . $periodo . ' continúa abierto después del plazo esperado.', [
+                ((int) $row['estado_cierre'] === 5 ? 'Período revisado sin cerrar' : 'Período calculado sin revisar'),
+                'El período ' . $periodo . ' continúa abierto después del plazo esperado.', [
                     'periodo' => $periodo,
                     'fecha_origen' => $row['fecha_registro'] ?? null,
                     'accion_principal' => 'Revisar cierre',
@@ -273,7 +274,7 @@ final class PendientesService
                     AND m.estado_medidor=1 AND m.fecha_instalacion<=EOMONTH(cm.periodo_facturacion)
                     AND (m.fecha_retiro IS NULL OR m.fecha_retiro>=cm.periodo_facturacion)
                 LEFT JOIN dbo.msp_lecturas_medidores lm ON lm.id_proceso_cobro=p.id_proceso_cobro AND lm.id_medidor=m.id_medidor
-                WHERE cm.estado_cierre IN (1,2)
+                WHERE cm.estado_cierre IN (1,2,5)
                 GROUP BY cm.periodo_facturacion,ts.codigo_servicio,p.id_proceso_cobro
                 HAVING COUNT(DISTINCT lm.id_medidor)<COUNT(DISTINCT m.id_medidor)";
         $items = [];
@@ -534,16 +535,16 @@ final class PendientesService
             $documentos = (int) ($row['documentos_pendientes'] ?? 0);
             $descripcion = $documentos > 0
                 ? 'El contrato está en proceso de cierre y mantiene ' . $documentos . ' documento(s) con saldo pendiente.'
-                : 'El contrato está en proceso de cierre y requiere completar la liquidación financiera.';
-            $items[] = $this->item('CONTRATOS', $documentos > 0 ? 'LIQUIDACION_DEUDA_PENDIENTE' : 'LIQUIDACION_PENDIENTE', self::PRIORIDAD_ALTA,
-                $documentos > 0 ? 'Liquidación con deuda pendiente' : 'Liquidación final pendiente', $descripcion, [
+                : 'El pago ya está completado; falta ejecutar el cierre financiero del contrato.';
+            $items[] = $this->item('CONTRATOS', $documentos > 0 ? 'LIQUIDACION_DEUDA_PENDIENTE' : 'PAGO_COMPLETADO_CIERRE_PENDIENTE', self::PRIORIDAD_ALTA,
+                $documentos > 0 ? 'Liquidación con deuda pendiente' : 'Pago completado: finalizar cierre', $descripcion, [
                     'fecha_origen' => $row['fecha_termino_efectiva'] ?? $row['fecha_registro'] ?? null,
                     'arrendatario' => $row['nombre_locatario'] ?? null,
                     'rut' => $row['rut'] ?? null,
                     'tienda' => $row['nombre_comercial'] ?? null,
                     'contrato' => (int) $row['id_contrato_arriendo'],
                     'cantidad' => max(1, $documentos),
-                    'accion_principal' => 'Abrir liquidación',
+                    'accion_principal' => $documentos > 0 ? 'Abrir liquidación' : 'Finalizar cierre',
                     'url_accion' => 'contratos/liquidacion_final.php?id_contrato_arriendo=' . (int) $row['id_contrato_arriendo'],
                     'entidad_id' => (int) $row['id_contrato_arriendo'],
                 ]);

@@ -19,6 +19,13 @@ if ($idCierre === false || $idCierre === null) {
 }
 
 try {
+    $estadoStmt = $conn->prepare('SELECT estado_cierre FROM dbo.msp_cierre_mensual WHERE id_cierre_mensual = :id');
+    $estadoStmt->execute([':id' => $idCierre]);
+    $estadoActual = $estadoStmt->fetchColumn();
+    if ($estadoActual === false || (int) $estadoActual !== 1) {
+        msp2SetFlash('warning', 'Solo puedes eliminar un cierre en estado Borrador.');
+        msp2Redirect('cierre_mensual/index.php');
+    }
     if (msp2TableExists($conn, 'msp_procesos_cobro_servicio')) {
         $stmt = $conn->prepare('SELECT COUNT(*) FROM dbo.msp_procesos_cobro_servicio WHERE id_cierre_mensual = :id');
         $stmt->bindValue(':id', $idCierre, PDO::PARAM_INT);

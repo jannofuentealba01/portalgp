@@ -880,7 +880,13 @@ function msp2ContratoEstadoBadge(int $estado): string
                                     $nombreTiendaContrato = msp2NormalizeText((string) ($contratoFila['nombre_tienda'] ?? ''));
                                     ?>
                                     <tr>
-                                        <td class="text-start tenant-name"><strong><?php echo msp2Escape($arrendatario['nombre_locatario']); ?></strong></td>
+                                        <td class="text-start tenant-name">
+                                            <strong
+                                                class="tenant-name-text"
+                                                title="<?php echo msp2Escape($arrendatario['nombre_locatario']); ?>">
+                                                <?php echo msp2Escape($arrendatario['nombre_locatario']); ?>
+                                            </strong>
+                                        </td>
                                         <td class="text-start tenant-rut"><?php echo msp2Escape(msp2RutFormatDisplay($arrendatario['rut'])); ?></td>
                                         <td class="text-start tenant-local">
                                             <?php if ($localesContratoFila === []): ?>

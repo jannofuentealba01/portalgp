@@ -104,81 +104,6 @@ function msp2NormalizeNullableText(string $value): ?string
     return $normalized !== '' ? $normalized : null;
 }
 
-function msp2LastInsertedIntId(PDO $conn): int
-{
-    $newId = (int) $conn->lastInsertId();
-    if ($newId > 0) {
-        return $newId;
-    }
-    $scopeStmt = $conn->query('SELECT CAST(SCOPE_IDENTITY() AS INT)');
-    return (int) $scopeStmt->fetchColumn();
-}
-
-function msp2EnsureSimpleCatalogId(PDO $conn, string $tableName, string $idColumn, string $descColumn, string $defaultDesc): int
-{
-    $stmtFindAny = $conn->query(
-        'SELECT TOP (1) ' . $idColumn . '
-         FROM dbo.' . $tableName . '
-         ORDER BY ' . $idColumn . ' ASC'
-    );
-    $id = (int) $stmtFindAny->fetchColumn();
-    if ($id > 0) {
-        return $id;
-    }
-
-    $stmtInsert = $conn->prepare(
-        'INSERT INTO dbo.' . $tableName . ' (' . $descColumn . ')
-         VALUES (:desc)'
-    );
-    $stmtInsert->bindValue(':desc', $defaultDesc, PDO::PARAM_STR);
-    $stmtInsert->execute();
-
-    $id = msp2LastInsertedIntId($conn);
-    if ($id <= 0) {
-        $stmtFindAny = $conn->query(
-            'SELECT TOP (1) ' . $idColumn . '
-             FROM dbo.' . $tableName . '
-             ORDER BY ' . $idColumn . ' ASC'
-        );
-        $id = (int) $stmtFindAny->fetchColumn();
-    }
-    if ($id <= 0) {
-        throw new RuntimeException('No fue posible resolver catálogo `' . $tableName . '`.');
-    }
-    return $id;
-}
-
-function msp2CreateAutoTiendaContrato(PDO $conn, int $idArrendatario, string $fechaInicioIso): int
-{
-    $idRubro = msp2EnsureSimpleCatalogId($conn, 'msp_rubros', 'id_rubro', 'nombre_rubro', 'RUBRO AUTO CONTRATO');
-    $idEstadoTienda = msp2EnsureSimpleCatalogId($conn, 'msp_estado_tiendas', 'id_estado_tienda', 'desc_estado', 'ACTIVA');
-
-    $nombreComercial = 'AUTO-CONTRATO ARR-' . $idArrendatario . ' ' . gmdate('YmdHis');
-    if (mb_strlen($nombreComercial) > 200) {
-        $nombreComercial = mb_substr($nombreComercial, 0, 200);
-    }
-
-    $stmtInsertTienda = $conn->prepare(
-        'INSERT INTO dbo.msp_tiendas
-            (id_rubro, id_arrendatario, id_estado_tienda, nombre_comercial, fecha_inicio)
-         VALUES
-            (:id_rubro, :id_arrendatario, :id_estado_tienda, :nombre_comercial, :fecha_inicio)'
-    );
-    $stmtInsertTienda->bindValue(':id_rubro', $idRubro, PDO::PARAM_INT);
-    $stmtInsertTienda->bindValue(':id_arrendatario', $idArrendatario, PDO::PARAM_INT);
-    $stmtInsertTienda->bindValue(':id_estado_tienda', $idEstadoTienda, PDO::PARAM_INT);
-    $stmtInsertTienda->bindValue(':nombre_comercial', $nombreComercial, PDO::PARAM_STR);
-    $stmtInsertTienda->bindValue(':fecha_inicio', $fechaInicioIso, PDO::PARAM_STR);
-    $stmtInsertTienda->execute();
-
-    $idTienda = msp2LastInsertedIntId($conn);
-    if ($idTienda <= 0) {
-        throw new RuntimeException('No fue posible crear tienda técnica para el contrato.');
-    }
-
-    return $idTienda;
-}
-
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     msp2Redirect('contratos/index.php');
 }
@@ -215,6 +140,10 @@ $garantiaReferenciaRecepcion = '';
 
 if ($idArrendatario === false || $idArrendatario === null) {
     msp2SetFlash('warning', 'Debes seleccionar arrendatario.');
+    msp2ContratosEditarRedirect($idContrato);
+}
+if ($idTienda === false || $idTienda === null) {
+    msp2SetFlash('warning', 'Debes seleccionar una tienda real del arrendatario.');
     msp2ContratosEditarRedirect($idContrato);
 }
 
@@ -362,40 +291,24 @@ try {
         throw new RuntimeException('El arrendatario seleccionado no existe.');
     }
 
-    $tiendaAutogenerada = false;
-    if ($idTienda !== false && $idTienda !== null && $idTienda > 0) {
-        $stmtTienda = $conn->prepare(
-            'SELECT id_arrendatario
-             FROM dbo.msp_tiendas
-             WHERE id_tienda = :id_tienda'
-        );
+    $stmtTienda = $conn->prepare(
+        "SELECT t.id_arrendatario, UPPER(LTRIM(RTRIM(et.desc_estado))) AS estado_tienda, t.fecha_termino
+         FROM dbo.msp_tiendas t
+         INNER JOIN dbo.msp_estado_tiendas et ON et.id_estado_tienda = t.id_estado_tienda
+         WHERE t.id_tienda = :id_tienda"
+    );
         $stmtTienda->bindValue(':id_tienda', $idTienda, PDO::PARAM_INT);
         $stmtTienda->execute();
         $tienda = $stmtTienda->fetch();
         if ($tienda === false) {
             throw new RuntimeException('La tienda seleccionada no existe.');
         }
-        if ((int) ($tienda['id_arrendatario'] ?? 0) !== $idArrendatario) {
-            throw new RuntimeException('El arrendatario no coincide con la tienda seleccionada.');
-        }
-    } elseif ($idArrendatarioOriginal === $idArrendatario && $idTiendaOriginal > 0) {
-        $stmtTiendaOriginal = $conn->prepare(
-            'SELECT id_arrendatario
-             FROM dbo.msp_tiendas
-             WHERE id_tienda = :id_tienda'
-        );
-        $stmtTiendaOriginal->bindValue(':id_tienda', $idTiendaOriginal, PDO::PARAM_INT);
-        $stmtTiendaOriginal->execute();
-        $tiendaOriginal = $stmtTiendaOriginal->fetch();
-        if ($tiendaOriginal !== false && (int) ($tiendaOriginal['id_arrendatario'] ?? 0) === $idArrendatario) {
-            $idTienda = $idTiendaOriginal;
-        } else {
-            $idTienda = msp2CreateAutoTiendaContrato($conn, $idArrendatario, $fechaInicioIso);
-            $tiendaAutogenerada = true;
-        }
-    } else {
-        $idTienda = msp2CreateAutoTiendaContrato($conn, $idArrendatario, $fechaInicioIso);
-        $tiendaAutogenerada = true;
+    if ((int) ($tienda['id_arrendatario'] ?? 0) !== $idArrendatario) {
+        throw new RuntimeException('El arrendatario no coincide con la tienda seleccionada.');
+    }
+    if (in_array((string) ($tienda['estado_tienda'] ?? ''), ['INACTIVO', 'CERRADO'], true)
+        || (!empty($tienda['fecha_termino']) && substr((string) $tienda['fecha_termino'], 0, 10) < date('Y-m-d'))) {
+        throw new RuntimeException('No se puede asignar una tienda inactiva al contrato.');
     }
 
     $stmtContratoActivoOtro = $conn->prepare(
@@ -1057,7 +970,7 @@ try {
             'origen' => 'contratos/actualizar.php',
             'id_tienda' => $idTienda,
             'id_tienda_original' => $idTiendaOriginal,
-            'tienda_autogenerada' => $tiendaAutogenerada,
+            'tienda_seleccionada_explicita' => true,
             'id_arrendatario' => $idArrendatario,
             'locales_seleccionados' => $localesCodigo,
             'locales_agregados' => count($idsLocalesNuevos),

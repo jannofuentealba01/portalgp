@@ -383,8 +383,8 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
     <div class="msp-management-index msp-locals-index">
         <header class="msp-management-page-header msp-locals-page-header">
             <div class="msp-locals-back">
-                <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
+                <a href="<?php echo msp2Escape(msp2Url('locales_tiendas/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a Locales y tiendas
                 </a>
             </div>
             <h1>Locales</h1>

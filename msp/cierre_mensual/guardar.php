@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/CierreMensualService.php';
 
 msp2RequireAccess();
 
@@ -15,9 +16,6 @@ $idCierre = filter_input(INPUT_POST, 'id_cierre_mensual', FILTER_VALIDATE_INT, [
 $periodoRaw = trim((string) ($_POST['periodo'] ?? ''));
 $fechaUfRaw = trim((string) ($_POST['fecha_valor_uf'] ?? ''));
 $valorUfRaw = $_POST['valor_uf'] ?? null;
-$estadoCierre = filter_input(INPUT_POST, 'estado_cierre', FILTER_VALIDATE_INT, [
-    'options' => ['min_range' => 1, 'max_range' => 4],
-]);
 $observaciones = trim((string) ($_POST['observaciones'] ?? ''));
 
 if ($periodoRaw === '') {
@@ -45,11 +43,6 @@ if (!$valorUfValido || $valorUfNormalizado === null) {
     msp2Redirect('cierre_mensual/index.php');
 }
 
-if ($estadoCierre === false || $estadoCierre === null) {
-    msp2SetFlash('warning', 'El estado del cierre no es válido.');
-    msp2Redirect('cierre_mensual/index.php');
-}
-
 try {
     if (!msp2TableExists($conn, 'msp_cierre_mensual')) {
         msp2SetFlash('warning', 'Falta la tabla `msp_cierre_mensual`. Ejecuta `msp/db/msp_cobro_servicios.sql`.');
@@ -57,12 +50,20 @@ try {
     }
 
     if ($idCierre !== null && $idCierre !== false) {
+        $estadoStmt = $conn->prepare('SELECT estado_cierre FROM dbo.msp_cierre_mensual WHERE id_cierre_mensual = :id');
+        $estadoStmt->execute([':id' => $idCierre]);
+        $estadoActual = $estadoStmt->fetchColumn();
+        if ($estadoActual === false) {
+            throw new RuntimeException('El cierre ya no existe.');
+        }
+        if ((int) $estadoActual !== CierreMensualService::BORRADOR) {
+            throw new RuntimeException('Para editar el período primero debes devolverlo a Borrador.');
+        }
         $stmt = $conn->prepare(
             'UPDATE dbo.msp_cierre_mensual
              SET periodo_facturacion = :periodo,
                  fecha_valor_uf = :fecha_uf,
                  valor_uf = :valor_uf,
-                 estado_cierre = :estado,
                  observaciones = :observaciones
              WHERE id_cierre_mensual = :id'
         );
@@ -79,13 +80,15 @@ try {
     $stmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
     $stmt->bindValue(':fecha_uf', $dateUf->format('Y-m-d'), PDO::PARAM_STR);
     $stmt->bindValue(':valor_uf', $valorUfNormalizado, PDO::PARAM_STR);
-    $stmt->bindValue(':estado', $estadoCierre, PDO::PARAM_INT);
+    if ($idCierre === null || $idCierre === false) {
+        $stmt->bindValue(':estado', CierreMensualService::BORRADOR, PDO::PARAM_INT);
+    }
     $stmt->bindValue(':observaciones', $observaciones !== '' ? $observaciones : null, $observaciones !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
     $stmt->execute();
 
     msp2SetFlash('success', $idCierre ? 'Cierre actualizado correctamente.' : 'Cierre creado correctamente.');
-} catch (PDOException $exception) {
-    msp2SetFlash('danger', 'No fue posible guardar el cierre mensual.');
+} catch (Throwable $exception) {
+    msp2SetFlash('danger', $exception instanceof RuntimeException ? $exception->getMessage() : 'No fue posible guardar el cierre mensual.');
 }
 
 msp2Redirect('cierre_mensual/index.php');

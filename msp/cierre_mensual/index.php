@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/CierreMensualService.php';
 
 msp2RequireAccess();
 
@@ -26,12 +27,7 @@ $paginaActual = isset($_GET['pagina']) && is_numeric($_GET['pagina']) ? max(1, (
 $filtroTexto = msp2NormalizeText($_GET['filtroTexto'] ?? null);
 $filtroEstado = trim((string) ($_GET['filtroEstado'] ?? ''));
 
-$estadosCierre = [
-    1 => 'Borrador',
-    2 => 'Calculado',
-    3 => 'Cerrado',
-    4 => 'Anulado',
-];
+$estadosCierre = CierreMensualService::estados();
 
 try {
     if (!msp2TableExists($conn, 'msp_cierre_mensual')) {
@@ -170,6 +166,7 @@ function cierreEstadoBadge(?string $estado): string
     return match ($estadoNormalizado) {
         'borrador' => 'bg-secondary',
         'calculado' => 'bg-info text-dark',
+        'revisado' => 'bg-primary',
         'cerrado' => 'bg-success',
         'anulado' => 'bg-danger',
         default => 'bg-light text-dark',
@@ -254,7 +251,7 @@ function cierreEstadoBadge(?string $estado): string
                             <th>Valor UF</th>
                             <th>Estado</th>
                             <th>Observaciones</th>
-                            <th style="width: 140px;">Acciones</th>
+                            <th style="min-width: 280px;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -280,7 +277,8 @@ function cierreEstadoBadge(?string $estado): string
                                     </td>
                                     <td><?php echo msp2Escape((string) ($row['observaciones'] ?? '')); ?></td>
                                     <td class="text-center">
-                                        <div class="d-flex justify-content-center gap-1">
+                                        <div class="d-flex flex-wrap justify-content-center gap-1">
+                                            <?php if ($estadoId === CierreMensualService::BORRADOR): ?>
                                             <button
                                                 class="btn btn-outline-primary btn-sm js-edit-cierre"
                                                 type="button"
@@ -294,6 +292,28 @@ function cierreEstadoBadge(?string $estado): string
                                                 data-observaciones="<?php echo msp2Escape((string) ($row['observaciones'] ?? '')); ?>">
                                                 <i class="bi bi-pencil" aria-hidden="true"></i>
                                             </button>
+                                            <?php endif; ?>
+                                            <?php if ($estadoId === CierreMensualService::CALCULADO): ?>
+                                                <form method="post" action="<?php echo msp2Escape(msp2Url('cierre_mensual/transicionar.php')); ?>">
+                                                    <input type="hidden" name="id_cierre_mensual" value="<?php echo (int) $row['id_cierre_mensual']; ?>">
+                                                    <input type="hidden" name="estado_esperado" value="2">
+                                                    <input type="hidden" name="estado_destino" value="5">
+                                                    <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check2-square me-1"></i>Revisar</button>
+                                                </form>
+                                            <?php elseif ($estadoId === CierreMensualService::REVISADO): ?>
+                                                <form method="post" action="<?php echo msp2Escape(msp2Url('cierre_mensual/transicionar.php')); ?>" data-confirm-message="¿Cerrar este período revisado?">
+                                                    <input type="hidden" name="id_cierre_mensual" value="<?php echo (int) $row['id_cierre_mensual']; ?>">
+                                                    <input type="hidden" name="estado_esperado" value="5">
+                                                    <input type="hidden" name="estado_destino" value="3">
+                                                    <button class="btn btn-success btn-sm" type="submit"><i class="bi bi-lock me-1"></i>Cerrar</button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <?php if (in_array($estadoId, [2, 3, 4, 5], true)): ?>
+                                                <button class="btn btn-outline-warning btn-sm js-draft-cierre" type="button" data-bs-toggle="modal" data-bs-target="#modalVolverBorrador" data-id="<?php echo (int) $row['id_cierre_mensual']; ?>" data-estado="<?php echo $estadoId; ?>">
+                                                    <i class="bi bi-arrow-counterclockwise me-1"></i>Borrador
+                                                </button>
+                                            <?php endif; ?>
+                                            <?php if ($estadoId === CierreMensualService::BORRADOR): ?>
                                             <form
                                                 method="post"
                                                 action="<?php echo msp2Escape(msp2Url('cierre_mensual/eliminar.php')); ?>"
@@ -306,6 +326,7 @@ function cierreEstadoBadge(?string $estado): string
                                                     <i class="bi bi-trash" aria-hidden="true"></i>
                                                 </button>
                                             </form>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>
@@ -354,16 +375,7 @@ function cierreEstadoBadge(?string $estado): string
                     <label class="form-label">Valor UF</label>
                     <input type="number" step="0.000001" min="0" class="form-control" name="valor_uf" required>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Estado</label>
-                    <select class="form-select" name="estado_cierre" required>
-                        <?php foreach ($estadosCierre as $estadoId => $estadoLabel): ?>
-                            <option value="<?php echo $estadoId; ?>" <?php echo $estadoId === 1 ? 'selected' : ''; ?>>
-                                <?php echo msp2Escape($estadoLabel); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                <div class="alert alert-light border py-2">El período se crea en estado <strong>Borrador</strong>.</div>
                 <div class="mb-0">
                     <label class="form-label">Observaciones</label>
                     <textarea class="form-control" name="observaciones" rows="2" maxlength="1000"></textarea>
@@ -398,16 +410,7 @@ function cierreEstadoBadge(?string $estado): string
                     <label class="form-label">Valor UF</label>
                     <input type="number" step="0.000001" min="0" class="form-control" name="valor_uf" id="edit_valor_uf" required>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Estado</label>
-                    <select class="form-select" name="estado_cierre" id="edit_estado" required>
-                        <?php foreach ($estadosCierre as $estadoId => $estadoLabel): ?>
-                            <option value="<?php echo $estadoId; ?>">
-                                <?php echo msp2Escape($estadoLabel); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                <div class="alert alert-light border py-2">Solo pueden editarse datos de un período en estado <strong>Borrador</strong>.</div>
                 <div class="mb-0">
                     <label class="form-label">Observaciones</label>
                     <textarea class="form-control" name="observaciones" rows="2" maxlength="1000" id="edit_observaciones"></textarea>
@@ -417,6 +420,22 @@ function cierreEstadoBadge(?string $estado): string
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar cambios</button>
             </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="modalVolverBorrador" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('cierre_mensual/transicionar.php')); ?>">
+            <div class="modal-header"><h2 class="modal-title fs-5">Volver a Borrador</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+            <div class="modal-body">
+                <input type="hidden" name="id_cierre_mensual" id="draft_id">
+                <input type="hidden" name="estado_esperado" id="draft_estado">
+                <input type="hidden" name="estado_destino" value="1">
+                <label class="form-label" for="draft_motivo">Motivo del cambio</label>
+                <textarea class="form-control" id="draft_motivo" name="motivo" maxlength="500" rows="3" required></textarea>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-warning" type="submit">Volver a Borrador</button></div>
         </form>
     </div>
 </div>
@@ -479,8 +498,15 @@ function cierreEstadoBadge(?string $estado): string
             document.getElementById('edit_periodo').value = toIsoMonth(button.dataset.periodo || '');
             document.getElementById('edit_fecha_uf').value = toIsoDate(button.dataset.fechaUf || '');
             document.getElementById('edit_valor_uf').value = toNumberInputValue(button.dataset.valorUf || '');
-            document.getElementById('edit_estado').value = button.dataset.estado || '';
             document.getElementById('edit_observaciones').value = button.dataset.observaciones || '';
+        });
+    });
+
+    document.querySelectorAll('.js-draft-cierre').forEach((button) => {
+        button.addEventListener('click', () => {
+            document.getElementById('draft_id').value = button.dataset.id || '';
+            document.getElementById('draft_estado').value = button.dataset.estado || '';
+            document.getElementById('draft_motivo').value = '';
         });
     });
 

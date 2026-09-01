@@ -105,11 +105,19 @@ try {
         }
     }
 
-    $stmtTienda = $conn->prepare('SELECT COUNT(*) FROM dbo.msp_tiendas WHERE id_tienda = :id_tienda');
+    $stmtTienda = $conn->prepare(
+        "SELECT COUNT(*)
+         FROM dbo.msp_tiendas t
+         INNER JOIN dbo.msp_estado_tiendas et
+            ON et.id_estado_tienda = t.id_estado_tienda
+         WHERE t.id_tienda = :id_tienda
+           AND UPPER(LTRIM(RTRIM(et.desc_estado))) NOT IN (N'INACTIVO', N'CERRADO')
+           AND (t.fecha_termino IS NULL OR t.fecha_termino >= CONVERT(date, SYSDATETIME()))"
+    );
     $stmtTienda->bindValue(':id_tienda', $idTienda, PDO::PARAM_INT);
     $stmtTienda->execute();
     if ((int) $stmtTienda->fetchColumn() <= 0) {
-        throw new RuntimeException('La tienda seleccionada ya no existe.');
+        throw new RuntimeException('La tienda seleccionada no existe o se encuentra inactiva.');
     }
 
     $stmtContrato = $conn->prepare(

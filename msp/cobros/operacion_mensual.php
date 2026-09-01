@@ -13,6 +13,7 @@ require_once __DIR__ . '/services/EnvioDemoService.php';
 require_once __DIR__ . '/services/EnvioLotesProgramadosService.php';
 require_once __DIR__ . '/services/DocumentosCobroService.php';
 require_once __DIR__ . '/services/PoolDocumentosPeriodoService.php';
+require_once dirname(__DIR__) . '/services/CierreMensualService.php';
 require_once dirname(__DIR__) . '/templates/components/monto_clp_input.php';
 require_once dirname(__DIR__) . '/templates/components/searchable_select.php';
 
@@ -178,13 +179,7 @@ function omParseMonthToFirstDay(string $periodoYm): ?string
 
 function omCierreEstadoLabel(int $estado): string
 {
-    return match ($estado) {
-        1 => 'Borrador',
-        2 => 'Calculado',
-        3 => 'Cerrado',
-        4 => 'Anulado',
-        default => 'Desconocido',
-    };
+    return CierreMensualService::etiqueta($estado);
 }
 
 function omFetchCierreByPeriodo(PDO $conn, string $periodoFacturacion): ?array
@@ -230,41 +225,11 @@ function omRequirePeriodoBorradorForMutation(PDO $conn, string $periodoFacturaci
     if ($estado === 4) {
         throw new RuntimeException('El período está anulado y no admite recalculo/corrección.');
     }
+    if ($estado === CierreMensualService::REVISADO) {
+        throw new RuntimeException('El período está revisado. Devuélvelo a Borrador e indica el motivo para corregirlo.');
+    }
 
     throw new RuntimeException('El período está en estado Calculado. Reábrelo a Borrador para recalcular.');
-}
-
-function omBuildCierreBitacora(string $accion, ?string $motivo = null): string
-{
-    $base = 'Estado ' . trim($accion) . ' [' . (new DateTimeImmutable('now'))->format('Y-m-d H:i:s') . ']';
-    $motivoNorm = trim((string) $motivo);
-    if ($motivoNorm === '') {
-        return $base;
-    }
-    return $base . ' Motivo: ' . mb_substr($motivoNorm, 0, 300, 'UTF-8');
-}
-
-function omSetCierreEstadoWithBitacora(PDO $conn, int $idCierre, int $estadoDestino, string $bitacora): void
-{
-    $stmt = $conn->prepare(
-        "UPDATE dbo.msp_cierre_mensual
-         SET estado_cierre = :estado,
-             observaciones = LEFT(
-                LTRIM(RTRIM(
-                    CONCAT(
-                        COALESCE(NULLIF(LTRIM(RTRIM(observaciones)), ''), ''),
-                        CASE WHEN COALESCE(NULLIF(LTRIM(RTRIM(observaciones)), ''), '') = '' THEN '' ELSE ' | ' END,
-                        :bitacora
-                    )
-                )),
-                1000
-             )
-         WHERE id_cierre_mensual = :id_cierre"
-    );
-    $stmt->bindValue(':estado', $estadoDestino, PDO::PARAM_INT);
-    $stmt->bindValue(':bitacora', $bitacora, PDO::PARAM_STR);
-    $stmt->bindValue(':id_cierre', $idCierre, PDO::PARAM_INT);
-    $stmt->execute();
 }
 
 function omMarkCierreCalculadoIfBorrador(PDO $conn, int $idCierre): void
@@ -283,7 +248,13 @@ function omMarkCierreCalculadoIfBorrador(PDO $conn, int $idCierre): void
         return;
     }
 
-    omSetCierreEstadoWithBitacora($conn, $idCierre, 2, omBuildCierreBitacora('Calculado'));
+    (new CierreMensualService($conn))->transicionar(
+        $idCierre,
+        CierreMensualService::BORRADOR,
+        CierreMensualService::CALCULADO,
+        'Cálculo de operación mensual completado',
+        isset($_SESSION['usuario']['id']) ? (int) $_SESSION['usuario']['id'] : null
+    );
 }
 
 function omSwitchCierreToBorradorIfCalculado(PDO $conn, int $idCierre, string $motivo = ''): bool
@@ -302,11 +273,12 @@ function omSwitchCierreToBorradorIfCalculado(PDO $conn, int $idCierre, string $m
         return false;
     }
 
-    omSetCierreEstadoWithBitacora(
-        $conn,
+    (new CierreMensualService($conn))->transicionar(
         $idCierre,
-        1,
-        omBuildCierreBitacora('Reabierto temporal a Borrador para generación', $motivo)
+        CierreMensualService::CALCULADO,
+        CierreMensualService::BORRADOR,
+        trim('Reapertura temporal para generación. ' . $motivo),
+        isset($_SESSION['usuario']['id']) ? (int) $_SESSION['usuario']['id'] : null
     );
 
     return true;
@@ -328,11 +300,12 @@ function omRestoreCalculadoIfWasTemporal(PDO $conn, int $idCierre, bool $wasTemp
         return;
     }
 
-    omSetCierreEstadoWithBitacora(
-        $conn,
+    (new CierreMensualService($conn))->transicionar(
         $idCierre,
-        2,
-        omBuildCierreBitacora('Calculado tras generación temporal')
+        CierreMensualService::BORRADOR,
+        CierreMensualService::CALCULADO,
+        'Cálculo restaurado después de generación temporal',
+        isset($_SESSION['usuario']['id']) ? (int) $_SESSION['usuario']['id'] : null
     );
 }
 
@@ -2101,6 +2074,12 @@ if ($tablaExiste) {
 if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $accion = trim((string) ($_POST['accion'] ?? ''));
 
+    if (in_array($accion, ['revisar_periodo', 'cerrar_periodo', 'reabrir_periodo'], true)
+        && !msp2CurrentUserHasPermission('MSP Cierre Mensual')) {
+        msp2SetFlash('danger', 'No tienes permiso para revisar, cerrar o reabrir períodos mensuales.');
+        msp2Redirect(omSelfRoute());
+    }
+
     if ($accion === 'guardar_cierre') {
         $periodoYm = trim((string) ($_POST['periodo'] ?? ''));
         $periodoYmUi = omFmtPeriodoYm($periodoYm);
@@ -2113,9 +2092,6 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             ? $modoCierreRaw
             : (($idCierreForm !== false && $idCierreForm !== null) ? 'edit' : 'create');
         $fechaUf = trim((string) ($_POST['fecha_valor_uf'] ?? ''));
-        $estadoCierre = filter_input(INPUT_POST, 'estado_cierre', FILTER_VALIDATE_INT, [
-            'options' => ['min_range' => 1, 'max_range' => 4],
-        ]);
         $observaciones = trim((string) ($_POST['observaciones'] ?? ''));
 
         if ($periodoFacturacion === null) {
@@ -2135,10 +2111,6 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             omRedirectPeriodoConFoco($periodoYm, 'paso-1');
         }
         $observaciones = mb_substr($observaciones, 0, 1000, 'UTF-8');
-
-        if ($estadoCierre === false || $estadoCierre === null) {
-            $estadoCierre = 1;
-        }
 
         $periodoSaved = false;
 
@@ -2170,23 +2142,23 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     omRedirectPeriodoConFoco($periodoYm, 'paso-1');
                 }
 
+                if ($estadoCierreActual !== CierreMensualService::BORRADOR) {
+                    msp2SetFlash('warning', 'Para modificar los datos del período primero debes devolverlo a Borrador e indicar el motivo.');
+                    omRedirectPeriodoConFoco($periodoYm, 'paso-1');
+                }
+
                 $upd = $conn->prepare(
                     'UPDATE dbo.msp_cierre_mensual
                      SET fecha_valor_uf = :fecha_uf,
                          valor_uf = :valor_uf,
-                         estado_cierre = :estado,
                          observaciones = :obs
                      WHERE id_cierre_mensual = :id'
                 );
                 $upd->bindValue(':id', (int) $idCierreForm, PDO::PARAM_INT);
                 $upd->bindValue(':fecha_uf', $fechaUf, PDO::PARAM_STR);
                 $upd->bindValue(':valor_uf', $valorUf, PDO::PARAM_STR);
-                $upd->bindValue(':estado', $estadoCierreActual, PDO::PARAM_INT);
                 $upd->bindValue(':obs', $observaciones !== '' ? $observaciones : null, $observaciones !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
                 $upd->execute();
-                if ($estadoCierre !== false && $estadoCierre !== null && (int) $estadoCierre !== $estadoCierreActual) {
-                    msp2SetFlash('info', 'El estado del período se administra con las acciones explícitas de Cerrar/Reabrir.');
-                }
                 msp2SetFlash('success', 'Periodo actualizado correctamente.');
                 $periodoSaved = true;
             } else {
@@ -2229,6 +2201,32 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         omRedirectPeriodoConFoco($periodoYm, 'paso-1');
     }
 
+    if ($accion === 'revisar_periodo') {
+        $periodoYm=trim((string)($_POST['periodo']??''));
+        $periodoFacturacion=omParseMonthToFirstDay($periodoYm);
+        if ($periodoFacturacion===null) {
+            msp2SetFlash('warning','Periodo inválido para revisar.');
+            msp2Redirect(omSelfRoute());
+        }
+        try {
+            $cierre=omFetchCierreByPeriodo($conn,$periodoFacturacion);
+            if (!is_array($cierre)) {
+                throw new RuntimeException('El período seleccionado no tiene cierre mensual.');
+            }
+            (new CierreMensualService($conn))->transicionar(
+                (int)$cierre['id_cierre_mensual'],
+                (int)$cierre['estado_cierre'],
+                CierreMensualService::REVISADO,
+                'Revisión manual confirmada',
+                isset($_SESSION['usuario']['id'])?(int)$_SESSION['usuario']['id']:null
+            );
+            msp2SetFlash('success','Período marcado como Revisado. Ya puede cerrarse o volver a Borrador si detectas errores.');
+        } catch (Throwable $e) {
+            msp2SetFlash('danger',$e instanceof RuntimeException?$e->getMessage():'No fue posible revisar el período.');
+        }
+        omRedirectPeriodoConFoco($periodoYm,'paso-1');
+    }
+
     if ($accion === 'cerrar_periodo') {
         $periodoYm = trim((string) ($_POST['periodo'] ?? ''));
         $periodoFacturacion = omParseMonthToFirstDay($periodoYm);
@@ -2245,40 +2243,16 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
             $idCierre = (int) ($cierre['id_cierre_mensual'] ?? 0);
             $estadoActual = (int) ($cierre['estado_cierre'] ?? 0);
-            if ($estadoActual !== 2) {
+            if ($estadoActual !== CierreMensualService::REVISADO) {
                 throw new RuntimeException(
-                    'Solo puedes cerrar un período en estado Calculado. Estado actual: '
+                    'Solo puedes cerrar un período en estado Revisado. Estado actual: '
                     . omCierreEstadoLabel($estadoActual) . '.'
                 );
             }
-
-            $docsCountStmt = $conn->prepare(
-                'SELECT COUNT(*)
-                 FROM dbo.msp_documentos_cobro
-                 WHERE periodo_facturacion = :periodo'
+            (new CierreMensualService($conn))->transicionar(
+                $idCierre,$estadoActual,CierreMensualService::CERRADO,'Cierre mensual confirmado',
+                isset($_SESSION['usuario']['id'])?(int)$_SESSION['usuario']['id']:null
             );
-            $docsCountStmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
-            $docsCountStmt->execute();
-            $docsCount = (int) ($docsCountStmt->fetchColumn() ?: 0);
-
-            $cobrosCountStmt = $conn->prepare(
-                'SELECT COUNT(*)
-                 FROM dbo.msp_cobros_servicios cs
-                 INNER JOIN dbo.msp_lecturas_medidores lm
-                    ON lm.id_lectura = cs.id_lectura
-                 INNER JOIN dbo.msp_procesos_cobro_servicio p
-                    ON p.id_proceso_cobro = lm.id_proceso_cobro
-                 WHERE p.id_cierre_mensual = :id_cierre'
-            );
-            $cobrosCountStmt->bindValue(':id_cierre', $idCierre, PDO::PARAM_INT);
-            $cobrosCountStmt->execute();
-            $cobrosCount = (int) ($cobrosCountStmt->fetchColumn() ?: 0);
-
-            if ($docsCount <= 0 && $cobrosCount <= 0) {
-                throw new RuntimeException('No puedes cerrar un período sin cobros ni documentos generados.');
-            }
-
-            omSetCierreEstadoWithBitacora($conn, $idCierre, 3, omBuildCierreBitacora('Cerrado'));
             msp2SetFlash('success', 'Período cerrado correctamente. El cálculo quedó congelado.');
         } catch (Throwable $e) {
             msp2SetFlash('danger', $e instanceof RuntimeException ? $e->getMessage() : 'No fue posible cerrar el período.');
@@ -2304,25 +2278,19 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
             $idCierre = (int) ($cierre['id_cierre_mensual'] ?? 0);
             $estadoActual = (int) ($cierre['estado_cierre'] ?? 0);
-            if (!in_array($estadoActual, [2, 3, 4], true)) {
+            if (!in_array($estadoActual, [2, 3, 4, 5], true)) {
                 throw new RuntimeException(
-                    'Solo puedes reabrir períodos en estado Calculado, Cerrado o Anulado. Estado actual: '
+                    'Solo puedes devolver a Borrador períodos Calculados, Revisados, Cerrados o Anulados. Estado actual: '
                     . omCierreEstadoLabel($estadoActual) . '.'
                 );
             }
 
-            if ($estadoActual === 4 && $motivoReapertura === '') {
-                throw new RuntimeException('Debes indicar el motivo para restaurar un período anulado.');
+            if ($motivoReapertura === '') {
+                throw new RuntimeException('Debes indicar el motivo para devolver el período a Borrador.');
             }
-
-            omSetCierreEstadoWithBitacora(
-                $conn,
-                $idCierre,
-                1,
-                omBuildCierreBitacora(
-                    $estadoActual === 4 ? 'Restaurado de Anulado a Borrador' : 'Reabierto a Borrador',
-                    $motivoReapertura
-                )
+            (new CierreMensualService($conn))->transicionar(
+                $idCierre,$estadoActual,CierreMensualService::BORRADOR,$motivoReapertura,
+                isset($_SESSION['usuario']['id'])?(int)$_SESSION['usuario']['id']:null
             );
             msp2SetFlash(
                 'success',
@@ -5313,8 +5281,8 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 . ' | omitidos ' . (int) ($resExec['destinatarios_omitidos'] ?? 0) . '.';
             if ($lotesProcesados > 0) {
                 $autoClose = omTryAutoClosePeriodoIfReady($conn, $periodoFacturacion, 'web-manual:ejecutar_lotes_programados');
-                if ((bool) ($autoClose['changed'] ?? false)) {
-                    $msg .= ' Cierre automático aplicado: período movido a Cerrado.';
+                if ((bool) ($autoClose['eligible'] ?? false)) {
+                    $msg .= ' El período está listo para revisión manual; no se cerró automáticamente.';
                 }
             }
             if ($lotesProcesados === 0) {
@@ -5368,8 +5336,8 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 . ' | procesados ' . (int) ($resExec['procesados'] ?? 0)
                 . '/' . (int) ($resExec['total_destinatarios'] ?? 0) . '.';
             $autoClose = omTryAutoClosePeriodoIfReady($conn, $periodoFacturacion, 'web-manual:forzar_lote_programado');
-            if ((bool) ($autoClose['changed'] ?? false)) {
-                $msg .= ' Cierre automático aplicado: período movido a Cerrado.';
+            if ((bool) ($autoClose['eligible'] ?? false)) {
+                $msg .= ' El período está listo para revisión manual; no se cerró automáticamente.';
             }
             msp2SetFlash('success', $msg, ['enable_success_burst' => true]);
         } catch (Throwable $e) {
@@ -5711,7 +5679,7 @@ if ($tablaExiste) {
             if (
                 $selectedCierre !== null
                 && !$hasExplicitStepQuery
-                && (int) ($selectedCierre['estado_cierre'] ?? 0) === 2
+                && in_array((int) ($selectedCierre['estado_cierre'] ?? 0), [2,5], true)
             ) {
                 $activeStep = 6;
             }
@@ -6773,7 +6741,7 @@ if ($selectedCierre !== null && !empty($selectedCierre['fecha_valor_uf'])) {
 } elseif (preg_match('/^\d{4}-\d{2}$/', $periodoNuevoDefaultYm) === 1) {
     $fechaValorUfDefault = $periodoNuevoDefaultYm . '-01';
 }
-$estadosCierre = [1 => 'Borrador', 2 => 'Calculado', 3 => 'Cerrado', 4 => 'Anulado'];
+$estadosCierre = CierreMensualService::estados();
 $hasCreatedPeriods = $periodos !== [];
 $periodoFormMode = $selectedCierre !== null ? 'edit' : 'create';
 if (!$hasCreatedPeriods) {
@@ -6788,8 +6756,10 @@ $periodoInputHelp = $periodoFormMode === 'edit'
     : 'Selecciona el mes que quieres crear.';
 $selectedEstadoCierreId = (int) ($selectedCierre['estado_cierre'] ?? 1);
 $selectedEstadoCierreLabel = omCierreEstadoLabel($selectedEstadoCierreId);
-$canCerrarPeriodo = $selectedCierre !== null && $selectedEstadoCierreId === 2;
-$canReabrirPeriodo = $selectedCierre !== null && in_array($selectedEstadoCierreId, [2, 3, 4], true);
+$canAdministrarCierre = msp2CurrentUserHasPermission('MSP Cierre Mensual');
+$canRevisarPeriodo = $canAdministrarCierre && $selectedCierre !== null && $selectedEstadoCierreId === CierreMensualService::CALCULADO;
+$canCerrarPeriodo = $canAdministrarCierre && $selectedCierre !== null && $selectedEstadoCierreId === CierreMensualService::REVISADO;
+$canReabrirPeriodo = $canAdministrarCierre && $selectedCierre !== null && in_array($selectedEstadoCierreId, [2, 3, 4, 5], true);
 $isPeriodoAnulado = $selectedCierre !== null && $selectedEstadoCierreId === 4;
 $isPeriodoEditableForMutation = $selectedCierre !== null && $selectedEstadoCierreId === 1;
 $isPeriodoGenerableForMutation = $selectedCierre !== null && in_array($selectedEstadoCierreId, [1, 2], true);
@@ -7903,9 +7873,16 @@ if (is_array($stageGenerationSnapshot)) {
                     <?php if ($selectedCierre !== null): ?>
                         <div class="border-top pt-3 mt-3">
                             <div class="small text-muted mb-2">
-                                Flujo recomendado: `Borrador` para editar/calcular, `Calculado` para revisión, `Cerrado` para congelar el período.
+                                Flujo protegido: Borrador → Calculado → Revisado → Cerrado. Desde Calculado o Revisado puedes volver a Borrador indicando el motivo.
                             </div>
                             <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <?php if ($canRevisarPeriodo): ?>
+                                    <form method="post" class="d-flex" data-confirm-message="¿Confirmas que revisaste los cálculos y documentos del período?" data-confirm-title="Marcar período revisado" data-confirm-variant="primary">
+                                        <input type="hidden" name="accion" value="revisar_periodo">
+                                        <input type="hidden" name="periodo" value="<?php echo msp2Escape($periodoActualYm); ?>">
+                                        <button type="submit" class="btn btn-outline-primary"><i class="bi bi-clipboard-check me-1" aria-hidden="true"></i>Marcar como Revisado</button>
+                                    </form>
+                                <?php endif; ?>
                                 <?php if ($canCerrarPeriodo): ?>
                                     <form method="post" class="d-flex">
                                         <input type="hidden" name="accion" value="cerrar_periodo">
@@ -7923,8 +7900,8 @@ if (is_array($stageGenerationSnapshot)) {
                                             class="form-control form-control-sm"
                                             style="max-width:320px;"
                                             maxlength="300"
-                                            placeholder="<?php echo $isPeriodoAnulado ? 'Motivo de restauración (obligatorio)' : 'Motivo de reapertura (opcional)'; ?>"
-                                            <?php echo $isPeriodoAnulado ? 'required' : ''; ?>>
+                                            placeholder="Motivo para volver a Borrador (obligatorio)"
+                                            required>
                                         <button type="submit" class="btn btn-outline-warning btn-sm"><?php echo $isPeriodoAnulado ? 'Restaurar a Borrador' : 'Reabrir a Borrador'; ?></button>
                                     </form>
                                 <?php endif; ?>
@@ -9903,7 +9880,7 @@ if (is_array($stageGenerationSnapshot)) {
                                 </div>
                             </div>
 
-                            <section class="card border-<?php echo $selectedEstadoCierreId === 3 ? 'success' : ($selectedEstadoCierreId === 2 ? 'primary' : 'warning'); ?> mt-3" aria-labelledby="resumen-final-periodo">
+                            <section class="card border-<?php echo $selectedEstadoCierreId === 3 ? 'success' : (in_array($selectedEstadoCierreId,[2,5],true) ? 'primary' : 'warning'); ?> mt-3" aria-labelledby="resumen-final-periodo">
                                 <div class="card-body">
                                     <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3">
                                         <div>
@@ -9912,13 +9889,15 @@ if (is_array($stageGenerationSnapshot)) {
                                                 <?php if ($selectedEstadoCierreId === 3): ?>
                                                     La operación de <?php echo msp2Escape($periodoActualYmUi); ?> está cerrada y congelada.
                                                 <?php elseif ($selectedEstadoCierreId === 2): ?>
-                                                    El cálculo terminó. Revisa este resumen y cierra el período para finalizar la operación.
+                                                    El cálculo terminó. Revisa el resumen y confirma la revisión antes de cerrar.
+                                                <?php elseif ($selectedEstadoCierreId === 5): ?>
+                                                    La revisión fue confirmada. Puedes cerrar el período o volver a Borrador si detectaste un error.
                                                 <?php else: ?>
                                                     La operación todavía no está calculada. Completa los pasos pendientes antes de cerrarla.
                                                 <?php endif; ?>
                                             </p>
                                         </div>
-                                        <span class="badge text-bg-<?php echo $selectedEstadoCierreId === 3 ? 'success' : ($selectedEstadoCierreId === 2 ? 'primary' : 'warning'); ?> fs-6">
+                                        <span class="badge text-bg-<?php echo $selectedEstadoCierreId === 3 ? 'success' : (in_array($selectedEstadoCierreId,[2,5],true) ? 'primary' : 'warning'); ?> fs-6">
                                             <?php echo msp2Escape($selectedEstadoCierreLabel); ?>
                                         </span>
                                     </div>
@@ -9934,7 +9913,13 @@ if (is_array($stageGenerationSnapshot)) {
                                         Los lotes corresponden al envío por correo. Los documentos no enviados u omitidos conservan su cobro y no impiden cerrar el período.
                                     </div>
 
-                                    <?php if ($canCerrarPeriodo): ?>
+                                    <?php if ($canRevisarPeriodo): ?>
+                                        <form method="post" class="d-inline" data-confirm-message="¿Confirmas que revisaste los cálculos y documentos de <?php echo msp2Escape($periodoActualYmUi); ?>?" data-confirm-title="Confirmar revisión" data-confirm-variant="primary">
+                                            <input type="hidden" name="accion" value="revisar_periodo">
+                                            <input type="hidden" name="periodo" value="<?php echo msp2Escape($periodoActualYm); ?>">
+                                            <button type="submit" class="btn btn-primary"><i class="bi bi-clipboard-check me-1" aria-hidden="true"></i>Confirmar revisión</button>
+                                        </form>
+                                    <?php elseif ($canCerrarPeriodo): ?>
                                         <form method="post" class="d-inline" data-confirm-message="Se cerrará el período <?php echo msp2Escape($periodoActualYmUi); ?> y el cálculo quedará congelado. ¿Deseas finalizar la operación mensual?" data-confirm-title="Finalizar operación mensual" data-confirm-variant="success">
                                             <input type="hidden" name="accion" value="cerrar_periodo">
                                             <input type="hidden" name="periodo" value="<?php echo msp2Escape($periodoActualYm); ?>">

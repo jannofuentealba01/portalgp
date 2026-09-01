@@ -501,40 +501,9 @@ function omTryAutoClosePeriodoIfReady(PDO $conn, string $periodoFacturacion, str
         return $base;
     }
 
+    // Los lotes listos habilitan la revisión, pero nunca cierran el período.
     $base['eligible'] = true;
-    $origenNorm = trim($origen);
-    if ($origenNorm === '') {
-        $origenNorm = 'sistema';
-    }
-    $bitacora = 'Estado Cerrado automatico [' . (new DateTimeImmutable('now'))->format('Y-m-d H:i:s') . '] Origen: ' . mb_substr($origenNorm, 0, 120, 'UTF-8');
-
-    $updateStmt = $conn->prepare(
-        "UPDATE dbo.msp_cierre_mensual
-         SET estado_cierre = 3,
-             observaciones = LEFT(
-                LTRIM(RTRIM(
-                    CONCAT(
-                        COALESCE(NULLIF(LTRIM(RTRIM(observaciones)), ''), ''),
-                        CASE WHEN COALESCE(NULLIF(LTRIM(RTRIM(observaciones)), ''), '') = '' THEN '' ELSE ' | ' END,
-                        :bitacora
-                    )
-                )),
-                1000
-             )
-         WHERE id_cierre_mensual = :id_cierre
-           AND estado_cierre = 2"
-    );
-    $updateStmt->bindValue(':bitacora', $bitacora, PDO::PARAM_STR);
-    $updateStmt->bindValue(':id_cierre', $idCierre, PDO::PARAM_INT);
-    $updateStmt->execute();
-
-    if ($updateStmt->rowCount() > 0) {
-        $base['changed'] = true;
-        $base['reason'] = 'cerrado_auto';
-        return $base;
-    }
-
-    $base['reason'] = 'sin_cambio';
+    $base['reason'] = 'requiere_revision_manual';
     return $base;
 }
 

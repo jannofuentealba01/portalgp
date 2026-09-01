@@ -235,7 +235,8 @@ try {
         && msp2TableExists($conn, 'msp_cobros_servicios')
         && msp2TableExists($conn, 'msp_lecturas_medidores')
         && msp2TableExists($conn, 'msp_medidores')
-        && msp2TableExists($conn, 'msp_locales');
+        && msp2TableExists($conn, 'msp_locales')
+        && msp2TableExists($conn, 'msp_contrato_locales');
 } catch (PDOException $exception) {
     $tablaExiste = false;
     $loadError = 'No fue posible validar la estructura base del Dashboard.';
@@ -247,10 +248,6 @@ if ($tablaExiste) {
             ':periodo_inicio' => $fechaInicioPeriodoDashboard,
             ':periodo_fin' => $fechaTerminoPeriodoDashboard,
         ];
-        $pagosParams = [
-            ':fecha_pago_inicio' => $filtroFechaInicio,
-            ':fecha_pago_fin' => $filtroFechaTermino,
-        ];
         $documentosWhere = 'dc.periodo_facturacion >= :periodo_inicio AND dc.periodo_facturacion <= :periodo_fin';
 
         $stmtKpi = $conn->prepare(
@@ -259,20 +256,25 @@ if ($tablaExiste) {
                     p.id_documento_cobro,
                     SUM(CASE WHEN p.estado_pago = 1 THEN p.monto_pagado ELSE 0 END) AS total_pagado
                 FROM dbo.msp_pagos p
-                WHERE p.fecha_pago >= :fecha_pago_inicio
-                  AND p.fecha_pago <= :fecha_pago_fin
+                WHERE p.fecha_pago <= :fecha_pago_fin
                 GROUP BY p.id_documento_cobro
             ),
             docs_filtrados AS (
                 SELECT
                     dc.id_documento_cobro,
-                    t.id_arrendatario,
+                    COALESCE(c.id_arrendatario, t.id_arrendatario) AS id_arrendatario,
                     dc.monto_total,
-                    dc.saldo_pendiente,
+                    CASE
+                        WHEN dc.monto_total-ISNULL(pd.total_pagado,0)>0
+                        THEN dc.monto_total-ISNULL(pd.total_pagado,0)
+                        ELSE 0
+                    END AS saldo_pendiente,
                     ISNULL(pd.total_pagado, 0) AS total_pagado
                 FROM dbo.msp_documentos_cobro dc
                 INNER JOIN dbo.msp_tiendas t
                     ON t.id_tienda = dc.id_tienda
+                LEFT JOIN dbo.msp_contratos_arriendo c
+                    ON c.id_contrato_arriendo = dc.id_contrato_arriendo
                 LEFT JOIN pagos_doc pd
                     ON pd.id_documento_cobro = dc.id_documento_cobro
                 WHERE {$documentosWhere}
@@ -291,14 +293,14 @@ if ($tablaExiste) {
                 ISNULL(SUM(df.monto_total), 0) AS facturado,
                 ISNULL(SUM(df.total_pagado), 0) AS cobrado,
                 ISNULL(SUM(df.saldo_pendiente), 0) AS saldo,
-                ISNULL(SUM(CASE WHEN da.saldo_arrendatario <= 0 THEN 1 ELSE 0 END), 0) AS arrendatarios_al_dia,
-                ISNULL(SUM(CASE WHEN da.saldo_arrendatario > 0 THEN 1 ELSE 0 END), 0) AS arrendatarios_con_deuda
+                COUNT(DISTINCT CASE WHEN da.saldo_arrendatario <= 0 THEN da.id_arrendatario END) AS arrendatarios_al_dia,
+                COUNT(DISTINCT CASE WHEN da.saldo_arrendatario > 0 THEN da.id_arrendatario END) AS arrendatarios_con_deuda
             FROM docs_filtrados df
             LEFT JOIN deuda_arr da
                 ON da.id_arrendatario = df.id_arrendatario"
         );
 
-        foreach (array_merge($documentosParams, $pagosParams) as $key => $value) {
+        foreach (array_merge($documentosParams, [':fecha_pago_fin' => $filtroFechaTermino]) as $key => $value) {
             $stmtKpi->bindValue($key, $value, PDO::PARAM_STR);
         }
         $stmtKpi->execute();
@@ -373,19 +375,29 @@ if ($tablaExiste) {
         }
 
         $stmtVencidos = $conn->prepare(
-            "SELECT
+            "WITH pagos_doc AS (
+                SELECT p.id_documento_cobro,
+                       SUM(CASE WHEN p.estado_pago=1 THEN p.monto_pagado ELSE 0 END) AS total_pagado
+                FROM dbo.msp_pagos p
+                WHERE p.fecha_pago<=:fecha_corte_pago_vencido
+                GROUP BY p.id_documento_cobro
+             )
+             SELECT
                 COUNT(*) AS documentos_vencidos,
-                ISNULL(SUM(dc.saldo_pendiente), 0) AS monto_vencido
+                ISNULL(SUM(CASE WHEN dc.monto_total-ISNULL(pd.total_pagado,0)>0
+                                THEN dc.monto_total-ISNULL(pd.total_pagado,0) ELSE 0 END), 0) AS monto_vencido
              FROM dbo.msp_documentos_cobro dc
+             LEFT JOIN pagos_doc pd ON pd.id_documento_cobro=dc.id_documento_cobro
              WHERE {$documentosWhere}
                AND dc.estado_documento <> 5
-               AND ISNULL(dc.saldo_pendiente, 0) > 0.005
+               AND dc.monto_total-ISNULL(pd.total_pagado,0) > 0.005
                AND dc.fecha_vencimiento < :fecha_corte"
         );
         foreach ($documentosParams as $key => $value) {
             $stmtVencidos->bindValue($key, $value, PDO::PARAM_STR);
         }
         $stmtVencidos->bindValue(':fecha_corte', $fechaCorteDashboard, PDO::PARAM_STR);
+        $stmtVencidos->bindValue(':fecha_corte_pago_vencido', $fechaCorteDashboard, PDO::PARAM_STR);
         $stmtVencidos->execute();
         $vencidosRow = $stmtVencidos->fetch() ?: [];
         $operacionKpi['documentos_vencidos'] = (int) ($vencidosRow['documentos_vencidos'] ?? 0);
@@ -397,25 +409,27 @@ if ($tablaExiste) {
                     p.id_documento_cobro,
                     SUM(CASE WHEN p.estado_pago = 1 THEN p.monto_pagado ELSE 0 END) AS total_pagado
                 FROM dbo.msp_pagos p
-                WHERE p.fecha_pago >= :fecha_pago_inicio
-                  AND p.fecha_pago <= :fecha_pago_fin
+                WHERE p.fecha_pago <= :fecha_pago_fin
                 GROUP BY p.id_documento_cobro
             )
             SELECT
                 t.id_tienda,
                 COALESCE(NULLIF(dc.nombre_tienda_snapshot, ''), NULLIF(t.nombre_comercial, ''), CONCAT(N'Tienda #', t.id_tienda)) AS nombre_tienda,
-                t.id_arrendatario,
+                COALESCE(c.id_arrendatario, t.id_arrendatario) AS id_arrendatario,
                 COALESCE(NULLIF(a.nombre_locatario, ''), NULLIF(a.nombre_representante, ''), a.rut, CONCAT(N'Arrendatario #', a.id_arrendatario)) AS nombre_arrendatario,
                 a.rut,
                 COUNT(*) AS cantidad_documentos,
                 ROUND(SUM(dc.monto_total), 2) AS monto_facturado,
                 ROUND(SUM(ISNULL(pd.total_pagado, 0)), 2) AS monto_cobrado,
-                ROUND(SUM(dc.saldo_pendiente), 2) AS monto_saldo
+                ROUND(SUM(CASE WHEN dc.monto_total-ISNULL(pd.total_pagado,0)>0
+                               THEN dc.monto_total-ISNULL(pd.total_pagado,0) ELSE 0 END), 2) AS monto_saldo
             FROM dbo.msp_documentos_cobro dc
             INNER JOIN dbo.msp_tiendas t
                 ON t.id_tienda = dc.id_tienda
+            LEFT JOIN dbo.msp_contratos_arriendo c
+                ON c.id_contrato_arriendo = dc.id_contrato_arriendo
             INNER JOIN dbo.msp_arrendatarios a
-                ON a.id_arrendatario = t.id_arrendatario
+                ON a.id_arrendatario = COALESCE(c.id_arrendatario, t.id_arrendatario)
             LEFT JOIN pagos_doc pd
                 ON pd.id_documento_cobro = dc.id_documento_cobro
             WHERE {$documentosWhere}
@@ -423,13 +437,13 @@ if ($tablaExiste) {
             GROUP BY
                 t.id_tienda,
                 COALESCE(NULLIF(dc.nombre_tienda_snapshot, ''), NULLIF(t.nombre_comercial, ''), CONCAT(N'Tienda #', t.id_tienda)),
-                t.id_arrendatario,
+                COALESCE(c.id_arrendatario, t.id_arrendatario),
                 COALESCE(NULLIF(a.nombre_locatario, ''), NULLIF(a.nombre_representante, ''), a.rut, CONCAT(N'Arrendatario #', a.id_arrendatario)),
                 a.rut
             ORDER BY nombre_tienda ASC"
         );
 
-        foreach (array_merge($documentosParams, $pagosParams) as $key => $value) {
+        foreach (array_merge($documentosParams, [':fecha_pago_fin' => $filtroFechaTermino]) as $key => $value) {
             $stmtTiendas->bindValue($key, $value, PDO::PARAM_STR);
         }
         $stmtTiendas->execute();
@@ -441,7 +455,9 @@ if ($tablaExiste) {
                 "WITH docs_filtrados AS (
                     SELECT
                         dc.id_documento_cobro,
-                        dc.id_tienda
+                        dc.id_tienda,
+                        dc.id_contrato_arriendo,
+                        dc.periodo_facturacion
                     FROM dbo.msp_documentos_cobro dc
                     WHERE {$documentosWhere}
                       AND dc.estado_documento <> 5
@@ -454,7 +470,7 @@ if ($tablaExiste) {
                         dcd.subtotal,
                         COALESCE(
                             loc.cdo_local,
-                            parseo.cdo_local,
+                            contrato_local.cdo_local,
                             N'SIN LOCAL'
                         ) AS cdo_local
                     FROM docs_filtrados df
@@ -462,48 +478,6 @@ if ($tablaExiste) {
                         ON dcd.id_documento_cobro = df.id_documento_cobro
                     INNER JOIN dbo.msp_tipo_item_documento tid
                         ON tid.id_tipo_item_documento = dcd.id_tipo_item_documento
-                    OUTER APPLY (
-                        SELECT
-                            CASE
-                                WHEN tid.codigo_item = N'ARRIENDO'
-                                 AND dcd.descripcion_item LIKE N'Arriendo local %'
-                                    THEN LTRIM(SUBSTRING(dcd.descripcion_item, LEN(N'Arriendo local ') + 1, 200))
-                                WHEN CHARINDEX(N' local ', dcd.descripcion_item) > 0
-                                    THEN LTRIM(RTRIM(
-                                        CASE
-                                            WHEN CHARINDEX(
-                                                N':',
-                                                SUBSTRING(
-                                                    dcd.descripcion_item,
-                                                    CHARINDEX(N' local ', dcd.descripcion_item) + LEN(N' local '),
-                                                    200
-                                                )
-                                            ) > 0
-                                                THEN LEFT(
-                                                    SUBSTRING(
-                                                        dcd.descripcion_item,
-                                                        CHARINDEX(N' local ', dcd.descripcion_item) + LEN(N' local '),
-                                                        200
-                                                    ),
-                                                    CHARINDEX(
-                                                        N':',
-                                                        SUBSTRING(
-                                                            dcd.descripcion_item,
-                                                            CHARINDEX(N' local ', dcd.descripcion_item) + LEN(N' local '),
-                                                            200
-                                                        )
-                                                    ) - 1
-                                                )
-                                            ELSE SUBSTRING(
-                                                dcd.descripcion_item,
-                                                CHARINDEX(N' local ', dcd.descripcion_item) + LEN(N' local '),
-                                                200
-                                            )
-                                        END
-                                    ))
-                                ELSE NULL
-                            END AS cdo_local
-                    ) parseo
                     LEFT JOIN dbo.msp_cobros_servicios cs
                         ON cs.id_cobro_servicio = dcd.id_cobro_servicio
                     LEFT JOIN dbo.msp_lecturas_medidores lm
@@ -512,6 +486,15 @@ if ($tablaExiste) {
                         ON m.id_medidor = lm.id_medidor
                     LEFT JOIN dbo.msp_locales loc
                         ON loc.id_local = m.id_local
+                    OUTER APPLY (
+                        SELECT CASE WHEN COUNT(DISTINCT cl.id_local)=1 THEN MAX(lcl.cdo_local) END AS cdo_local
+                        FROM dbo.msp_contrato_locales cl
+                        INNER JOIN dbo.msp_locales lcl ON lcl.id_local=cl.id_local
+                        WHERE cl.id_contrato_arriendo=df.id_contrato_arriendo
+                          AND cl.estado_relacion IN (1,2)
+                          AND cl.fecha_inicio<=EOMONTH(df.periodo_facturacion)
+                          AND (cl.fecha_termino IS NULL OR cl.fecha_termino>=df.periodo_facturacion)
+                    ) contrato_local
                 )
                 SELECT
                     db.id_tienda,
@@ -777,52 +760,13 @@ if ($tablaExiste) {
                 detalle_servicios AS (
                     SELECT
                         dp.bloque,
-                        COALESCE(loc.cdo_local, parseo.cdo_local, N'SIN LOCAL') AS cdo_local,
+                        COALESCE(loc.cdo_local, N'SIN LOCAL') AS cdo_local,
                         dcd.subtotal
                     FROM docs_periodo dp
                     INNER JOIN dbo.msp_documentos_cobro_detalle dcd
                         ON dcd.id_documento_cobro = dp.id_documento_cobro
                     INNER JOIN dbo.msp_tipo_item_documento tid
                         ON tid.id_tipo_item_documento = dcd.id_tipo_item_documento
-                    OUTER APPLY (
-                        SELECT
-                            CASE
-                                WHEN CHARINDEX(N' local ', dcd.descripcion_item) > 0
-                                    THEN LTRIM(RTRIM(
-                                        CASE
-                                            WHEN CHARINDEX(
-                                                N':',
-                                                SUBSTRING(
-                                                    dcd.descripcion_item,
-                                                    CHARINDEX(N' local ', dcd.descripcion_item) + LEN(N' local '),
-                                                    200
-                                                )
-                                            ) > 0
-                                                THEN LEFT(
-                                                    SUBSTRING(
-                                                        dcd.descripcion_item,
-                                                        CHARINDEX(N' local ', dcd.descripcion_item) + LEN(N' local '),
-                                                        200
-                                                    ),
-                                                    CHARINDEX(
-                                                        N':',
-                                                        SUBSTRING(
-                                                            dcd.descripcion_item,
-                                                            CHARINDEX(N' local ', dcd.descripcion_item) + LEN(N' local '),
-                                                            200
-                                                        )
-                                                    ) - 1
-                                                )
-                                            ELSE SUBSTRING(
-                                                dcd.descripcion_item,
-                                                CHARINDEX(N' local ', dcd.descripcion_item) + LEN(N' local '),
-                                                200
-                                            )
-                                        END
-                                    ))
-                                ELSE NULL
-                            END AS cdo_local
-                    ) parseo
                     LEFT JOIN dbo.msp_cobros_servicios cs
                         ON cs.id_cobro_servicio = dcd.id_cobro_servicio
                     LEFT JOIN dbo.msp_lecturas_medidores lm
@@ -873,8 +817,7 @@ if ($tablaExiste) {
                     p.id_documento_cobro,
                     SUM(CASE WHEN p.estado_pago = 1 THEN p.monto_pagado ELSE 0 END) AS total_pagado
                 FROM dbo.msp_pagos p
-                WHERE p.fecha_pago >= :fecha_pago_inicio
-                  AND p.fecha_pago <= :fecha_pago_fin
+                WHERE p.fecha_pago <= :fecha_pago_fin
                 GROUP BY p.id_documento_cobro
             )
             SELECT
@@ -893,7 +836,7 @@ if ($tablaExiste) {
                 dc.id_documento_cobro DESC"
         );
 
-        foreach (array_merge($documentosParams, $pagosParams) as $key => $value) {
+        foreach (array_merge($documentosParams, [':fecha_pago_fin' => $filtroFechaTermino]) as $key => $value) {
             $stmtDocsLinks->bindValue($key, $value, PDO::PARAM_STR);
         }
         $stmtDocsLinks->execute();
@@ -912,55 +855,70 @@ if ($tablaExiste) {
         }
 
             $stmtHistorial = $conn->prepare(
-            "WITH pagos_doc AS (
-                SELECT
-                    p.id_documento_cobro,
-                    SUM(CASE WHEN p.estado_pago = 1 THEN p.monto_pagado ELSE 0 END) AS total_pagado
-                FROM dbo.msp_pagos p
-                WHERE p.fecha_pago >= :fecha_pago_inicio
-                  AND p.fecha_pago <= :fecha_pago_fin
-                GROUP BY p.id_documento_cobro
+            "WITH docs_hist AS (
+                SELECT dc.id_documento_cobro,dc.id_tienda,dc.id_contrato_arriendo,
+                       dc.periodo_facturacion,dc.monto_total
+                FROM dbo.msp_documentos_cobro dc
+                WHERE dc.periodo_facturacion>=:hist_periodo_inicio
+                  AND dc.periodo_facturacion<=:hist_periodo_fin
+                  AND dc.estado_documento<>5
+            ), pagos_doc AS (
+                SELECT dh.id_documento_cobro,
+                       SUM(CASE WHEN p.estado_pago=1 THEN p.monto_pagado ELSE 0 END) AS total_pagado
+                FROM docs_hist dh
+                LEFT JOIN dbo.msp_pagos p
+                  ON p.id_documento_cobro=dh.id_documento_cobro
+                 AND p.fecha_pago<=EOMONTH(dh.periodo_facturacion)
+                GROUP BY dh.id_documento_cobro
             )
             SELECT
                 dc.periodo_facturacion,
                 ISNULL(SUM(dc.monto_total), 0) AS monto_facturado,
                 ISNULL(SUM(ISNULL(pd.total_pagado, 0)), 0) AS monto_cobrado,
-                ISNULL(SUM(dc.saldo_pendiente), 0) AS monto_saldo,
+                ISNULL(SUM(CASE WHEN dc.monto_total-ISNULL(pd.total_pagado,0)>0
+                                THEN dc.monto_total-ISNULL(pd.total_pagado,0) ELSE 0 END), 0) AS monto_saldo,
                 COUNT(*) AS cantidad_documentos,
-                COUNT(DISTINCT t.id_arrendatario) AS cantidad_arrendatarios
-            FROM dbo.msp_documentos_cobro dc
+                COUNT(DISTINCT COALESCE(c.id_arrendatario,t.id_arrendatario)) AS cantidad_arrendatarios
+            FROM docs_hist dc
             INNER JOIN dbo.msp_tiendas t
                 ON t.id_tienda = dc.id_tienda
+            LEFT JOIN dbo.msp_contratos_arriendo c
+                ON c.id_contrato_arriendo=dc.id_contrato_arriendo
             LEFT JOIN pagos_doc pd
                 ON pd.id_documento_cobro = dc.id_documento_cobro
-            WHERE dc.periodo_facturacion >= :hist_periodo_inicio
-              AND dc.periodo_facturacion <= :hist_periodo_fin
-              AND dc.estado_documento <> 5
             GROUP BY dc.periodo_facturacion
             ORDER BY dc.periodo_facturacion DESC"
         );
 
-        foreach ($pagosParams as $key => $value) {
-            $stmtHistorial->bindValue($key, $value, PDO::PARAM_STR);
-        }
         $stmtHistorial->bindValue(':hist_periodo_inicio', $fechaInicioChartDashboard, PDO::PARAM_STR);
         $stmtHistorial->bindValue(':hist_periodo_fin', $fechaTerminoChartDashboard, PDO::PARAM_STR);
         $stmtHistorial->execute();
         $historialMensual = $stmtHistorial->fetchAll();
 
         $stmtTopDeudores = $conn->prepare(
-            "SELECT TOP 5
+            "WITH pagos_doc AS (
+                SELECT p.id_documento_cobro,
+                       SUM(CASE WHEN p.estado_pago=1 THEN p.monto_pagado ELSE 0 END) AS total_pagado
+                FROM dbo.msp_pagos p
+                WHERE p.fecha_pago<=:fecha_corte_top
+                GROUP BY p.id_documento_cobro
+             )
+             SELECT TOP 5
                 t.id_tienda,
                 COALESCE(NULLIF(dc.nombre_tienda_snapshot, ''), NULLIF(t.nombre_comercial, ''), CONCAT(N'Tienda #', t.id_tienda)) AS nombre_tienda,
                 COALESCE(NULLIF(a.nombre_locatario, ''), NULLIF(a.nombre_representante, ''), a.rut, CONCAT(N'Arrendatario #', a.id_arrendatario)) AS nombre_arrendatario,
                 a.rut,
                 COUNT(*) AS cantidad_documentos,
-                ROUND(SUM(dc.saldo_pendiente), 2) AS saldo_pendiente
+                ROUND(SUM(CASE WHEN dc.monto_total-ISNULL(pd.total_pagado,0)>0
+                               THEN dc.monto_total-ISNULL(pd.total_pagado,0) ELSE 0 END), 2) AS saldo_pendiente
              FROM dbo.msp_documentos_cobro dc
              INNER JOIN dbo.msp_tiendas t
                 ON t.id_tienda = dc.id_tienda
+             LEFT JOIN dbo.msp_contratos_arriendo c
+                ON c.id_contrato_arriendo=dc.id_contrato_arriendo
              INNER JOIN dbo.msp_arrendatarios a
-                ON a.id_arrendatario = t.id_arrendatario
+                ON a.id_arrendatario=COALESCE(c.id_arrendatario,t.id_arrendatario)
+             LEFT JOIN pagos_doc pd ON pd.id_documento_cobro=dc.id_documento_cobro
              WHERE {$documentosWhere}
                AND dc.estado_documento <> 5
              GROUP BY
@@ -968,12 +926,16 @@ if ($tablaExiste) {
                 COALESCE(NULLIF(dc.nombre_tienda_snapshot, ''), NULLIF(t.nombre_comercial, ''), CONCAT(N'Tienda #', t.id_tienda)),
                 COALESCE(NULLIF(a.nombre_locatario, ''), NULLIF(a.nombre_representante, ''), a.rut, CONCAT(N'Arrendatario #', a.id_arrendatario)),
                 a.rut
-             HAVING SUM(dc.saldo_pendiente) > 0.005
-             ORDER BY SUM(dc.saldo_pendiente) DESC, COUNT(*) DESC, nombre_tienda ASC"
+             HAVING SUM(CASE WHEN dc.monto_total-ISNULL(pd.total_pagado,0)>0
+                             THEN dc.monto_total-ISNULL(pd.total_pagado,0) ELSE 0 END)>0.005
+             ORDER BY SUM(CASE WHEN dc.monto_total-ISNULL(pd.total_pagado,0)>0
+                               THEN dc.monto_total-ISNULL(pd.total_pagado,0) ELSE 0 END) DESC,
+                      COUNT(*) DESC,nombre_tienda ASC"
         );
         foreach ($documentosParams as $key => $value) {
             $stmtTopDeudores->bindValue($key, $value, PDO::PARAM_STR);
         }
+        $stmtTopDeudores->bindValue(':fecha_corte_top', $fechaCorteDashboard, PDO::PARAM_STR);
         $stmtTopDeudores->execute();
         $topDeudores = $stmtTopDeudores->fetchAll();
 

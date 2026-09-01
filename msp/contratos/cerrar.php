@@ -8,7 +8,7 @@ msp2RequireAccess();
 function msp2ContratosCerrarRedirectFromPost(): never
 {
     $redirectTo = trim((string) ($_POST['redirect_to'] ?? ''));
-    $allowed = ['deuda_garantia/index.php', 'tiendas/index.php', 'contratos/index.php'];
+    $allowed = ['deuda_garantia/index.php', 'tiendas/index.php', 'contratos/index.php', 'cierre/index.php'];
     $allowContratoEditar = preg_match('/^contratos\/(editar|ficha)\.php\?id_contrato_arriendo=[1-9][0-9]*$/', $redirectTo) === 1;
 
     if (!in_array($redirectTo, $allowed, true) && !$allowContratoEditar) {

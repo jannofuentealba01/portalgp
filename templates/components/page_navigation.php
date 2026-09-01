@@ -158,7 +158,7 @@ echo json_encode($gpPageNavigation, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNIC
                 label: String(item.label || '').trim(),
                 url: String(item.url || '').trim(),
                 current: false
-            })).filter((item) => item.label !== '');
+            })).filter((item) => item.label !== '' && item.url !== '');
             const currentPath = `/portalgp/${String(metadata.current || '').replace(/^\/+/, '')}`;
             const currentLabel = (heading.textContent || '').replace(/\s+/g, ' ').trim();
             const matchingIndex = items.findIndex((item) => {

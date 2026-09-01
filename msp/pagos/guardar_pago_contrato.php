@@ -146,7 +146,7 @@ function msp2PcFetchDocumentosDeudaContrato(PDO $conn, int $idContratoArriendo):
                 WHERE ca.id_tienda = dc.id_tienda
                   AND ca.fecha_inicio <= EOMONTH(dc.periodo_facturacion)
                   AND $condicionTerminoContrato
-                  AND ca.estado_contrato IN (1,2,3)
+                  AND ca.estado_contrato IN (1,2,3,4)
                   $condicionExisteLocal
                 ORDER BY ca.fecha_inicio DESC, ca.id_contrato_arriendo DESC
             ) contrato_vigente
@@ -545,6 +545,8 @@ try {
     $stmtOperacionTotales->bindValue(':id_pago_contrato_operacion', $idPagoContratoOperacion, PDO::PARAM_INT);
     $stmtOperacionTotales->execute();
 
+    msp2SyncHistoricalDebt($conn, (int) $idContratoArriendo);
+
     if ($enTransaccion && $conn->inTransaction()) {
         $conn->commit();
         $enTransaccion = false;
@@ -629,7 +631,7 @@ try {
                     AND ca_loc.id_tienda = dc.id_tienda
                     AND ca_loc.fecha_inicio <= EOMONTH(dc.periodo_facturacion)
                     AND (ca_loc.fecha_termino_efectiva IS NULL OR ca_loc.fecha_termino_efectiva >= dc.periodo_facturacion)
-                    AND ca_loc.estado_contrato IN (1,2,3)
+                    AND ca_loc.estado_contrato IN (1,2,3,4)
                    )
                 ORDER BY ca_loc.fecha_inicio DESC, ca_loc.id_contrato_arriendo DESC
              ) contrato_vigente

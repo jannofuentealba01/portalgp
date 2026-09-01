@@ -597,8 +597,8 @@ function msp2CargoEstadoBadge(int $estado): string
     <div class="msp-management-index msp-stores-index">
         <header class="msp-management-page-header msp-stores-page-header">
             <div class="msp-stores-back">
-                <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
+                <a href="<?php echo msp2Escape(msp2Url('locales_tiendas/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a Locales y tiendas
                 </a>
             </div>
             <h1>Tiendas</h1>
@@ -698,6 +698,8 @@ function msp2CargoEstadoBadge(int $estado): string
                                 $contratoData = $contratosPorTienda[$idTienda] ?? null;
                                 $cargosTienda = $cargosPorTienda[$idTienda] ?? [];
                                 $cantidadCargosTienda = count($cargosTienda);
+                                $estadoTiendaNormalizado = strtoupper(trim((string) ($tienda['desc_estado'] ?? '')));
+                                $tiendaDesactivada = in_array($estadoTiendaNormalizado, ['INACTIVO', 'CERRADO'], true);
                                 ?>
                                 <tr>
                                     <td><?php echo (($paginaActual - 1) * $lineasPorPagina) + $index + 1; ?></td>
@@ -725,7 +727,7 @@ function msp2CargoEstadoBadge(int $estado): string
                                                     title="Ver ficha del contrato">
                                                     <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
                                                 </a>
-                                            <?php else: ?>
+                                            <?php elseif (!$tiendaDesactivada): ?>
                                                 <a
                                                     href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>"
                                                     class="btn btn-outline-primary btn-sm"
@@ -733,7 +735,7 @@ function msp2CargoEstadoBadge(int $estado): string
                                                     <i class="bi bi-plus-square" aria-hidden="true"></i>
                                                 </a>
                                             <?php endif; ?>
-                                            <?php if ($moduloCargosHabilitado): ?>
+                                            <?php if ($moduloCargosHabilitado && !$tiendaDesactivada): ?>
                                                 <button
                                                     type="button"
                                                     class="btn btn-outline-warning btn-sm js-cargo-tienda"
@@ -744,6 +746,8 @@ function msp2CargoEstadoBadge(int $estado): string
                                                     aria-label="Registrar cargo en <?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>">
                                                     <i class="bi bi-cash-coin" aria-hidden="true"></i>
                                                 </button>
+                                            <?php endif; ?>
+                                            <?php if ($moduloCargosHabilitado): ?>
                                                 <button
                                                     type="button"
                                                     class="btn btn-outline-dark btn-sm js-ver-cargos-tienda"
@@ -771,21 +775,34 @@ function msp2CargoEstadoBadge(int $estado): string
                                                 aria-label="Editar tienda <?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>">
                                                 <i class="bi bi-pencil" aria-hidden="true"></i>
                                             </button>
-                                            <form
-                                                method="post"
-                                                action="<?php echo msp2Escape(msp2Url('tiendas/eliminar.php')); ?>"
-                                                class="d-inline"
-                                                data-confirm-message="¿Eliminar la tienda &quot;<?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>&quot;?"
-                                                data-confirm-title="Confirmar eliminación"
-                                                data-confirm-variant="danger">
-                                                <input type="hidden" name="id_tienda" value="<?php echo $idTienda; ?>">
+                                            <?php if (!$tiendaDesactivada): ?>
+                                                <form
+                                                    method="post"
+                                                    action="<?php echo msp2Escape(msp2Url('tiendas/desactivar.php')); ?>"
+                                                    class="d-inline"
+                                                    data-confirm-message="¿Desactivar la tienda &quot;<?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>&quot;? Su información histórica se conservará."
+                                                    data-confirm-title="Confirmar desactivación"
+                                                    data-confirm-variant="warning">
+                                                    <?php msp2CsrfField(); ?>
+                                                    <input type="hidden" name="id_tienda" value="<?php echo $idTienda; ?>">
+                                                    <button
+                                                        type="submit"
+                                                        class="btn btn-outline-warning btn-sm"
+                                                        title="Desactivar tienda"
+                                                        aria-label="Desactivar tienda <?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>">
+                                                        <i class="bi bi-toggle-off" aria-hidden="true"></i>
+                                                    </button>
+                                                </form>
+                                            <?php else: ?>
                                                 <button
-                                                    type="submit"
-                                                    class="btn btn-outline-danger btn-sm"
-                                                    aria-label="Eliminar tienda <?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>">
-                                                    <i class="bi bi-trash" aria-hidden="true"></i>
+                                                    type="button"
+                                                    class="btn btn-outline-secondary btn-sm"
+                                                    title="Tienda inactiva"
+                                                    aria-label="Tienda inactiva <?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>"
+                                                    disabled>
+                                                    <i class="bi bi-toggle-off" aria-hidden="true"></i>
                                                 </button>
-                                            </form>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                     <td class="store-contract">

@@ -1169,8 +1169,16 @@ table.table-compact th {
 
 .msp-tenants-table .tenant-name {
   width: 25%;
-  min-width: 220px;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+}
+.msp-tenants-table .tenant-name-text {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .msp-tenants-table .tenant-rut,
 .msp-tenants-table .tenant-contract,
@@ -2572,6 +2580,59 @@ a.gp-page-back {
 /* El reporte integral prioriza métricas y tabla; la explicación ya es implícita. */
 .gp-page-msp-garantias-reporte-php .gp-page-commandbar__title > p {
   display: none !important;
+}
+
+/* Control integral de garantías: once columnas visibles sin desplazamiento
+   horizontal en escritorio. La información extensa queda disponible al posar
+   el cursor y las acciones conservan el patrón compacto de iconos. */
+.gp-module-msp .msp-guarantees-report { overflow-x: hidden; }
+.gp-module-msp .msp-guarantees-table-wrap { width: 100%; overflow-x: hidden; }
+.gp-module-msp .msp-guarantees-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
+  font-size: .76rem;
+}
+.gp-module-msp .msp-guarantees-table th,
+.gp-module-msp .msp-guarantees-table td {
+  min-width: 0 !important;
+  padding: .34rem .28rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.gp-module-msp .msp-guarantees-table th { font-size: .7rem; }
+.gp-module-msp .msp-guarantees-table th:nth-child(1) { width: 17%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(2) { width: 6%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(n+3):nth-child(-n+9) { width: 7.3%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(10) { width: 14%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(11) { width: 11.9%; }
+.gp-module-msp .msp-guarantees-table .cell-ellipsis {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.gp-module-msp .msp-guarantees-table .money {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+.gp-module-msp .msp-guarantees-actions {
+  display: flex;
+  justify-content: center;
+  gap: .2rem;
+  white-space: nowrap;
+}
+.gp-module-msp .msp-guarantees-actions .btn {
+  width: 28px;
+  min-width: 28px;
+  padding-inline: 0 !important;
+}
+
+@media (max-width: 991.98px) {
+  .gp-module-msp .msp-guarantees-table-wrap { overflow-x: auto; }
+  .gp-module-msp .msp-guarantees-table { min-width: 1050px !important; }
 }
 
 /* En la barra compacta, los ancestros y el título forman una sola línea.

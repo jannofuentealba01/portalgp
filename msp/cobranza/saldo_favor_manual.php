@@ -1280,8 +1280,8 @@ foreach ($saldoFavorOptionRows as $optionRow) {
 <main class="gp-main d-flex align-items-center justify-content-center p-4">
     <div class="box-container-wide">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2" data-gp-commandbar>
-            <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1"></i>Volver al menú MSP
+            <a href="<?php echo msp2Escape(msp2Url('cobranza/ajustes.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1"></i>Volver a Ajustes de cobranza
             </a>
             <div>
                 <p class="section-kicker text-center mb-0">MSP / Cobranza</p>

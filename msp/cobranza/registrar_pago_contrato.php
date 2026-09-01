@@ -90,7 +90,7 @@ function rpcFetchContratosConDeuda(PDO $conn): array
                 WHERE ca.id_tienda = dc.id_tienda
                   AND ca.fecha_inicio <= EOMONTH(dc.periodo_facturacion)
                   AND $condicionTerminoContrato
-                  AND ca.estado_contrato IN (1,2,3)
+                  AND ca.estado_contrato IN (1,2,3,4)
                   $condicionExisteLocal
                 ORDER BY ca.fecha_inicio DESC, ca.id_contrato_arriendo DESC
             ) contrato_vigente
@@ -212,7 +212,7 @@ function rpcFetchDocumentosDeudaContrato(PDO $conn, int $idContratoArriendo): ar
                 WHERE ca.id_tienda = dc.id_tienda
                   AND ca.fecha_inicio <= EOMONTH(dc.periodo_facturacion)
                   AND $condicionTerminoContrato
-                  AND ca.estado_contrato IN (1,2,3)
+                  AND ca.estado_contrato IN (1,2,3,4)
                   $condicionExisteLocal
                 ORDER BY ca.fecha_inicio DESC, ca.id_contrato_arriendo DESC
             ) contrato_vigente

@@ -148,8 +148,8 @@ function msp2EstadoMedidorBadgeCatalog(?string $estado): string
 <main class="gp-main d-flex align-items-center justify-content-center p-4">
     <div class="box-container-wide">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-            <a href="<?php echo msp2Escape(msp2Url('catalogo_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a catálogos
+            <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
             </a>
             <div class="d-flex flex-wrap gap-2">
                 <a href="<?php echo msp2Escape(msp2Url('medidores/plantilla.php')); ?>" class="btn btn-success btn-sm">

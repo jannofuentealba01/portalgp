@@ -564,8 +564,8 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
     <div class="msp-management-index msp-extra-charges-index">
         <header class="msp-management-page-header msp-extra-charges-page-header">
             <div class="msp-extra-charges-back">
-                <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
+                <a href="<?php echo msp2Escape(msp2Url('cobranza/ajustes.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a Ajustes de cobranza
                 </a>
             </div>
             <h1>Cargos Extra</h1>

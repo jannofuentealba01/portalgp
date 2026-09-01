@@ -72,7 +72,7 @@ function rpcImportFetchDocumentosDeudaContrato(PDO $conn, int $idContratoArriend
                 WHERE ca.id_tienda = dc.id_tienda
                   AND ca.fecha_inicio <= EOMONTH(dc.periodo_facturacion)
                   AND $condicionTerminoContrato
-                  AND ca.estado_contrato IN (1,2,3)
+                  AND ca.estado_contrato IN (1,2,3,4)
                   $condicionExisteLocal
                 ORDER BY ca.fecha_inicio DESC, ca.id_contrato_arriendo DESC
             ) contrato_vigente
@@ -238,6 +238,7 @@ try {
                 throw new RuntimeException('No fue posible aplicar el pago en documentos del contrato.');
             }
 
+            msp2SyncHistoricalDebt($conn, $idContrato);
             $conn->commit();
             $okRows++;
             $totalAplicado = round($totalAplicado + $montoAplicadoFila, 2);

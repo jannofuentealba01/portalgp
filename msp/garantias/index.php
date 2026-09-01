@@ -154,7 +154,7 @@ try {
     <?php endif; ?>
 
     <div class="row g-3 mb-4">
-        <div class="col-lg-3">
+        <div class="col-xl col-md-6">
             <div class="card garantia-option-card border-0 shadow-sm h-100"><div class="card-body d-flex flex-column">
                 <div class="garantia-option-icon bg-success-subtle text-success mb-3"><i class="bi bi-shield-plus"></i></div>
                 <h2 class="h5">Recepción de garantías</h2>
@@ -162,7 +162,7 @@ try {
                 <a class="btn btn-success" href="<?php echo msp2Escape(msp2Url('garantias/recepciones.php')); ?>">Ingresar a recepción</a>
             </div></div>
         </div>
-        <div class="col-lg-3">
+        <div class="col-xl col-md-6">
             <div class="card garantia-option-card border-0 shadow-sm h-100"><div class="card-body d-flex flex-column">
                 <div class="garantia-option-icon bg-primary-subtle text-primary mb-3"><i class="bi bi-bank"></i></div>
                 <h2 class="h5">Control diario de tesorería</h2>
@@ -170,7 +170,7 @@ try {
                 <div class="d-grid gap-2"><a class="btn btn-primary" href="<?php echo msp2Escape(msp2Url('tesoreria/control_diario.php')); ?>">Ingresar a tesorería</a><a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('tesoreria/conciliacion.php')); ?>">Conciliación y cierre</a></div>
             </div></div>
         </div>
-        <div class="col-lg-3">
+        <div class="col-xl col-md-6">
             <div class="card garantia-option-card border-0 shadow-sm h-100"><div class="card-body d-flex flex-column">
                 <div class="garantia-option-icon bg-danger-subtle text-danger mb-3"><i class="bi bi-arrow-return-left"></i></div>
                 <h2 class="h5">Devolución de garantías</h2>
@@ -178,7 +178,7 @@ try {
                 <a class="btn btn-danger" href="<?php echo msp2Escape(msp2Url('garantias/devoluciones.php')); ?>">Ingresar a devoluciones</a>
             </div></div>
         </div>
-        <div class="col-lg-3">
+        <div class="col-xl col-md-6">
             <div class="card garantia-option-card border-0 shadow-sm h-100"><div class="card-body d-flex flex-column">
                 <div class="garantia-option-icon bg-warning-subtle text-warning-emphasis mb-3"><i class="bi bi-shield-check"></i></div>
                 <h2 class="h5">Aplicación contra cargos</h2>
@@ -186,6 +186,16 @@ try {
                 <a class="btn btn-warning" href="<?php echo msp2Escape(msp2Url('garantias/aplicaciones.php')); ?>">Gestionar aplicaciones</a>
             </div></div>
         </div>
+        <?php if (msp2CurrentUserHasPermission('MSP Reportes')): ?>
+        <div class="col-xl col-md-6">
+            <div class="card garantia-option-card border-0 shadow-sm h-100"><div class="card-body d-flex flex-column">
+                <div class="garantia-option-icon bg-info-subtle text-info-emphasis mb-3"><i class="bi bi-clipboard-data"></i></div>
+                <h2 class="h5">Control integral de garantías</h2>
+                <p class="text-muted flex-grow-1">Consultar montos pactados, recibidos, disponibles, reservados, aplicados y devueltos, junto con sus alertas.</p>
+                <a class="btn btn-info" href="<?php echo msp2Escape(msp2Url('garantias/reporte.php')); ?>">Ingresar al control</a>
+            </div></div>
+        </div>
+        <?php endif; ?>
     </div>
 
 

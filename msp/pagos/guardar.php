@@ -343,6 +343,8 @@ try {
         }
     }
 
+    msp2SyncHistoricalDebtByDocument($conn, (int) $idDocumentoCobro);
+
     if ($enTransaccion) {
         $conn->commit();
         $enTransaccion = false;

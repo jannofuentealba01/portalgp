@@ -151,6 +151,8 @@ PRINT '==== MSP install: patch gestion bandeja global de pendientes ====';
 
 PRINT '==== MSP install: patch gestion operacional de cobranza ====';
 :r $(MSP_DB_DIR)\patch_gestion_cobranza_operacional.sql
+:r $(MSP_DB_DIR)\patch_cierre_mensual_transiciones.sql
+:r $(MSP_DB_DIR)\patch_permisos_msp_por_funcion.sql
 :r \patch_convenios_pago_cuotas.sql
 
 PRINT '==== MSP install: patch correcciones selectivas ====';

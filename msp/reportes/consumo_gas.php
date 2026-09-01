@@ -489,8 +489,8 @@ if ($periodoValido) {
     <div class="gas-report-shell">
         <header class="gas-report-header">
             <div class="gas-report-back">
-            <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
+            <a href="<?php echo msp2Escape(msp2Url('dashboard/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al Dashboard
             </a>
             </div>
             <h1>Consumo mensual de gas</h1>

@@ -8,9 +8,18 @@ $flash = msp2PullFlash();
 $loadError = null;
 $tablaExiste = false;
 
-$filtroPeriodo = trim((string) ($_GET['periodo'] ?? 'all'));
-if ($filtroPeriodo !== 'all' && preg_match('/^\d{4}-\d{2}$/', $filtroPeriodo) !== 1) {
-    $filtroPeriodo = 'all';
+$periodoLegacy = trim((string) ($_GET['periodo'] ?? ''));
+$periodoDesde = trim((string) ($_GET['periodo_desde'] ?? ''));
+$periodoHasta = trim((string) ($_GET['periodo_hasta'] ?? ''));
+if ($periodoDesde === '' && preg_match('/^\d{4}-\d{2}$/', $periodoLegacy) === 1) {
+    $periodoDesde = $periodoLegacy;
+    $periodoHasta = $periodoLegacy;
+}
+if (preg_match('/^\d{4}-\d{2}$/', $periodoDesde) !== 1) {
+    $periodoDesde = '';
+}
+if (preg_match('/^\d{4}-\d{2}$/', $periodoHasta) !== 1) {
+    $periodoHasta = '';
 }
 
 $hoy = date('Y-m-d');
@@ -28,6 +37,10 @@ $filas = [];
 $detallePorGrupo = [];
 $localesPorArrendatario = [];
 $localesPorDocumento = [];
+$periodosMatriz = [];
+$matrizPorArrendatario = [];
+$totalesPeriodo = [];
+$totalMatriz = 0.0;
 
 function agFmtMonto(mixed $v): string
 {
@@ -51,6 +64,15 @@ function agFmtFecha(?string $value): string
     }
 
     return $parsed->format('d-m-Y');
+}
+
+function agFmtPeriodo(string $periodo): string
+{
+    $meses = [1 => 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    if (preg_match('/^(\d{4})-(\d{2})$/', $periodo, $m) !== 1) {
+        return $periodo;
+    }
+    return ($meses[(int) $m[2]] ?? $m[2]) . ' ' . $m[1];
 }
 
 function agLocalSortTuple(string $raw): array
@@ -133,23 +155,33 @@ if ($tablaExiste) {
              ORDER BY periodo_ym DESC"
         )->fetchAll(PDO::FETCH_COLUMN);
 
-        if ($filtroPeriodo !== 'all' && !in_array($filtroPeriodo, $periodosDisponibles, true)) {
-            $filtroPeriodo = 'all';
-        }
-
-        if ($filtroPeriodo !== 'all') {
-            $dtCorteMes = DateTimeImmutable::createFromFormat('Y-m-d', $filtroPeriodo . '-01');
-            $corteDocumentos = $dtCorteMes ? $dtCorteMes->modify('last day of this month')->format('Y-m-d') : $hoy;
+        if ($periodosDisponibles !== []) {
+            $periodosAsc = array_reverse(array_values($periodosDisponibles));
+            if ($periodoHasta === '' || !in_array($periodoHasta, $periodosDisponibles, true)) {
+                $periodoHasta = (string) $periodosDisponibles[0];
+            }
+            if ($periodoDesde === '' || !in_array($periodoDesde, $periodosDisponibles, true)) {
+                $hastaIndex = array_search($periodoHasta, $periodosAsc, true);
+                $desdeIndex = max(0, (int) $hastaIndex - 5);
+                $periodoDesde = (string) $periodosAsc[$desdeIndex];
+            }
+            if ($periodoDesde > $periodoHasta) {
+                [$periodoDesde, $periodoHasta] = [$periodoHasta, $periodoDesde];
+            }
         } else {
-            $corteDocumentos = $corteAging;
+            $periodoDesde = date('Y-m', strtotime('-5 months'));
+            $periodoHasta = date('Y-m');
         }
 
-        $wherePeriodo = '1=1';
-        $paramsBase = [':corte_documentos' => $corteDocumentos];
-        if ($filtroPeriodo !== 'all') {
-            $wherePeriodo = 'dc.periodo_facturacion = :periodo';
-            $paramsBase[':periodo'] = $filtroPeriodo . '-01';
-        }
+        $dtCorteMes = DateTimeImmutable::createFromFormat('Y-m-d', $periodoHasta . '-01');
+        $corteDocumentos = $dtCorteMes ? $dtCorteMes->modify('last day of this month')->format('Y-m-d') : $corteAging;
+
+        $wherePeriodo = 'dc.periodo_facturacion >= :periodo_desde AND dc.periodo_facturacion < DATEADD(MONTH, 1, :periodo_hasta)';
+        $paramsBase = [
+            ':corte_documentos' => $corteDocumentos,
+            ':periodo_desde' => $periodoDesde . '-01',
+            ':periodo_hasta' => $periodoHasta . '-01',
+        ];
 
         $sqlBase =
             "FROM dbo.msp_documentos_cobro dc
@@ -242,6 +274,55 @@ if ($tablaExiste) {
             }
             $detallePorGrupo[$arrId][] = $d;
         }
+
+        $stmtMatriz = $conn->prepare(
+            "SELECT
+                a.id_arrendatario,
+                COALESCE(NULLIF(a.nombre_locatario, ''), NULLIF(a.nombre_representante, ''), a.rut, CONCAT(N'Arrendatario #', a.id_arrendatario)) AS nombre_arrendatario,
+                a.rut,
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
+                COUNT(*) AS docs,
+                ROUND(SUM(dc.saldo_pendiente), 2) AS saldo_periodo
+             {$sqlBase}
+             GROUP BY
+                a.id_arrendatario,
+                a.nombre_locatario,
+                a.nombre_representante,
+                a.rut,
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126)
+             HAVING ROUND(SUM(dc.saldo_pendiente), 2) > 0
+             ORDER BY periodo_ym ASC, nombre_arrendatario ASC"
+        );
+        foreach ($paramsBase as $k => $v) {
+            $stmtMatriz->bindValue($k, $v, PDO::PARAM_STR);
+        }
+        $stmtMatriz->execute();
+        foreach ($stmtMatriz->fetchAll() as $rowMatriz) {
+            $arrId = (int) ($rowMatriz['id_arrendatario'] ?? 0);
+            $periodoYm = (string) ($rowMatriz['periodo_ym'] ?? '');
+            $saldoPeriodo = (float) ($rowMatriz['saldo_periodo'] ?? 0);
+            if ($arrId <= 0 || preg_match('/^\d{4}-\d{2}$/', $periodoYm) !== 1 || $saldoPeriodo <= 0) {
+                continue;
+            }
+            $periodosMatriz[$periodoYm] = $periodoYm;
+            if (!isset($matrizPorArrendatario[$arrId])) {
+                $matrizPorArrendatario[$arrId] = [
+                    'id_arrendatario' => $arrId,
+                    'nombre_arrendatario' => (string) ($rowMatriz['nombre_arrendatario'] ?? ''),
+                    'rut' => (string) ($rowMatriz['rut'] ?? ''),
+                    'periodos' => [],
+                    'docs' => 0,
+                    'total' => 0.0,
+                ];
+            }
+            $matrizPorArrendatario[$arrId]['periodos'][$periodoYm] = $saldoPeriodo;
+            $matrizPorArrendatario[$arrId]['docs'] += (int) ($rowMatriz['docs'] ?? 0);
+            $matrizPorArrendatario[$arrId]['total'] += $saldoPeriodo;
+            $totalesPeriodo[$periodoYm] = ($totalesPeriodo[$periodoYm] ?? 0.0) + $saldoPeriodo;
+            $totalMatriz += $saldoPeriodo;
+        }
+        ksort($periodosMatriz);
+        $periodosMatriz = array_values($periodosMatriz);
 
         $docIds = [];
         $arrIds = [];
@@ -347,6 +428,21 @@ if ($tablaExiste) {
                 }
             );
         }
+        if ($matrizPorArrendatario !== []) {
+            uasort(
+                $matrizPorArrendatario,
+                static function (array $a, array $b) use ($localesPorArrendatario): int {
+                    $arrA = (int) ($a['id_arrendatario'] ?? 0);
+                    $arrB = (int) ($b['id_arrendatario'] ?? 0);
+                    $firstA = (string) ($localesPorArrendatario[$arrA][0] ?? 'ZZZ');
+                    $firstB = (string) ($localesPorArrendatario[$arrB][0] ?? 'ZZZ');
+                    $cmpLocal = agLocalSortCompare($firstA, $firstB);
+                    return $cmpLocal !== 0
+                        ? $cmpLocal
+                        : strcasecmp((string) ($a['nombre_arrendatario'] ?? ''), (string) ($b['nombre_arrendatario'] ?? ''));
+                }
+            );
+        }
     } catch (PDOException $e) {
         $loadError = 'No fue posible cargar Aging. Detalle: ' . $e->getMessage();
     }
@@ -435,6 +531,16 @@ if ($tablaExiste) {
             white-space: nowrap;
             vertical-align: bottom;
         }
+        .cxp-matrix-wrap { overflow-x: auto; }
+        .cxp-matrix { min-width: 760px; table-layout: fixed; }
+        .cxp-matrix th, .cxp-matrix td { white-space: nowrap; vertical-align: middle; }
+        .cxp-matrix .cxp-tenant { width: 290px; white-space: normal; }
+        .cxp-matrix .cxp-period { width: 125px; }
+        .cxp-matrix .cxp-total { width: 145px; }
+        .cxp-balance-link { color: #0f3f78; font-weight: 600; text-decoration: none; }
+        .cxp-balance-link:hover { text-decoration: underline; }
+        .cxp-zero { color: #94a3b8; }
+        .cxp-matrix tfoot td { background: #eaf1f9; font-weight: 700; }
         @media (max-width: 992px) {
             .ag-table-wrap, .ag-subtable-wrap { overflow-x: auto; }
             .ag-table, .ag-subtable { min-width: 850px !important; }
@@ -451,12 +557,12 @@ if ($tablaExiste) {
             <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>">Volver al menú MSP</a>
             <div>
                 <p class="section-kicker text-center mb-0">MSP / Contabilidad</p>
-                <h1 class="form-title text-center mb-0">Aging de Deudores</h1>
+                <h1 class="form-title text-center mb-0">Cuentas por Cobrar y Aging</h1>
             </div>
             <span aria-hidden="true"></span>
         </div>
 
-        <p class="text-muted text-center mb-3">Cartera vencida por tramos de atraso, con resumen y detalle por documento.</p>
+        <p class="text-muted text-center mb-3">Saldo actual por arrendatario y período, con clasificación por antigüedad.</p>
 
         <?php msp2RenderFlash($flash); ?>
         <?php if ($loadError !== null): ?><div class="alert alert-danger"><?php echo msp2Escape($loadError); ?></div><?php endif; ?>
@@ -465,24 +571,21 @@ if ($tablaExiste) {
             <div class="card shadow-sm mb-3">
                 <div class="card-body">
                     <form class="row g-2 align-items-end" method="get">
-                        <div class="col-12 col-md-3">
-                            <label class="form-label" for="periodo">Periodo</label>
-                            <select class="form-select" name="periodo" id="periodo">
-                                <option value="all" <?php echo $filtroPeriodo === 'all' ? 'selected' : ''; ?>>Todos</option>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label" for="periodo_desde">Desde</label>
+                            <select class="form-select" name="periodo_desde" id="periodo_desde">
                                 <?php foreach ($periodosDisponibles as $p): ?>
-                                    <option value="<?php echo msp2Escape((string) $p); ?>" <?php echo $filtroPeriodo === $p ? 'selected' : ''; ?>><?php echo msp2Escape((string) $p); ?></option>
+                                    <option value="<?php echo msp2Escape((string) $p); ?>" <?php echo $periodoDesde === $p ? 'selected' : ''; ?>><?php echo msp2Escape(agFmtPeriodo((string) $p)); ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-12 col-md-3">
-                            <label class="form-label" for="corte_documentos">Fecha corte documentos</label>
-                            <input
-                                class="form-control"
-                                type="date"
-                                name="corte_documentos"
-                                id="corte_documentos"
-                                value="<?php echo msp2Escape($corteDocumentos); ?>"
-                                readonly>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label" for="periodo_hasta">Hasta</label>
+                            <select class="form-select" name="periodo_hasta" id="periodo_hasta">
+                                <?php foreach ($periodosDisponibles as $p): ?>
+                                    <option value="<?php echo msp2Escape((string) $p); ?>" <?php echo $periodoHasta === $p ? 'selected' : ''; ?>><?php echo msp2Escape(agFmtPeriodo((string) $p)); ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                         <div class="col-12 col-md-3">
                             <label class="form-label" for="corte_aging">Aging al día</label>
@@ -499,7 +602,7 @@ if ($tablaExiste) {
                         <div class="col-12 col-md-auto">
                             <?php
                                 $pdfParams = [
-                                    'periodo' => $filtroPeriodo,
+                                    'periodo' => $periodoDesde === $periodoHasta ? $periodoDesde : 'all',
                                     'corte_documentos' => $corteDocumentos,
                                     'corte_aging' => $corteAging,
                                 ];
@@ -515,6 +618,66 @@ if ($tablaExiste) {
                     </form>
                 </div>
             </div>
+
+            <section class="card shadow-sm mb-3" aria-labelledby="cxp-matrix-title">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 border-bottom">
+                    <div>
+                        <h2 class="h6 mb-0" id="cxp-matrix-title">Cuenta por cobrar por arrendatario y período</h2>
+                        <small class="text-muted">Solo se muestran saldos actualmente pendientes.</small>
+                    </div>
+                    <span class="badge text-bg-primary"><?php echo count($matrizPorArrendatario); ?> arrendatarios</span>
+                </div>
+                <div class="table-responsive cxp-matrix-wrap">
+                    <table class="table table-sm table-hover mb-0 cxp-matrix" style="min-width: <?php echo 435 + (count($periodosMatriz) * 125); ?>px;">
+                        <thead>
+                            <tr>
+                                <th class="cxp-tenant">Arrendatario</th>
+                                <?php foreach ($periodosMatriz as $periodoYm): ?>
+                                    <th class="text-end cxp-period"><?php echo msp2Escape(agFmtPeriodo($periodoYm)); ?></th>
+                                <?php endforeach; ?>
+                                <th class="text-end cxp-total">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($matrizPorArrendatario === []): ?>
+                                <tr><td colspan="<?php echo count($periodosMatriz) + 2; ?>" class="text-center text-muted py-3">No hay cuentas por cobrar en el rango seleccionado.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($matrizPorArrendatario as $arrId => $rowMatriz): ?>
+                                    <tr>
+                                        <td class="cxp-tenant">
+                                            <div class="fw-semibold text-truncate" title="<?php echo msp2Escape((string) $rowMatriz['nombre_arrendatario']); ?>"><?php echo msp2Escape((string) $rowMatriz['nombre_arrendatario']); ?></div>
+                                            <small class="text-muted"><?php echo msp2Escape(msp2RutFormatDisplay((string) $rowMatriz['rut'])); ?></small>
+                                        </td>
+                                        <?php foreach ($periodosMatriz as $periodoYm): ?>
+                                            <?php $saldoPeriodo = (float) ($rowMatriz['periodos'][$periodoYm] ?? 0); ?>
+                                            <td class="text-end">
+                                                <?php if ($saldoPeriodo > 0): ?>
+                                                    <?php $detalleUrl = msp2Url('documentos_cobro/index.php?' . http_build_query(['id_arrendatario' => (int) $arrId, 'filtroPeriodo' => $periodoYm])); ?>
+                                                    <a class="cxp-balance-link" href="<?php echo msp2Escape($detalleUrl); ?>" title="Ver documentos pendientes"><?php echo msp2Escape(agFmtMonto($saldoPeriodo)); ?></a>
+                                                <?php else: ?>
+                                                    <span class="cxp-zero">—</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        <?php endforeach; ?>
+                                        <td class="text-end fw-bold"><?php echo msp2Escape(agFmtMonto($rowMatriz['total'])); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                        <?php if ($matrizPorArrendatario !== []): ?>
+                            <tfoot>
+                                <tr>
+                                    <td>Total período</td>
+                                    <?php foreach ($periodosMatriz as $periodoYm): ?>
+                                        <td class="text-end"><?php echo msp2Escape(agFmtMonto($totalesPeriodo[$periodoYm] ?? 0)); ?></td>
+                                    <?php endforeach; ?>
+                                    <td class="text-end"><?php echo msp2Escape(agFmtMonto($totalMatriz)); ?></td>
+                                </tr>
+                            </tfoot>
+                        <?php endif; ?>
+                    </table>
+                </div>
+            </section>
 
             <div class="row g-2 mb-3">
                 <div class="col-6 col-md"><div class="card p-2"><small class="text-muted">Total</small><div class="fw-bold"><?php echo msp2Escape(agFmtMonto($resumen['total'] ?? 0)); ?></div></div></div>
@@ -600,7 +763,7 @@ if ($tablaExiste) {
                                                                     $periodoDocRaw = (string) ($d['periodo_facturacion'] ?? '');
                                                                     $periodoDocYm = preg_match('/^\d{4}-\d{2}/', $periodoDocRaw) === 1
                                                                         ? substr($periodoDocRaw, 0, 7)
-                                                                        : ($filtroPeriodo !== 'all' ? $filtroPeriodo : '');
+                                                                        : $periodoHasta;
                                                                     $docPortalUrl = msp2Url(
                                                                         'documentos_cobro/index.php?' . http_build_query([
                                                                             'id_arrendatario' => $arrId,
@@ -648,41 +811,15 @@ document.querySelectorAll('.ag-parent').forEach(function (r) {
   });
 });
 
-const periodoEl = document.getElementById('periodo');
-const corteDocsEl = document.getElementById('corte_documentos');
-const corteAgingEl = document.getElementById('corte_aging');
-if (periodoEl && corteDocsEl && corteAgingEl) {
-  const toLastDayOfPeriod = function (periodoYm) {
-    const year = Number(periodoYm.slice(0, 4));
-    const month = Number(periodoYm.slice(5, 7));
-    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-      return '';
-    }
-    const d = new Date(year, month, 0);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return d.getFullYear() + '-' + mm + '-' + dd;
-  };
-
-  const syncCorteDocumentos = function () {
-    const periodo = periodoEl.value || 'all';
-    if (periodo === 'all') {
-      corteDocsEl.value = corteAgingEl.value;
-      return;
-    }
-    const finMes = toLastDayOfPeriod(periodo);
-    if (finMes !== '') {
-      corteDocsEl.value = finMes;
-    }
-  };
-
-  periodoEl.addEventListener('change', syncCorteDocumentos);
-  corteAgingEl.addEventListener('change', function () {
-    if ((periodoEl.value || 'all') === 'all') {
-      corteDocsEl.value = corteAgingEl.value;
-    }
+const periodoDesdeEl = document.getElementById('periodo_desde');
+const periodoHastaEl = document.getElementById('periodo_hasta');
+if (periodoDesdeEl && periodoHastaEl) {
+  periodoDesdeEl.addEventListener('change', function () {
+    if (periodoDesdeEl.value > periodoHastaEl.value) periodoHastaEl.value = periodoDesdeEl.value;
   });
-  syncCorteDocumentos();
+  periodoHastaEl.addEventListener('change', function () {
+    if (periodoHastaEl.value < periodoDesdeEl.value) periodoDesdeEl.value = periodoHastaEl.value;
+  });
 }
 
 const agingChartEl = document.getElementById('agingClasificacionChart');

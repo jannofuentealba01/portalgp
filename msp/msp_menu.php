@@ -5,6 +5,9 @@ require_once __DIR__ . '/bootstrap.php';
 
 msp2RequireAccess();
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 $flash = msp2PullFlash();
 
 $sections = msp2QuickAccessMenuSections();
@@ -19,23 +22,24 @@ foreach ($sections as $section) {
 }
 
 $menuColumns = [
-    [
-        'id' => 'admin',
-        'section_ids' => ['admin'],
-    ],
-    [
-        'id' => 'facturacion',
-        'section_ids' => ['facturacion'],
-    ],
-    [
-        'id' => 'cobranza',
-        'section_ids' => ['cobranza'],
-    ],
-    [
-        'id' => 'reportes',
-        'section_ids' => ['reportes'],
-    ],
+    ['id' => 'alta', 'section_ids' => ['alta']],
+    ['id' => 'operacion', 'section_ids' => ['operacion']],
+    ['id' => 'cobranza', 'section_ids' => ['cobranza']],
+    ['id' => 'cierre', 'section_ids' => ['cierre']],
+    ['id' => 'reportes', 'section_ids' => ['reportes']],
+    ['id' => 'configuracion', 'section_ids' => ['configuracion']],
 ];
+$menuColumns = array_values(array_filter(
+    $menuColumns,
+    static function (array $column) use ($sectionsById): bool {
+        foreach ((array) ($column['section_ids'] ?? []) as $sectionId) {
+            if (isset($sectionsById[(string) $sectionId])) {
+                return true;
+            }
+        }
+        return false;
+    }
+));
 ?>
 <!DOCTYPE html>
 <html lang="es" class="h-100">
@@ -77,23 +81,22 @@ $menuColumns = [
         /* ── Grid de secciones ── */
         .mspv2-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            align-items: start;
+            gap: 14px;
             width: 100%;
             max-width: 100%;
             margin: 0 auto;
         }
 
         .mspv2-column {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
+            display: contents;
         }
 
         .box-container-full.mspv2-shell {
-            width: min(1320px, 95vw) !important;
-            max-width: min(1320px, 95vw) !important;
-            padding: 20px !important;
+            width: 100% !important;
+            max-width: none !important;
+            padding: 16px !important;
         }
 
         /* ── Columna de sección ── */
@@ -105,6 +108,9 @@ $menuColumns = [
             box-shadow: 0 2px 8px rgba(16,24,40,0.06);
             display: flex;
             flex-direction: column;
+            height: auto;
+            align-self: stretch;
+            width: 100%;
         }
 
         .mspv2-section-body {
@@ -146,24 +152,24 @@ $menuColumns = [
 
         /* Cabecera de sección — paleta enterprise */
         .mspv2-section-head {
-            padding: 14px 18px;
+            padding: 10px 14px;
             background: var(--color-primary-soft);
             border-bottom: 1px solid var(--color-border);
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .mspv2-section-icon {
-            width: 36px;
-            height: 36px;
+            width: 32px;
+            height: 32px;
             border-radius: 8px;
             background: rgba(11, 58, 110, 0.1);
             color: var(--color-primary);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 17px;
+            font-size: 15px;
             flex-shrink: 0;
         }
 
@@ -183,11 +189,10 @@ $menuColumns = [
 
         /* Lista de items dentro de la sección */
         .mspv2-items {
-            padding: 12px 12px;
+            padding: 8px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            flex: 1;
+            gap: 3px;
         }
 
         .mspv2-subsection .mspv2-items {
@@ -197,9 +202,9 @@ $menuColumns = [
         /* ── Card de módulo ── */
         .mspv2-card {
             display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 11px 12px;
+            align-items: flex-start;
+            gap: 9px;
+            padding: 7px 9px;
             border-radius: 9px;
             border: 1px solid transparent;
             background: transparent;
@@ -223,15 +228,15 @@ $menuColumns = [
         }
 
         .mspv2-card-icon {
-            width: 32px;
-            height: 32px;
+            width: 28px;
+            height: 28px;
             border-radius: 7px;
             background: var(--color-surface-soft);
             color: var(--color-primary);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 15px;
+            font-size: 13px;
             flex-shrink: 0;
             transition: background 0.16s ease;
         }
@@ -250,9 +255,10 @@ $menuColumns = [
             font-size: 13.5px;
             font-weight: 600;
             margin: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            overflow: visible;
+            overflow-wrap: anywhere;
+            line-height: 1.3;
         }
 
         .mspv2-card-arrow {
@@ -277,24 +283,34 @@ $menuColumns = [
         }
 
         /* ── Responsive ── */
-        @media (max-width: 1280px) {
+        @media (max-width: 1100px) {
             .mspv2-grid {
-                grid-template-columns: repeat(2, minmax(250px, 1fr));
+                grid-template-columns: repeat(2, minmax(0, 1fr));
                 width: 100%;
             }
             .box-container-full.mspv2-shell {
-                width: 96vw !important;
-                max-width: 96vw !important;
+                width: 100% !important;
+                max-width: none !important;
             }
         }
 
-        @media (max-width: 600px) {
+        @media (max-width: 700px) {
             .mspv2-hero-title { font-size: 18px; }
             .mspv2-grid { grid-template-columns: 1fr; gap: 12px; }
+            .mspv2-section[data-tour="menu-alta"] { order: 1; }
+            .mspv2-section[data-tour="menu-operacion"] { order: 2; }
+            .mspv2-section[data-tour="menu-cobranza"] { order: 3; }
+            .mspv2-section[data-tour="menu-cierre"] { order: 4; }
+            .mspv2-section[data-tour="menu-reportes"] { order: 5; }
+            .mspv2-section[data-tour="menu-configuracion"] { order: 6; }
+            .mspv2-hero { align-items: flex-start; padding-bottom: 14px; }
+            .mspv2-hero-title { position: static; flex: 1; text-align: right; }
+            .mspv2-hero-back { display: flex; flex-wrap: wrap; gap: 6px; }
+            .mspv2-hero-back .btn { margin-left: 0 !important; }
             .box-container-full.mspv2-shell {
-                width: 98vw !important;
-                max-width: 98vw !important;
-                padding: 14px !important;
+                width: 100% !important;
+                max-width: none !important;
+                padding: 10px !important;
             }
         }
     </style>
@@ -302,7 +318,7 @@ $menuColumns = [
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__) . '/templates/header.php'; ?>
 
-<main class="gp-main d-flex align-items-center justify-content-center p-4">
+<main class="gp-main d-flex align-items-start justify-content-center p-3 p-md-4">
     <div class="box-container-full mspv2-shell" data-tour="menu-root">
 
     <!-- Hero -->
