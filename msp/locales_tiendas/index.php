@@ -17,7 +17,6 @@ msp2RequireAccess();
     <style>
         .msp-hub-header { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; margin-bottom:16px; }
         .msp-hub-header h1 { margin:0; color:var(--color-primary); font-size:clamp(1.45rem, 2vw, 2rem); text-align:center; }
-        .msp-hub-breadcrumb { justify-self:center; font-size:.9rem; color:var(--color-text-muted); }
         .msp-hub-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }
         .msp-hub-card { border:1px solid var(--color-border); border-radius:12px; background:var(--color-surface); box-shadow:0 2px 8px rgba(16,24,40,.06); padding:18px; display:flex; align-items:center; gap:16px; min-width:0; }
         .msp-hub-icon { width:48px; height:48px; border-radius:11px; background:var(--color-primary-soft); color:var(--color-primary); display:grid; place-items:center; flex:0 0 auto; font-size:1.35rem; }
@@ -28,7 +27,6 @@ msp2RequireAccess();
             .msp-hub-header { grid-template-columns:1fr; }
             .msp-hub-header h1 { grid-row:1; }
             .msp-hub-header > :first-child { grid-row:2; justify-self:start; }
-            .msp-hub-breadcrumb { display:none; }
             .msp-hub-grid { grid-template-columns:1fr; }
             .msp-hub-card { align-items:flex-start; padding:14px; }
         }
@@ -37,18 +35,17 @@ msp2RequireAccess();
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main p-3 p-xl-4">
-    <div class="msp-hub-header">
+    <header class="msp-hub-header" data-gp-commandbar>
         <div>
             <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
             </a>
         </div>
         <div>
-            <div class="msp-hub-breadcrumb"><a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>">MSP</a> <span aria-hidden="true">›</span> Locales y tiendas</div>
             <h1>Locales y tiendas</h1>
         </div>
         <div></div>
-    </div>
+    </header>
 
     <div class="msp-hub-grid">
         <article class="msp-hub-card">

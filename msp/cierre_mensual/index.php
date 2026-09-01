@@ -182,19 +182,46 @@ function cierreEstadoBadge(?string $estado): string
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
+    <style>
+        .cierre-shell { width:100%; min-width:0; }
+        .cierre-table-wrap { width:100%; overflow:visible; }
+        .cierre-table { width:100%; table-layout:fixed; margin-bottom:0; }
+        .cierre-table th,
+        .cierre-table td { padding:.42rem .45rem; font-size:clamp(.76rem,.82vw,.9rem); vertical-align:middle; }
+        .cierre-table th { white-space:nowrap; }
+        .cierre-table td:not(.cierre-actions) { overflow:hidden; }
+        .cierre-nowrap { white-space:nowrap; }
+        .cierre-observacion { display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; }
+        .cierre-actions .d-flex { flex-wrap:wrap; }
+        .cierre-actions .btn { white-space:nowrap; }
+        .cierre-observation-tooltip { --bs-tooltip-max-width:min(430px, calc(100vw - 24px)); }
+        .cierre-observation-tooltip .tooltip-inner { padding:.65rem .8rem; text-align:left; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.35; }
+        @media (max-width:767.98px) {
+            .cierre-table thead { display:none; }
+            .cierre-table,
+            .cierre-table tbody,
+            .cierre-table tr,
+            .cierre-table td { display:block; width:100%; }
+            .cierre-table tr { margin-bottom:.75rem; border:1px solid var(--color-border); border-radius:10px; overflow:hidden; background:var(--color-surface); }
+            .cierre-table td { display:grid; grid-template-columns:8.5rem minmax(0,1fr); gap:.65rem; padding:.42rem .65rem; border-width:0 0 1px; text-align:left !important; }
+            .cierre-table td:last-child { border-bottom:0; }
+            .cierre-table td::before { content:attr(data-label); font-weight:700; color:var(--color-text-muted); }
+            .cierre-actions .d-flex { justify-content:flex-start !important; }
+        }
+    </style>
 </head>
 <body class="gp-layout bg-light">
 
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 
 <?php msp2RenderCsrfAutoFieldScript(); ?>
-<main class="gp-main d-flex align-items-center justify-content-center p-4">
-    <div class="box-container-wide">
+<main class="gp-main p-3 p-xl-4">
+    <div class="cierre-shell">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
             <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
             </a>
-            <span class="section-kicker">MSP / Cierre</span>
+
         </div>
 
         <h1 class="form-title text-center mb-2">Cierre mensual</h1>
@@ -241,17 +268,26 @@ function cierreEstadoBadge(?string $estado): string
                 </button>
             </div>
 
-            <div class="table-responsive">
-                <table class="table table-bordered table-hover align-middle">
+            <div class="cierre-table-wrap">
+                <table class="table table-bordered table-hover align-middle cierre-table">
+                    <colgroup>
+                        <col style="width:4%">
+                        <col style="width:9%">
+                        <col style="width:11%">
+                        <col style="width:11%">
+                        <col style="width:10%">
+                        <col style="width:25%">
+                        <col style="width:30%">
+                    </colgroup>
                     <thead class="table-light text-center">
                         <tr>
-                            <th style="width: 70px;">#</th>
+                            <th>#</th>
                             <th>Periodo</th>
                             <th>Fecha UF</th>
                             <th>Valor UF</th>
                             <th>Estado</th>
                             <th>Observaciones</th>
-                            <th style="min-width: 280px;">Acciones</th>
+                            <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -266,17 +302,34 @@ function cierreEstadoBadge(?string $estado): string
                                 $estadoLabel = $estadosCierre[$estadoId] ?? 'Sin estado';
                                 ?>
                                 <tr>
-                                    <td class="text-center"><?php echo (($paginaActual - 1) * $lineasPorPagina) + $index + 1; ?></td>
-                                    <td><?php echo msp2Escape(cierreFormatoPeriodo((string) ($row['periodo_facturacion'] ?? ''))); ?></td>
-                                    <td><?php echo msp2Escape(cierreFormatoFecha((string) ($row['fecha_valor_uf'] ?? ''))); ?></td>
-                                    <td class="text-end"><?php echo msp2Escape(msp2FormatoDecimal($row['valor_uf'] ?? null, 4)); ?></td>
-                                    <td class="text-center">
+                                    <td class="text-center cierre-nowrap" data-label="#"><?php echo (($paginaActual - 1) * $lineasPorPagina) + $index + 1; ?></td>
+                                    <td class="cierre-nowrap" data-label="Periodo"><?php echo msp2Escape(cierreFormatoPeriodo((string) ($row['periodo_facturacion'] ?? ''))); ?></td>
+                                    <td class="cierre-nowrap" data-label="Fecha UF"><?php echo msp2Escape(cierreFormatoFecha((string) ($row['fecha_valor_uf'] ?? ''))); ?></td>
+                                    <td class="text-end cierre-nowrap" data-label="Valor UF"><?php echo msp2Escape(msp2FormatoDecimal($row['valor_uf'] ?? null, 4)); ?></td>
+                                    <td class="text-center" data-label="Estado">
                                         <span class="badge <?php echo cierreEstadoBadge($estadoLabel); ?>">
                                             <?php echo msp2Escape($estadoLabel); ?>
                                         </span>
                                     </td>
-                                    <td><?php echo msp2Escape((string) ($row['observaciones'] ?? '')); ?></td>
-                                    <td class="text-center">
+                                    <?php $observacionCompleta = trim((string) ($row['observaciones'] ?? '')); ?>
+                                    <td data-label="Observaciones">
+                                        <?php if ($observacionCompleta === ''): ?>
+                                            <span class="text-muted">—</span>
+                                        <?php else: ?>
+                                            <span
+                                                class="cierre-observacion"
+                                                tabindex="0"
+                                                data-bs-toggle="tooltip"
+                                                data-bs-placement="auto"
+                                                data-bs-boundary="viewport"
+                                                data-bs-custom-class="cierre-observation-tooltip"
+                                                data-bs-title="<?php echo msp2Escape($observacionCompleta); ?>"
+                                                aria-label="Observación completa: <?php echo msp2Escape($observacionCompleta); ?>">
+                                                <?php echo msp2Escape(mb_strimwidth($observacionCompleta, 0, 70, '…', 'UTF-8')); ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="text-center cierre-actions" data-label="Acciones">
                                         <div class="d-flex flex-wrap justify-content-center gap-1">
                                             <?php if ($estadoId === CierreMensualService::BORRADOR): ?>
                                             <button
@@ -443,6 +496,15 @@ function cierreEstadoBadge(?string $estado): string
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((element) => {
+        bootstrap.Tooltip.getOrCreateInstance(element, {
+            placement: 'auto',
+            boundary: 'viewport',
+            container: 'body',
+            trigger: 'hover focus',
+        });
+    });
+
     const toIsoMonth = (raw) => {
         const value = String(raw || '').trim();
         const direct = value.match(/^(\d{4}-\d{2})/);

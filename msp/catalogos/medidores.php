@@ -139,31 +139,34 @@ function msp2EstadoMedidorBadgeCatalog(?string $estado): string
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
+    <style>
+        .medidores-actions { flex-wrap:nowrap !important; white-space:nowrap; }
+        .medidores-actions .btn { padding-inline:.65rem; }
+    </style>
 </head>
 <body class="gp-layout bg-light">
 
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 
 <?php msp2RenderCsrfAutoFieldScript(); ?>
-<main class="gp-main d-flex align-items-center justify-content-center p-4">
+<main class="gp-main p-3 p-xl-4">
     <div class="box-container-wide">
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <header class="d-flex justify-content-between align-items-center gap-2 mb-3" data-gp-commandbar>
             <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
             </a>
-            <div class="d-flex flex-wrap gap-2">
+            <div>
+                <h1 class="form-title text-center mb-0">Medidores</h1>
+            </div>
+            <div class="d-flex gap-2 medidores-actions">
                 <a href="<?php echo msp2Escape(msp2Url('medidores/plantilla.php')); ?>" class="btn btn-success btn-sm">
-                    <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>Descargar plantilla lecturas
+                    <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>Descargar plantilla
                 </a>
                 <a href="<?php echo msp2Escape(msp2Url('locales/index.php')); ?>" class="btn btn-outline-primary btn-sm">
-                    <i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>Gestionar desde locales
+                    <i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>Gestionar locales
                 </a>
             </div>
-        </div>
-
-        <p class="section-kicker text-center">MSP / Catálogos</p>
-        <h1 class="form-title text-center mb-2">Medidores</h1>
-        <p class="text-muted text-center mb-4">Gestión y descarga de plantilla de lecturas por medidor.</p>
+        </header>
 
         <?php include dirname(__DIR__) . '/templates/components/flash_toast.php'; ?>
 
