@@ -1,0 +1,3 @@
+/* Page-specific screen layout. Source: msp/comercial/index.php */
+
+.commercial-page .card{padding:var(--msp-card-padding);margin-bottom:var(--msp-section-gap)}.commercial-page table{border-collapse:collapse}.commercial-page th,.commercial-page td{border:1px solid var(--color-border);text-align:left}.commercial-page h1{color:var(--color-primary)}

@@ -8,7 +8,7 @@ msp2RequireAccess();
 function msp2GuardarArriendoReglasRedirect(int $idContratoArriendo): never
 {
     $query = $idContratoArriendo > 0 ? ('?id_contrato_arriendo=' . $idContratoArriendo) : '';
-    msp2Redirect('contratos/arriendo_reglas.php' . $query);
+    msp2Redirect(msp2WithPendingReturn('contratos/arriendo_reglas.php' . $query, $_POST['return_to'] ?? ''));
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {

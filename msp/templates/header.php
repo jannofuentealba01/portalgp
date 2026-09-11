@@ -19,7 +19,7 @@ msp2RenderCsrfAutoFieldScript();
             <?php if ($nombreUsuario): ?>
                 <span class="small text-muted">Usuario: <?php echo msp2Escape((string) $nombreUsuario); ?></span>
             <?php endif; ?>
-            <a href="<?php echo msp2Escape(msp2Url('ayuda/index.php')); ?>" class="btn btn-sm btn-outline-info" title="Ayuda">
+            <a href="<?php echo msp2Escape(msp2Url('ayuda/index.php')); ?>" class="btn btn-sm btn-outline-secondary" title="Ayuda">
                 <i class="bi bi-question-circle me-1" aria-hidden="true"></i>Ayuda
             </a>
             <a href="<?php echo msp2Escape(msp2Url('index.php')); ?>" class="btn btn-sm btn-outline-secondary">Inicio</a>

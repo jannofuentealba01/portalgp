@@ -54,18 +54,18 @@ try {
         ];
 
         foreach ($headers as $index => $header) {
-            $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, $index + 1, 1, $header);
         }
 
         $rowIndex = 2;
         foreach ($rows as $row) {
-            $sheet->setCellValueByColumnAndRow(1, $rowIndex, (string) ($row['cod_local'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(2, $rowIndex, (string) ($row['codigo_servicio'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(3, $rowIndex, (string) ($row['nombre_servicio'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(4, $rowIndex, (string) ($row['codigo_medidor'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(5, $rowIndex, (string) ($row['alias_medidor'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(6, $rowIndex, $row['lectura_anterior'] !== null ? (float) $row['lectura_anterior'] : null);
-            $sheet->setCellValueByColumnAndRow(7, $rowIndex, (string) ($row['fecha_hasta_consumo_anterior'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 1, $rowIndex, (string) ($row['cod_local'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 2, $rowIndex, (string) ($row['codigo_servicio'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 3, $rowIndex, (string) ($row['nombre_servicio'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 4, $rowIndex, (string) ($row['codigo_medidor'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 5, $rowIndex, (string) ($row['alias_medidor'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 6, $rowIndex, $row['lectura_anterior'] !== null ? (float) $row['lectura_anterior'] : null);
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 7, $rowIndex, (string) ($row['fecha_hasta_consumo_anterior'] ?? ''));
             $rowIndex++;
         }
 

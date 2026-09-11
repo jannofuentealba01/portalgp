@@ -44,8 +44,8 @@ $sections = array_values(array_filter(array_map(static function (array $section)
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CT | Gestión de Terrenos</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
     <style>
         .ctv-shell {
@@ -226,12 +226,6 @@ $sections = array_values(array_filter(array_map(static function (array $section)
                     <a href="/portalgp/index.php" class="btn btn-outline-secondary btn-sm">
                         <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Menú principal
                     </a>
-                    <a href="<?php echo ctEscape(ctUrl('docs/modulo_terrenos_diseno.md')); ?>" class="btn btn-outline-primary btn-sm">
-                        <i class="bi bi-journal-text me-1" aria-hidden="true"></i>Diseño
-                    </a>
-                    <a href="<?php echo ctEscape(ctUrl('db/README.md')); ?>" class="btn btn-outline-primary btn-sm">
-                        <i class="bi bi-filetype-sql me-1" aria-hidden="true"></i>Scripts SQL
-                    </a>
                 </div>
             </div>
         </section>
@@ -278,7 +272,7 @@ $sections = array_values(array_filter(array_map(static function (array $section)
 </main>
 
 <?php include __DIR__ . '/templates/components/confirm_action_modal.php'; ?>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__) . '/templates/footer.php'; ?>
 </body>
 </html>

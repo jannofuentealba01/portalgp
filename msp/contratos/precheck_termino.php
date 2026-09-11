@@ -223,6 +223,6 @@ try {
     http_response_code(422);
     echo json_encode([
         'ok' => false,
-        'message' => msp2NormalizeText($exception->getMessage()) !== '' ? msp2NormalizeText($exception->getMessage()) : 'No se pudo validar término de contrato.',
+        'message' => pgpPublicOrBusinessException($exception, 'msp.contratos.precheck_termino', 'No se pudo validar el término del contrato.'),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }

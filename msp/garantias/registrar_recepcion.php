@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
-msp2RequireAccess();
+msp2RequireAccess('MSP Cobranza', 'escritura');
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     msp2Redirect('garantias/recepciones.php');
@@ -15,8 +15,7 @@ function msp2RecepcionGarantiaFail(string $message): never
 }
 
 $idContrato = filter_input(INPUT_POST, 'id_contrato_arriendo', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-// Compatibilidad con formularios antiguos: si llega una garantía individual, resolvemos su contrato.
-$idGarantiaLegacy = filter_input(INPUT_POST, 'id_garantia', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$idGarantia = filter_input(INPUT_POST, 'id_garantia', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $fecha = trim((string) ($_POST['fecha_recepcion'] ?? ''));
 $medio = strtoupper(trim((string) ($_POST['medio_recepcion'] ?? '')));
 $modalidad = strtoupper(trim((string) ($_POST['modalidad_recepcion'] ?? 'ABONO')));
@@ -32,7 +31,7 @@ $idCuentaBanco = filter_input(INPUT_POST, 'id_cuenta_banco', FILTER_VALIDATE_INT
 if (!in_array($modalidad, ['ABONO','TOTAL'], true)) {
     msp2RecepcionGarantiaFail('Selecciona si registrarás un abono o el pago total pendiente.');
 }
-if ((!$idContrato && !$idGarantiaLegacy) || ($modalidad==='ABONO' && (!$montoOk || $monto === null || (float) $monto <= 0))) {
+if ((!$idContrato && !$idGarantia) || ($modalidad==='ABONO' && (!$montoOk || $monto === null || (float) $monto <= 0))) {
     msp2RecepcionGarantiaFail('La garantía o el monto recibido no son válidos.');
 }
 $fechaObj = DateTimeImmutable::createFromFormat('!Y-m-d', $fecha);
@@ -63,24 +62,25 @@ if ($medio === 'CHEQUE') {
 try {
     $conn->beginTransaction();
 
-    if (!$idContrato && $idGarantiaLegacy) {
-        $stmtContrato = $conn->prepare('SELECT id_contrato_arriendo FROM dbo.msp_garantias WHERE id_garantia=:id AND estado_garantia<>6');
-        $stmtContrato->execute([':id'=>(int)$idGarantiaLegacy]);
-        $idContrato = (int)($stmtContrato->fetchColumn() ?: 0);
-    }
+    $filtroGarantia = $idGarantia
+        ? 'g.id_garantia=:garantia'
+        : 'g.id_contrato_arriendo=:contrato';
     $stmtGarantias = $conn->prepare(
-        'SELECT g.id_garantia,g.monto_inicial,
+        'SELECT g.id_garantia,g.id_contrato_arriendo,g.monto_inicial,
                 ISNULL((SELECT SUM(r.monto_recibido) FROM dbo.msp_garantia_recepciones r WITH (UPDLOCK, HOLDLOCK)
                         WHERE r.id_garantia=g.id_garantia AND r.estado_recepcion=N\'CONFIRMADA\'),0) AS recibido
          FROM dbo.msp_garantias g WITH (UPDLOCK, HOLDLOCK)
-         WHERE g.id_contrato_arriendo=:contrato AND g.estado_garantia<>6
+         WHERE ' . $filtroGarantia . ' AND g.estado_garantia<>6
          ORDER BY g.id_garantia'
     );
-    $stmtGarantias->execute([':contrato'=>(int)$idContrato]);
+    $stmtGarantias->execute($idGarantia
+        ? [':garantia'=>(int)$idGarantia]
+        : [':contrato'=>(int)$idContrato]);
     $garantiasContrato = $stmtGarantias->fetchAll() ?: [];
     if ($garantiasContrato === []) {
-        throw new RuntimeException('El contrato no tiene una garantía activa.');
+        throw new RuntimeException('No se encontró una garantía activa para registrar la recepción.');
     }
+    $idContrato = (int) ($garantiasContrato[0]['id_contrato_arriendo'] ?? 0);
     $pactado = round(array_sum(array_map(static fn(array $g): float => (float)$g['monto_inicial'], $garantiasContrato)), 2);
     $recibido = round(array_sum(array_map(static fn(array $g): float => (float)$g['recibido'], $garantiasContrato)), 2);
     if ($pactado <= 0) {
@@ -96,19 +96,20 @@ try {
         $stmtActualizarPactado->execute([':monto'=>$pactado, ':id'=>(int)$garantiasContrato[0]['id_garantia']]);
         $garantiasContrato[0]['monto_inicial'] = $pactado;
     }
-    $pendienteContrato = round($pactado-$recibido, 2);
+    $pendienteGarantia = round($pactado-$recibido, 2);
     if ($modalidad === 'TOTAL') {
-        $monto = $pendienteContrato;
+        $monto = $pendienteGarantia;
         $montoOk = $monto > 0;
     }
     if (!$montoOk || $monto === null || (float)$monto <= 0) {
-        throw new RuntimeException('El contrato no tiene un saldo de garantía pendiente por recibir.');
+        throw new RuntimeException('La garantía seleccionada no tiene saldo pendiente por recibir.');
     }
     if (round($recibido + (float) $monto, 2) > $pactado + 0.009) {
         throw new RuntimeException('El ingreso supera el monto pendiente de la garantía.');
     }
 
-    // Distribuye un abono entre las filas históricas por local, sin permitir recepciones duplicadas.
+    // Con id_garantia la asignación queda limitada al contrato/local elegido. El
+    // reparto por contrato se conserva sólo para formularios antiguos compatibles.
     $restante = round((float)$monto, 2);
     $asignaciones = [];
     foreach ($garantiasContrato as $g) {

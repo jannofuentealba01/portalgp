@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/PoolDocumentosPeriodoService.php';
+require_once dirname(__DIR__, 2) . '/services/DocumentoCobroTrazabilidadService.php';
 
 final class EnvioLotesProgramadosService
 {
@@ -259,7 +260,7 @@ final class EnvioLotesProgramadosService
                 }
             }
 
-            self::applyFechaEmisionProgramadaToLoteDocs($conn, $idLote, $programadoPara);
+            DocumentoCobroTrazabilidadService::registrarLote($conn, $idLote, $programadoPara, $modoDestinoNorm);
 
             if ($pendientesIniciales <= 0) {
                 $updLote = $conn->prepare(
@@ -450,7 +451,7 @@ final class EnvioLotesProgramadosService
             $insertDoc->bindValue(':id_doc', $idDocumentoCobro, PDO::PARAM_INT);
             $insertDoc->execute();
 
-            self::applyFechaEmisionProgramadaToLoteDocs($conn, $idLote, $programadoPara);
+            DocumentoCobroTrazabilidadService::registrarLote($conn, $idLote, $programadoPara, $modoDestinoNorm);
 
             if ($pendientesIniciales <= 0) {
                 $updLote = $conn->prepare(
@@ -797,7 +798,7 @@ final class EnvioLotesProgramadosService
                 }
             }
 
-            self::applyFechaEmisionProgramadaToLoteDocs($conn, $idLote, $programadoPara);
+            DocumentoCobroTrazabilidadService::registrarLote($conn, $idLote, $programadoPara, $modoDestinoNorm);
 
             if ($pendientesIniciales <= 0) {
                 $updLote = $conn->prepare(
@@ -1256,10 +1257,13 @@ final class EnvioLotesProgramadosService
                     ELSE NULL
                 END AS codigo_servicio_inferido
              FROM dbo.msp_documentos_cobro dc
-             INNER JOIN dbo.msp_tiendas t
+             LEFT JOIN dbo.msp_contratos_arriendo ca
+                ON ca.id_contrato_arriendo = dc.id_contrato_arriendo
+             LEFT JOIN dbo.msp_tiendas t
                 ON t.id_tienda = dc.id_tienda
+               AND dc.id_contrato_arriendo IS NULL
              INNER JOIN dbo.msp_arrendatarios a
-                ON a.id_arrendatario = t.id_arrendatario
+                ON a.id_arrendatario = COALESCE(ca.id_arrendatario, t.id_arrendatario)
              $correoJoin
              WHERE dc.id_documento_cobro = :id_documento
                AND dc.estado_documento <> 5
@@ -1707,7 +1711,8 @@ final class EnvioLotesProgramadosService
                     $correoDestino,
                     $arrRow,
                     $docs,
-                    (new DateTimeImmutable((string) ($lote['periodo_facturacion'] ?? 'now')))->format('Y-m')
+                    (new DateTimeImmutable((string) ($lote['periodo_facturacion'] ?? 'now')))->format('Y-m'),
+                    strtolower(trim((string) ($lote['modo_destino'] ?? 'real'))) === 'demo'
                 );
                 self::markDestinatario(
                     $conn,
@@ -1717,6 +1722,7 @@ final class EnvioLotesProgramadosService
                     null,
                     self::fetchSqlServerNow($conn)
                 );
+                DocumentoCobroTrazabilidadService::registrarResultado($conn, $docs, $idLote, true, null);
                 $enviadosBatch++;
             } catch (Throwable $e) {
                 self::markDestinatario(
@@ -1727,6 +1733,7 @@ final class EnvioLotesProgramadosService
                     self::normalizeError($e),
                     null
                 );
+                DocumentoCobroTrazabilidadService::registrarResultado($conn, $docs, $idLote, false, self::normalizeError($e));
                 $fallidosBatch++;
             }
         }
@@ -1790,34 +1797,6 @@ final class EnvioLotesProgramadosService
         $stmt->execute();
 
         return $stmt->fetchAll() ?: [];
-    }
-
-    private static function applyFechaEmisionProgramadaToLoteDocs(PDO $conn, int $idLote, string $programadoPara): void
-    {
-        if ($idLote <= 0) {
-            return;
-        }
-
-        $fechaProgramada = substr(trim($programadoPara), 0, 10);
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaProgramada) !== 1) {
-            return;
-        }
-
-        $stmt = $conn->prepare(
-            'UPDATE dc
-             SET dc.fecha_emision = :fecha_emision_set
-             FROM dbo.msp_documentos_cobro dc
-             INNER JOIN dbo.msp_envio_lote_documentos eld
-                ON eld.id_documento_cobro = dc.id_documento_cobro
-             INNER JOIN dbo.msp_envio_lote_destinatarios ed
-                ON ed.id_lote_destinatario = eld.id_lote_destinatario
-             WHERE ed.id_lote_envio = :id_lote
-               AND dc.fecha_vencimiento >= :fecha_emision_check'
-        );
-        $stmt->bindValue(':fecha_emision_set', $fechaProgramada, PDO::PARAM_STR);
-        $stmt->bindValue(':fecha_emision_check', $fechaProgramada, PDO::PARAM_STR);
-        $stmt->bindValue(':id_lote', $idLote, PDO::PARAM_INT);
-        $stmt->execute();
     }
 
     private static function markDestinatario(
@@ -1940,9 +1919,16 @@ final class EnvioLotesProgramadosService
         return $stats;
     }
 
-    private static function sendOneCobroEmail(PDO $conn, string $correoDestino, array $arrRow, array $docs, string $periodoYm): void
+    private static function sendOneCobroEmail(
+        PDO $conn,
+        string $correoDestino,
+        array $arrRow,
+        array $docs,
+        string $periodoYm,
+        bool $permitirDemo = false
+    ): void
     {
-        if (!msp2MailTenantDeliveryEnabled($conn)) {
+        if (!$permitirDemo && !msp2MailTenantDeliveryEnabled($conn)) {
             throw new RuntimeException('El envío real a correos de arrendatarios está deshabilitado en MSP.');
         }
 

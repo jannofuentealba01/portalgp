@@ -14,7 +14,8 @@ $idArrendatario = filter_input(INPUT_POST, 'id_arrendatario', FILTER_VALIDATE_IN
 ]);
 $rutInput = msp2NormalizeText($_POST['rut'] ?? null);
 $rut = msp2RutNormalizeDb($rutInput);
-$esEmpresa = ($_POST['es_empresa'] ?? '0') === '1' ? 1 : 0;
+$esEmpresaInput = trim((string) ($_POST['es_empresa'] ?? ''));
+$esEmpresa = $esEmpresaInput === '1' ? 1 : 0;
 $nombreLocatario = msp2NormalizeText($_POST['nombre_locatario'] ?? null);
 $nombreRepresentante = msp2NormalizeText($_POST['nombre_representante'] ?? null);
 $direccion = msp2NormalizeText($_POST['direccion'] ?? null);
@@ -28,6 +29,25 @@ $correosInput = $_POST['correos'] ?? [];
 $correoPrincipalInput = trim((string) ($_POST['correo_principal'] ?? ''));
 $telefonosInput = $_POST['telefonos'] ?? [];
 $telefonoPrincipalInput = trim((string) ($_POST['telefono_principal'] ?? ''));
+
+function msp2ArrNormalizePhone(string $value): ?string
+{
+    $phone = trim($value);
+    if ($phone === '' || preg_match('/^\+?[0-9\s()\-]+$/', $phone) !== 1) {
+        return null;
+    }
+
+    $digits = preg_replace('/\D+/', '', $phone) ?? '';
+    if (strlen($digits) === 11 && str_starts_with($digits, '56')) {
+        $national = substr($digits, 2);
+        return '+56 ' . substr($national, 0, 1) . ' ' . substr($national, 1, 4) . ' ' . substr($national, 5, 4);
+    }
+    if (strlen($digits) === 9) {
+        return substr($digits, 0, 1) . ' ' . substr($digits, 1, 4) . ' ' . substr($digits, 5, 4);
+    }
+
+    return null;
+}
 
 if ($idComunaRaw !== '') {
     $idComuna = filter_var($idComunaRaw, FILTER_VALIDATE_INT, [
@@ -46,7 +66,12 @@ if ($rutInput === '' || $nombreLocatario === '') {
 }
 
 if ($rut === null) {
-    msp2SetFlash('warning', 'Debes ingresar un RUT válido. Se aceptan formatos como 212179507, 21217950-7 o 21.217.950-7.');
+    msp2SetFlash('warning', 'El RUT no es válido: revisa el número y su dígito verificador.');
+    msp2Redirect('arrendatarios/index.php');
+}
+
+if (!in_array($esEmpresaInput, ['0', '1'], true)) {
+    msp2SetFlash('warning', 'Debes seleccionar un tipo de arrendatario válido.');
     msp2Redirect('arrendatarios/index.php');
 }
 
@@ -60,12 +85,27 @@ if (mb_strlen($rut) > 20 || mb_strlen($nombreLocatario) > 200 || mb_strlen($nomb
     msp2Redirect('arrendatarios/index.php');
 }
 
+if (mb_strlen($nombreLocatario) < 2 || preg_match('/[\p{L}]/u', $nombreLocatario) !== 1) {
+    msp2SetFlash('warning', 'El nombre del locatario debe contener al menos dos caracteres y una letra.');
+    msp2Redirect('arrendatarios/index.php');
+}
+
+if ($nombreRepresentante !== '' && (mb_strlen($nombreRepresentante) < 2 || preg_match('/[\p{L}]/u', $nombreRepresentante) !== 1)) {
+    msp2SetFlash('warning', 'El nombre del representante no tiene un formato válido.');
+    msp2Redirect('arrendatarios/index.php');
+}
+
 if (!is_array($correosInput)) {
     $correosInput = [];
 }
 
 if (!is_array($telefonosInput)) {
     $telefonosInput = [];
+}
+
+if (count($correosInput) > 5 || count($telefonosInput) > 5) {
+    msp2SetFlash('warning', 'Puedes registrar como máximo cinco correos y cinco teléfonos por arrendatario.');
+    msp2Redirect('arrendatarios/index.php');
 }
 
 $correos = [];
@@ -106,18 +146,19 @@ $telefonos = [];
 $seenTelefonos = [];
 
 foreach ($telefonosInput as $inputIndex => $telefonoRaw) {
-    $telefono = msp2NormalizeText((string) $telefonoRaw);
+    $telefonoInput = msp2NormalizeText((string) $telefonoRaw);
 
-    if ($telefono === '') {
+    if ($telefonoInput === '') {
         continue;
     }
 
-    if (mb_strlen($telefono) > 50) {
-        msp2SetFlash('warning', 'Uno de los teléfonos supera los 50 caracteres.');
+    $telefono = msp2ArrNormalizePhone($telefonoInput);
+    if ($telefono === null) {
+        msp2SetFlash('warning', 'Uno de los teléfonos no es válido. Ingresa 9 dígitos nacionales o 11 dígitos comenzando por 56.');
         msp2Redirect('arrendatarios/index.php');
     }
 
-    $dedupeKey = preg_replace('/\s+/', '', mb_strtolower($telefono, 'UTF-8'));
+    $dedupeKey = preg_replace('/\D+/', '', $telefono);
     $dedupeKey = $dedupeKey === null ? $telefono : $dedupeKey;
 
     if (isset($seenTelefonos[$dedupeKey])) {

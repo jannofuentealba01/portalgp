@@ -52,7 +52,7 @@ Modules are folder-based under the repo root. Each module typically contains `in
 - `templates/components/` — Reusable components (`searchable_select.php`, `confirm_action_modal.php`)
 - `assets/` — Vanilla JS utilities (toast notifications, CSRF auto-injection, confirmation dialogs)
 - `db/` — Schema installation (`msp_instalar_core.sql`), incremental patches (`patch_*.sql`)
-- `config/mail.example.php` — SMTP config template; never commit `config/mail.php`
+- `config/mail.example.php` — SMTP config template; runtime SMTP secrets belong in the external `portalgp_secrets` directory
 
 ### Service Layer (cobros/)
 

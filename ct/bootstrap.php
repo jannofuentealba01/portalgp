@@ -10,26 +10,7 @@ if (is_file($permisosPath)) {
 
 function ctStartSession(): void
 {
-    if (session_status() !== PHP_SESSION_NONE) {
-        return;
-    }
-
-    if (!headers_sent()) {
-        $isHttps = (
-            (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
-            || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443'
-        );
-
-        session_set_cookie_params([
-            'lifetime' => 0,
-            'path' => '/',
-            'secure' => $isHttps,
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ]);
-    }
-
-    session_start();
+    pgpSecurityStartSession();
 }
 
 ctStartSession();
@@ -62,6 +43,7 @@ function ctEscape(?string $value): string
 
 function ctSetFlash(string $type, string $message, array $meta = []): void
 {
+    $message = pgpSafePublicMessage($message, 'ct.flash', 'No fue posible completar la operación.');
     $payload = [
         'type' => trim($type) !== '' ? trim($type) : 'info',
         'message' => trim($message),
@@ -238,6 +220,8 @@ function ctPermissionExistsInCatalog(string $permission): bool
 
 function ctRequireAccess(string $permission = 'CT'): void
 {
+    pgpRequireEnabledSession($GLOBALS['conn']);
+    pgpRequireInternalAudience();
     if (!isset($_SESSION['usuario']['id'])) {
         header('Location: /portalgp/login.php');
         exit();
@@ -330,6 +314,13 @@ function ctLoadSpreadsheetLibrary(): void
     }
 
     $loaded = true;
+}
+
+/** Compatibilidad con PhpSpreadsheet 2+, que retiró el método por columna/fila. */
+function ctSetSpreadsheetCellByColumnAndRow(object $sheet, int $column, int $row, mixed $value): void
+{
+    $coordinate = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($column) . $row;
+    $sheet->setCellValue($coordinate, $value);
 }
 
 function ctRegisterPsr4Fallback(string $prefix, string $baseDirectory): void

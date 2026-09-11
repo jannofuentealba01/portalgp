@@ -71,10 +71,14 @@ function msp2PagosEstadoMap(): array
 
 function msp2PagosNormalizeFilters(array $source): array
 {
+    $normalizeSearch = static fn(mixed $value): string => function_exists('msp2SearchQuery')
+        ? msp2SearchQuery($value)
+        : msp2NormalizeText($value === null ? null : (string) $value);
     return [
-        'filtroDocumento' => msp2NormalizeText($source['filtroDocumento'] ?? null),
-        'filtroTienda' => msp2NormalizeText($source['filtroTienda'] ?? null),
-        'filtroArrendatario' => msp2NormalizeText($source['filtroArrendatario'] ?? null),
+        'filtroGeneral' => $normalizeSearch($source['filtroGeneral'] ?? ''),
+        'filtroDocumento' => $normalizeSearch($source['filtroDocumento'] ?? ''),
+        'filtroTienda' => $normalizeSearch($source['filtroTienda'] ?? ''),
+        'filtroArrendatario' => $normalizeSearch($source['filtroArrendatario'] ?? ''),
         'filtroEstado' => trim((string) ($source['filtroEstado'] ?? '')),
     ];
 }
@@ -85,26 +89,50 @@ function msp2PagosBuildFilters(array $filters, ?array $allowedEstadoMap = null):
     $conditions = [];
     $params = [];
 
+    $filtroGeneral = trim((string) ($filters['filtroGeneral'] ?? ''));
     $filtroDocumento = trim((string) ($filters['filtroDocumento'] ?? ''));
     $filtroTienda = trim((string) ($filters['filtroTienda'] ?? ''));
     $filtroArrendatario = trim((string) ($filters['filtroArrendatario'] ?? ''));
     $filtroEstado = trim((string) ($filters['filtroEstado'] ?? ''));
 
+    if ($filtroGeneral !== '' && function_exists('msp2BuildSearchCondition')) {
+        $search = msp2BuildSearchCondition($filtroGeneral, [
+            'p.id_pago',
+            'dc.id_documento_cobro',
+            'dc.numero_documento',
+            't.nombre_comercial',
+            'dc.nombre_arrendatario_snapshot',
+            'dc.rut_arrendatario_snapshot',
+            "REPLACE(REPLACE(REPLACE(dc.rut_arrendatario_snapshot,N'.',N''),N'-',N''),N' ',N'')",
+            'p.medio_pago',
+            'p.referencia_pago',
+        ], 'pagos_general', 'p.id_pago');
+        $conditions[] = $search['sql'];
+        $params = array_merge($params, $search['params']);
+    }
+
     if ($filtroDocumento !== '') {
-        $conditions[] = "(ISNULL(dc.numero_documento, '') LIKE :filtro_documento_num OR CAST(dc.id_documento_cobro AS NVARCHAR(20)) LIKE :filtro_documento_id)";
-        $params[':filtro_documento_num'] = '%' . $filtroDocumento . '%';
-        $params[':filtro_documento_id'] = '%' . $filtroDocumento . '%';
+        $search = msp2BuildSearchCondition($filtroDocumento, [
+            'dc.numero_documento', 'dc.id_documento_cobro',
+        ], 'pagos_documento', 'dc.id_documento_cobro');
+        $conditions[] = $search['sql'];
+        $params = array_merge($params, $search['params']);
     }
 
     if ($filtroTienda !== '') {
-        $conditions[] = "ISNULL(t.nombre_comercial, '') LIKE :filtro_tienda";
-        $params[':filtro_tienda'] = '%' . $filtroTienda . '%';
+        $search = msp2BuildSearchCondition($filtroTienda, ['t.nombre_comercial'], 'pagos_tienda');
+        $conditions[] = $search['sql'];
+        $params = array_merge($params, $search['params']);
     }
 
     if ($filtroArrendatario !== '') {
-        $conditions[] = "(ISNULL(dc.nombre_arrendatario_snapshot, '') LIKE :filtro_arrendatario_nombre OR ISNULL(dc.rut_arrendatario_snapshot, '') LIKE :filtro_arrendatario_rut)";
-        $params[':filtro_arrendatario_nombre'] = '%' . $filtroArrendatario . '%';
-        $params[':filtro_arrendatario_rut'] = '%' . $filtroArrendatario . '%';
+        $search = msp2BuildSearchCondition($filtroArrendatario, [
+            'dc.nombre_arrendatario_snapshot',
+            'dc.rut_arrendatario_snapshot',
+            "REPLACE(REPLACE(REPLACE(dc.rut_arrendatario_snapshot,N'.',N''),N'-',N''),N' ',N'')",
+        ], 'pagos_arrendatario');
+        $conditions[] = $search['sql'];
+        $params = array_merge($params, $search['params']);
     }
 
     if ($filtroEstado !== '' && ctype_digit($filtroEstado) && isset($estadoMap[(int) $filtroEstado])) {

@@ -126,6 +126,21 @@ function ctTerrenosRepoCount(PDO $conn, array $filtros): int
 
 function ctTerrenosRepoList(PDO $conn, array $filtros, string $orderSql, int $offset, int $limit): array
 {
+    $allowedOrder = [
+        't.id_terreno',
+        't.rol_asignado',
+        't.superficie_m2',
+        'c.nombre',
+        'ep.nombre',
+        'ec.nombre',
+        'ti.nombre',
+    ];
+    if (preg_match('/^(.+)\s+(ASC|DESC)$/D', trim($orderSql), $match) !== 1
+        || !in_array($match[1], $allowedOrder, true)) {
+        throw new InvalidArgumentException('El orden de terrenos solicitado no está permitido.');
+    }
+    $orderSql = $match[1] . ' ' . $match[2];
+
     $query = ctTerrenosRepoBuildWhere($filtros);
 
     $sql = "SELECT

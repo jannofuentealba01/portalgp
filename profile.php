@@ -83,8 +83,8 @@ if (isset($_SESSION['mensaje'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Perfil de Usuario</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="styles.css">
     <style>
         .gp-id-card {
@@ -223,6 +223,7 @@ if (isset($_SESSION['mensaje'])) {
             <?php endif; ?>
 
             <form action="procesar_actualizar_perfil.php" method="post">
+                <?php pgpCsrfField(); ?>
                 <input type="hidden" name="id" value="<?php echo htmlspecialchars((string) ($profile['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
 
                 <div class="card mb-3">
@@ -284,7 +285,8 @@ if (isset($_SESSION['mensaje'])) {
                             </div>
                             <div class="col-12">
                                 <label for="nueva_password" class="form-label">Nueva contraseña</label>
-                                <input type="password" id="nueva_password" name="nueva_password" class="form-control" placeholder="Dejar vacío para mantener la actual">
+                                <input type="password" id="nueva_password" name="nueva_password" class="form-control" placeholder="Dejar vacío para mantener la actual" minlength="12" maxlength="128" autocomplete="new-password">
+                                <div class="form-text">Si la cambias, usa al menos 12 caracteres y evita incluir tu usuario o correo.</div>
                             </div>
                         </div>
                     </div>
@@ -328,7 +330,7 @@ if (isset($_SESSION['mensaje'])) {
             }
         })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
     <?php include __DIR__ . '/templates/footer.php'; ?>
 </body>
 </html>

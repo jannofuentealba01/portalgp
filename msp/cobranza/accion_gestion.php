@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/services/CobranzaGestionService.php';
 
-msp2RequireAccess();
+msp2RequireAccess('MSP Cobranza');
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') msp2Redirect('pendientes/index.php');
 
 $accion=strtoupper(trim((string)($_POST['accion']??'')));

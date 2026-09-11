@@ -14,6 +14,28 @@ if (!function_exists('msp2SearchableSelectEscape')) {
     }
 }
 
+if (!class_exists('Msp2SearchableSelectTrustedHtml', false)) {
+    final class Msp2SearchableSelectTrustedHtml
+    {
+        public function __construct(private readonly string $html)
+        {
+        }
+
+        public function render(): string
+        {
+            return $this->html;
+        }
+    }
+}
+
+if (!function_exists('msp2SearchableSelectTrustedHtml')) {
+    /** Marks HTML assembled exclusively from escaped values and fixed markup. */
+    function msp2SearchableSelectTrustedHtml(string $html): Msp2SearchableSelectTrustedHtml
+    {
+        return new Msp2SearchableSelectTrustedHtml($html);
+    }
+}
+
 if (!function_exists('msp2RenderSearchableSelectAssets')) {
     function msp2RenderSearchableSelectAssets(): void
     {
@@ -22,28 +44,11 @@ if (!function_exists('msp2RenderSearchableSelectAssets')) {
             return;
         }
         $assetsRendered = true;
+        if (function_exists('msp2RenderSearchAssets')) {
+            msp2RenderSearchAssets();
+        }
         ?>
-        <style>
-        .msp-searchable-select-menu {
-            min-width: 100%;
-        }
-
-        .msp-searchable-select-list {
-            overflow-y: auto;
-            overscroll-behavior: contain;
-            scrollbar-gutter: stable;
-        }
-
-        [data-msp-searchable-select] [data-searchable-btn] {
-            display: block;
-            width: 100%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            padding-right: 2.25rem;
-        }
-        </style>
-        <script>
+<script>
         (() => {
             const initSearchableSelect = (root) => {
                 if (!(root instanceof HTMLElement)) {
@@ -118,14 +123,18 @@ if (!function_exists('msp2RenderSearchableSelectAssets')) {
                 };
 
                 const filterOptions = () => {
-                    const term = dropdownFilter.value.trim().toLowerCase();
+                    const term = dropdownFilter.value;
                     options.forEach((option) => {
                         if (option.hidden) {
                             option.classList.add('d-none');
                             return;
                         }
-                        const searchable = String(option.dataset.search || '').toLowerCase();
-                        option.classList.toggle('d-none', !(term === '' || searchable.includes(term)));
+                        const searchable = String(option.dataset.search || '');
+                        const label = String(option.dataset.label || '');
+                        const matches = window.mspSearch
+                            ? window.mspSearch.matches(term, searchable, label)
+                            : searchable.toLowerCase().includes(term.trim().toLowerCase());
+                        option.classList.toggle('d-none', !matches);
                     });
                     updateHighlight(0);
                 };
@@ -254,7 +263,7 @@ if (!function_exists('msp2RenderSearchableSelectField')) {
      *   list_max_height?: string,
      *   required?: bool,
      *   value?: string,
-     *   options?: array<int, array{value:string, label:string, label_html?:string, search?:string, attrs?:array<string, scalar|null>}>
+     *   options?: array<int, array{value:string, label:string, label_html?:Msp2SearchableSelectTrustedHtml, search?:string, attrs?:array<string, scalar|null>}>
      * } $options
      */
     function msp2RenderSearchableSelectField(array $options = []): void
@@ -312,8 +321,9 @@ if (!function_exists('msp2RenderSearchableSelectField')) {
                                 <?php
                                 $itemValue = (string) ($item['value'] ?? '');
                                 $itemLabel = (string) ($item['label'] ?? $itemValue);
-                                $itemLabelHtmlRaw = isset($item['label_html']) ? (string) $item['label_html'] : '';
-                                $itemLabelHtml = $itemLabelHtmlRaw !== '' ? $itemLabelHtmlRaw : null;
+                                $itemLabelHtml = ($item['label_html'] ?? null) instanceof Msp2SearchableSelectTrustedHtml
+                                    ? $item['label_html']->render()
+                                    : null;
                                 $itemSearch = (string) ($item['search'] ?? mb_strtolower($itemLabel, 'UTF-8'));
                                 $itemAttrs = is_array($item['attrs'] ?? null) ? $item['attrs'] : [];
                                 ?>

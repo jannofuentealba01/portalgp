@@ -2,12 +2,13 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
-msp2RequireAccess();
+require_once __DIR__ . '/pago_contrato_redirect_helper.php';
+msp2RequireAccess('MSP Cobranza', 'escritura');
 
 function msp2SaldoContratoRedirect(): never
 {
-    $returnTo = trim((string) ($_POST['return_to'] ?? ''));
-    if ($returnTo !== '' && preg_match('#^cobranza/gestionar\.php\?id_contrato=\d+(?:&return_to=[A-Za-z0-9_\-\.\[%\]=&]*)?$#', $returnTo) === 1) {
+    $returnTo = msp2PagoContratoSafeReturnTo($_POST['return_to'] ?? '');
+    if ($returnTo !== '') {
         msp2Redirect($returnTo);
     }
     $query = trim((string) ($_POST['volver_query'] ?? ''));

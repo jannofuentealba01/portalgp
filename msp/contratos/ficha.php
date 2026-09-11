@@ -16,6 +16,18 @@ if ($idContratoArriendo === false || $idContratoArriendo === null) {
     msp2Redirect('contratos/index.php');
 }
 
+$returnToCierre = trim((string) ($_GET['return_to'] ?? ''));
+if (preg_match('#^cierre/index\.php(?:\?[A-Za-z0-9_\-\.\[\]%=&]*)?$#', $returnToCierre) !== 1) {
+    $returnToCierre = '';
+}
+$rutaVolverFicha = $returnToCierre !== '' ? $returnToCierre : 'contratos/index.php';
+$textoVolverFicha = $returnToCierre !== '' ? 'Volver a cierre' : 'Volver a contratos';
+$parametrosRetornoFicha = ['id_contrato_arriendo' => (int) $idContratoArriendo];
+if ($returnToCierre !== '') {
+    $parametrosRetornoFicha['return_to'] = $returnToCierre;
+}
+$rutaRetornoFicha = 'contratos/ficha.php?' . http_build_query($parametrosRetornoFicha);
+
 $lineasPermitidasTimeline = [25, 50, 100, 200];
 $lineasTimeline = isset($_GET['lineas_timeline']) && is_numeric($_GET['lineas_timeline'])
     ? (int) $_GET['lineas_timeline']
@@ -268,33 +280,34 @@ function msp2FichaResolveUsuarioLabels(PDO $conn, array $userIds): array
         $placeholders[] = ':id_usuario_' . $index;
     }
 
+    $idColSql = msp2SqlIdentifier($idCol);
     $selectNombre = $nombreCol !== null
-        ? 'u.' . $nombreCol . ' AS nombre_simple'
+        ? 'u.' . msp2SqlIdentifier($nombreCol) . ' AS nombre_simple'
         : 'CAST(NULL AS NVARCHAR(200)) AS nombre_simple';
     $selectNombres = $nombresCol !== null
-        ? 'u.' . $nombresCol . ' AS nombres_usuario'
+        ? 'u.' . msp2SqlIdentifier($nombresCol) . ' AS nombres_usuario'
         : 'CAST(NULL AS NVARCHAR(200)) AS nombres_usuario';
     $selectApellidos = $apellidosCol !== null
-        ? 'u.' . $apellidosCol . ' AS apellidos_usuario'
+        ? 'u.' . msp2SqlIdentifier($apellidosCol) . ' AS apellidos_usuario'
         : 'CAST(NULL AS NVARCHAR(200)) AS apellidos_usuario';
     $selectRol = ($rolTable !== null && $rolIdCol !== null && $rolNombreCol !== null && $rolFkCol !== null)
-        ? 'r.' . $rolNombreCol . ' AS rol_usuario'
+        ? 'r.' . msp2SqlIdentifier($rolNombreCol) . ' AS rol_usuario'
         : 'CAST(NULL AS NVARCHAR(120)) AS rol_usuario';
     $joinRol = ($rolTable !== null && $rolIdCol !== null && $rolNombreCol !== null && $rolFkCol !== null)
-        ? 'LEFT JOIN dbo.' . $rolTable . ' r
-            ON r.' . $rolIdCol . ' = u.' . $rolFkCol
+        ? 'LEFT JOIN ' . msp2SqlIdentifier('dbo.' . $rolTable) . ' r
+            ON r.' . msp2SqlIdentifier($rolIdCol) . ' = u.' . msp2SqlIdentifier($rolFkCol)
         : '';
 
     $stmtUsuarios = $conn->prepare(
         "SELECT
-            u.{$idCol} AS id_usuario,
+            u.{$idColSql} AS id_usuario,
             {$selectNombre},
             {$selectNombres},
             {$selectApellidos},
             {$selectRol}
          FROM dbo.cr_usuarios u
          {$joinRol}
-         WHERE u.{$idCol} IN (" . implode(', ', $placeholders) . ')'
+         WHERE u.{$idColSql} IN (" . implode(', ', $placeholders) . ')'
     );
     foreach ($userIds as $index => $idUsuario) {
         $stmtUsuarios->bindValue(':id_usuario_' . $index, $idUsuario, PDO::PARAM_INT);
@@ -1926,9 +1939,7 @@ try {
     $offsetTimeline = ($paginaTimeline - 1) * $lineasTimeline;
     $timelinePageRows = array_slice($timeline, $offsetTimeline, $lineasTimeline);
 } catch (Throwable $exception) {
-    $loadError = $exception->getMessage() !== ''
-        ? $exception->getMessage()
-        : 'No fue posible cargar la ficha del contrato.';
+    $loadError = pgpPublicOrBusinessException($exception, 'msp.contratos.ficha', 'No fue posible cargar la ficha del contrato.');
 }
 
 if ($totalPaginasTimeline > 1) {
@@ -1983,192 +1994,30 @@ if ($totalPaginasDocumentos > 1) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Ficha Contrato #<?php echo (int) $idContratoArriendo; ?></title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .msp-timeline {
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            gap: 0.9rem;
-        }
-
-        .msp-timeline-item {
-            position: relative;
-            padding-left: 3rem;
-        }
-
-        .msp-timeline-item::before {
-            content: "";
-            position: absolute;
-            left: 1.35rem;
-            top: 0.35rem;
-            bottom: -1rem;
-            width: 2px;
-            background: linear-gradient(180deg, #dde5ef 0%, #ebeff5 100%);
-        }
-
-        .msp-timeline-item:last-child::before {
-            bottom: 1.6rem;
-        }
-
-        .msp-timeline-dot {
-            position: absolute;
-            left: 0.7rem;
-            top: 0.2rem;
-            width: 1.35rem;
-            height: 1.35rem;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.72rem;
-            color: #fff;
-            box-shadow: 0 0 0 3px #f8f9fa;
-        }
-
-        .msp-tl-contrato { background-color: #0d6efd; }
-        .msp-tl-documento { background-color: #0dcaf0; color: #0a2535; }
-        .msp-tl-pago { background-color: #198754; }
-        .msp-tl-garantia { background-color: #6f42c1; }
-        .msp-tl-cargo { background-color: #f59f00; color: #3b2f00; }
-        .msp-tl-envio { background-color: #6c757d; }
-        .msp-tl-contable { background-color: #212529; }
-        .msp-tl-default { background-color: #adb5bd; color: #17202a; }
-
-        .msp-timeline-card {
-            border: 1px solid rgba(0, 0, 0, 0.72);
-            border-radius: 0.7rem;
-            background: #fff;
-            box-shadow: 0 2px 7px rgba(17, 24, 39, 0.08);
-        }
-
-        .msp-timeline-heading {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 0.45rem;
-            min-height: 1.85rem;
-        }
-
-        .msp-timeline-actions {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            align-items: center;
-            gap: 0.45rem;
-        }
-
-        .msp-timeline-ref {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            border: 1px solid #dce3ee;
-            border-radius: 999px;
-            padding: 0.1rem 0.5rem;
-            background: #f8fbff;
-            font-size: 0.77rem;
-            color: #3f4f62;
-        }
-
-        .msp-timeline-meta {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(150px, 1fr));
-            gap: 0.5rem;
-            color: #55687d;
-            margin-top: 0.65rem;
-        }
-
-        .msp-timeline-meta > span,
-        .msp-timeline-field {
-            display: block;
-            border: 1px solid #d8dee7;
-            border-radius: 0.45rem;
-            background: #f8fafc;
-            padding: 0.5rem 0.65rem;
-        }
-
-        .msp-timeline-detail-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-            gap: 0.5rem;
-            margin: 0.65rem 0 0;
-            padding: 0;
-            list-style: none;
-        }
-
-        .msp-timeline-detail-list li {
-            margin: 0;
-        }
-
-        .msp-summary-panel {
-            height: 100%;
-            border: 1px solid #d8dee7;
-            border-radius: 0.6rem;
-            background: #fff;
-            padding: 1rem;
-        }
-
-        .msp-summary-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 1rem 1.25rem;
-        }
-
-        .msp-summary-grid .msp-summary-wide {
-            grid-column: 1 / -1;
-        }
-
-        @media (max-width: 576px) {
-            .msp-timeline-item {
-                padding-left: 2.5rem;
-            }
-
-            .msp-timeline-item::before {
-                left: 1.15rem;
-            }
-
-            .msp-timeline-dot {
-                left: 0.52rem;
-            }
-
-            .msp-timeline-meta,
-            .msp-summary-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .msp-summary-grid .msp-summary-wide {
-                grid-column: auto;
-            }
-
-            .msp-timeline-actions {
-                width: 100%;
-                justify-content: flex-start;
-            }
-        }
-    </style>
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
-<main class="gp-main d-flex align-items-center justify-content-center p-4">
+<main class="gp-main d-flex align-items-center justify-content-center p-3 p-xl-4 msp-contract-sheet">
     <div class="box-container-wide">
         <header class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2" data-gp-commandbar>
-            <a href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a contratos
+            <a href="<?php echo msp2Escape(msp2Url($rutaVolverFicha)); ?>" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i><?php echo msp2Escape($textoVolverFicha); ?>
             </a>
             <div class="text-center">
                 <p class="section-kicker text-center">MSP / Contratos</p>
-                <h1 class="form-title text-center mb-0">Ficha Centralizada de Contrato</h1>
+                <h1 class="form-title text-center mb-0">Contrato</h1>
             </div>
-            <div class="d-flex flex-nowrap align-items-center gap-2">
+            <div class="msp-contract-actions">
                 <a href="#documentos" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-receipt me-1" aria-hidden="true"></i>Documentos
                 </a>
-                <a href="<?php echo msp2Escape(msp2Url('cobranza/registrar_pago_contrato.php?id_contrato_arriendo=' . (int) $idContratoArriendo . '&contexto_contrato=1')); ?>" class="btn btn-outline-success btn-sm">
+                <a href="<?php echo msp2Escape(msp2Url('cobranza/registrar_pago_contrato.php?' . http_build_query(['id_contrato_arriendo' => (int) $idContratoArriendo, 'contexto_contrato' => 1, 'return_to' => $rutaRetornoFicha]))); ?>" class="btn btn-outline-success btn-sm">
                     <i class="bi bi-cash-stack me-1" aria-hidden="true"></i>Registrar pago
                 </a>
-                <a href="<?php echo msp2Escape(msp2Url('contabilidad/libro.php')); ?>" class="btn btn-outline-dark btn-sm">
+                <a href="<?php echo msp2Escape(msp2Url('contabilidad/libro.php')); ?>" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-journal-text me-1" aria-hidden="true"></i>Libro diario
                 </a>
                 <span class="badge text-bg-primary fs-6">Contrato #<?php echo (int) $idContratoArriendo; ?></span>
@@ -2200,45 +2049,41 @@ if ($totalPaginasDocumentos > 1) {
                 ? msp2FichaFmtMonto($arriendoPactadoRaw)
                 : msp2FichaFmtUf($arriendoPactadoRaw, 2);
             ?>
-            <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-white border-0 pb-0">
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-header bg-white border-0 pb-0 px-3 pt-3">
                     <h2 class="h5 mb-0">Resumen del Contrato</h2>
                 </div>
-                <div class="card-body">
-                    <div class="row g-3">
-                        <div class="col-12 col-xl-4">
+                <div class="card-body p-3">
+                    <div class="row g-2 align-items-start msp-contract-overview-row">
+                        <div class="col-12 col-xl-5">
                             <section class="msp-summary-panel">
-                                <h3 class="h6 mb-3">Datos contractuales</h3>
-                                <div class="msp-summary-grid">
-                                    <div>
-                                        <div class="small text-muted">Estado</div>
-                                        <div><span class="badge <?php echo msp2Escape($estadoContrato[1]); ?>"><?php echo msp2Escape($estadoContrato[0]); ?></span></div>
+                                <h3 class="h6 fw-bold text-center mb-3">Datos contractuales</h3>
+                                <div class="msp-contract-data-lines">
+                                    <div class="msp-contract-data-line">
+                                        <strong>Estado</strong>
+                                        <span class="badge <?php echo msp2Escape($estadoContrato[1]); ?>"><?php echo msp2Escape($estadoContrato[0]); ?></span>
                                     </div>
-                                    <div class="msp-summary-wide">
-                                        <div class="small text-muted">Arrendatario</div>
-                                        <div class="fw-semibold"><?php echo msp2Escape((string) ($contrato['nombre_locatario'] ?? '-')); ?></div>
-                                        <div class="small text-muted"><?php echo msp2Escape((string) ($contrato['rut'] ?? '-')); ?></div>
+                                    <div class="msp-contract-data-line">
+                                        <strong>Arrendatario</strong>
+                                        <strong class="msp-contract-tenant-name"><?php echo msp2Escape((string) ($contrato['nombre_locatario'] ?? '-')); ?></strong>
+                                        <span><?php echo msp2Escape((string) ($contrato['rut'] ?? '-')); ?></span>
                                     </div>
-                                    <div>
-                                        <div class="small text-muted">Inicio</div>
-                                        <div><?php echo msp2Escape(msp2FichaFmtFecha((string) ($contrato['fecha_inicio'] ?? ''))); ?></div>
-                                    </div>
-                                    <div>
-                                        <div class="small text-muted">Término pactado</div>
-                                        <div><?php echo msp2Escape(msp2FichaFmtFecha((string) ($contrato['fecha_termino_pactada'] ?? ''))); ?></div>
-                                    </div>
-                                    <div>
-                                        <div class="small text-muted">Término efectivo</div>
-                                        <div><?php echo msp2Escape(msp2FichaFmtFecha((string) ($contrato['fecha_termino_efectiva'] ?? ''))); ?></div>
+                                    <div class="msp-contract-data-line">
+                                        <strong>Inicio</strong>
+                                        <span><?php echo msp2Escape(msp2FichaFmtFecha((string) ($contrato['fecha_inicio'] ?? ''))); ?></span>
+                                        <strong>Término pactado</strong>
+                                        <span><?php echo msp2Escape(msp2FichaFmtFecha((string) ($contrato['fecha_termino_pactada'] ?? ''))); ?></span>
+                                        <strong>Término efectivo</strong>
+                                        <span><?php echo msp2Escape(msp2FichaFmtFecha((string) ($contrato['fecha_termino_efectiva'] ?? ''))); ?></span>
                                     </div>
                                 </div>
                             </section>
                         </div>
 
-                        <div class="col-12 col-xl-3">
+                        <div class="col-12 col-xl-2">
                             <section class="msp-summary-panel">
-                                <h3 class="h6 mb-3">Locales asociados</h3>
-                                <div class="fw-semibold fs-5">
+                                <h3 class="h6 fw-bold mb-2">Locales asociados</h3>
+                                <div class="fs-5">
                                     <?php if ($localesContrato === []): ?>
                                         <span class="text-muted">Sin locales asociados.</span>
                                     <?php else: ?>
@@ -2264,8 +2109,8 @@ if ($totalPaginasDocumentos > 1) {
 
                         <div class="col-12 col-xl-5">
                             <section class="msp-summary-panel">
-                                <div class="small text-muted">Arriendo pactado</div>
-                                <div class="fw-semibold fs-5"><?php echo msp2Escape($arriendoPactadoLabel); ?></div>
+                                <h3 class="h6 fw-bold mb-2">Arriendo pactado</h3>
+                                <div class="fs-5"><?php echo msp2Escape($arriendoPactadoLabel); ?></div>
                             <?php if ($arriendoDetalleRows !== []): ?>
                                 <?php
                                 $modalidadLabels = [];
@@ -2314,20 +2159,18 @@ if ($totalPaginasDocumentos > 1) {
                                     <?php endforeach; ?>
                                  </div>
                             <?php endif; ?>
-                                <hr class="my-3">
-                                <div class="small text-muted">Rubro contrato</div>
-                                <div><?php echo msp2Escape(trim((string) ($contrato['rubro_contrato'] ?? '')) !== '' ? (string) $contrato['rubro_contrato'] : '-'); ?></div>
+                                <div class="small mt-2"><span class="text-muted">Rubro:</span> <?php echo msp2Escape(trim((string) ($contrato['rubro_contrato'] ?? '')) !== '' ? (string) $contrato['rubro_contrato'] : '-'); ?></div>
                             </section>
                         </div>
                     </div>
 
-                    <hr>
+                    <hr class="my-3">
 
-                    <div class="row g-3">
+                    <div class="row g-2 align-items-start msp-contract-financial-row" aria-label="Resumen financiero y acciones del contrato">
                         <div class="col-12 col-md-4">
                             <div class="msp-summary-panel">
-                                <div class="small text-muted">Deuda vigente agregada</div>
-                                <div class="fw-semibold">Saldo: <?php echo msp2Escape(msp2FichaFmtMonto($resumenDeuda['saldo_pendiente'])); ?></div>
+                                <h3 class="h6 fw-bold mb-2">Deuda vigente agregada</h3>
+                                <div>Saldo: <?php echo msp2Escape(msp2FichaFmtMonto($resumenDeuda['saldo_pendiente'])); ?></div>
                                 <div class="small text-muted">Monto documentos: <?php echo msp2Escape(msp2FichaFmtMonto($resumenDeuda['monto_total'])); ?></div>
                                 <div class="small text-muted">Pagado aplicado: <?php echo msp2Escape(msp2FichaFmtMonto($resumenDeuda['pagado'])); ?></div>
                                 <div class="small text-muted">Documentos: <?php echo (int) $resumenDeuda['documentos']; ?></div>
@@ -2335,8 +2178,8 @@ if ($totalPaginasDocumentos > 1) {
                         </div>
                         <div class="col-12 col-md-4">
                             <div class="msp-summary-panel">
-                                <div class="small text-muted">Garantía del contrato</div>
-                                <div class="fw-semibold">Disponible: <?php echo msp2Escape(msp2FichaFmtMonto($resumenGarantia['monto_disponible'])); ?></div>
+                                <h3 class="h6 fw-bold mb-2">Garantía del contrato</h3>
+                                <div>Disponible: <?php echo msp2Escape(msp2FichaFmtMonto($resumenGarantia['monto_disponible'])); ?></div>
                                 <div class="small text-muted">Pactada: <?php echo msp2Escape(msp2FichaFmtMonto($resumenGarantia['monto_pactado'])); ?></div>
                                 <div class="small text-muted">Recibida: <?php echo msp2Escape(msp2FichaFmtMonto($resumenGarantia['monto_recibido'])); ?></div>
                                 <div class="small text-muted">Pendiente de recibir: <?php echo msp2Escape(msp2FichaFmtMonto($resumenGarantia['monto_pendiente_recepcion'])); ?></div>
@@ -2348,14 +2191,14 @@ if ($totalPaginasDocumentos > 1) {
                         <div class="col-12 col-md-4">
                             <div class="msp-summary-panel">
                                 <div class="small text-muted">Accesos operativos</div>
-                                <div class="d-grid gap-2 mt-2">
+                                <div class="msp-summary-actions mt-2">
                                     <a class="btn btn-outline-primary btn-sm" href="#documentos">Ver documentos del contrato</a>
-                                    <a class="btn btn-outline-dark btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/liquidacion_final.php?id_contrato_arriendo=' . (int) $idContratoArriendo)); ?>">Liquidación final</a>
+                                    <a class="btn btn-outline-warning btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/liquidacion_final.php?id_contrato_arriendo=' . (int) $idContratoArriendo)); ?>">Liquidación final</a>
                                     <?php if ($puedeTraspasar): ?>
                                         <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#modalTraspasarContratoFicha">Traspasar contrato</button>
                                     <?php endif; ?>
                                     <?php if ($puedeCerrarFinanciero): ?>
-                                        <button type="button" class="btn btn-outline-dark btn-sm" data-bs-toggle="modal" data-bs-target="#modalCerrarFinancieroFicha">Cerrar contrato definitivamente</button>
+                                        <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#modalCerrarFinancieroFicha">Cerrar contrato definitivamente</button>
                                     <?php endif; ?>
                                     <?php if ($puedeTerminarOAnular): ?>
                                         <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#modalTerminarContratoFicha">Terminar contrato</button>
@@ -2368,11 +2211,12 @@ if ($totalPaginasDocumentos > 1) {
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-white border-0 pb-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-header bg-white border-0 pb-0 px-3 pt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <h2 class="h5 mb-0">Timeline</h2>
                     <form method="get" class="d-flex gap-2 align-items-center">
                         <input type="hidden" name="id_contrato_arriendo" value="<?php echo (int) $idContratoArriendo; ?>">
+                        <?php if ($returnToCierre !== ''): ?><input type="hidden" name="return_to" value="<?php echo msp2Escape($returnToCierre); ?>"><?php endif; ?>
                         <input type="hidden" name="lineas_documentos" value="<?php echo (int) $lineasDocumentos; ?>">
                         <label for="lineas_timeline" class="small text-muted mb-0">Líneas</label>
                         <select name="lineas_timeline" id="lineas_timeline" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -2382,8 +2226,8 @@ if ($totalPaginasDocumentos > 1) {
                         </select>
                     </form>
                 </div>
-                <div class="card-body">
-                    <div class="small text-muted mb-3">
+                <div class="card-body p-3 pt-2">
+                    <div class="small text-muted mb-2">
                         Total eventos: <?php echo $totalTimeline; ?>
                     </div>
 
@@ -2459,6 +2303,9 @@ if ($totalPaginasDocumentos > 1) {
                                                 <div class="msp-timeline-heading">
                                                     <span class="badge <?php echo msp2Escape($origenBadge); ?>"><?php echo msp2Escape($origen); ?></span>
                                                     <span class="fw-semibold"><?php echo msp2Escape((string) ($evento['titulo'] ?? 'Evento')); ?></span>
+                                                    <?php foreach ($referencias as $refLabel): ?>
+                                                        <span class="msp-timeline-ref"><?php echo msp2Escape($refLabel); ?></span>
+                                                    <?php endforeach; ?>
                                                     <span class="small text-muted"><?php echo msp2Escape(msp2FichaFmtFechaHora((string) ($evento['fecha_evento'] ?? ''))); ?></span>
                                                     <?php if ($usuarioLabel !== '' && $usuarioLabel !== '-'): ?>
                                                         <span class="small text-muted"><?php echo msp2Escape($usuarioLabel); ?></span>
@@ -2471,28 +2318,26 @@ if ($totalPaginasDocumentos > 1) {
                                                         <span><strong>Haber:</strong> <?php echo msp2Escape(msp2FichaFmtMonto((float) ($asientoResumen['total_haber'] ?? 0))); ?></span>
                                                     </div>
                                                 <?php elseif (trim((string) ($evento['detalle'] ?? '')) !== ''): ?>
-                                                    <?php $detalleParts = array_values(array_filter(array_map('trim', explode('|', (string) ($evento['detalle'] ?? ''))), static fn (string $p): bool => $p !== '')); ?>
+                                                    <?php
+                                                    $detalleParts = array_values(array_filter(
+                                                        array_map('trim', explode('|', (string) ($evento['detalle'] ?? ''))),
+                                                        static fn (string $p): bool => $p !== '' && !in_array($p, $referencias, true)
+                                                    ));
+                                                    ?>
                                                     <?php if (count($detalleParts) > 1): ?>
                                                         <ul class="small msp-timeline-detail-list">
                                                             <?php foreach ($detalleParts as $detallePart): ?>
                                                                 <li class="msp-timeline-field"><?php echo msp2Escape($detallePart); ?></li>
                                                             <?php endforeach; ?>
                                                         </ul>
-                                                    <?php else: ?>
-                                                        <div class="small msp-timeline-field mt-2"><?php echo msp2Escape((string) ($evento['detalle'] ?? '')); ?></div>
+                                                    <?php elseif ($detalleParts !== []): ?>
+                                                        <div class="small msp-timeline-field mt-1"><?php echo msp2Escape($detalleParts[0]); ?></div>
                                                     <?php endif; ?>
-                                                <?php endif; ?>
-                                                <?php if ($referencias !== []): ?>
-                                                    <div class="d-flex flex-wrap gap-1 mt-2">
-                                                        <?php foreach ($referencias as $refLabel): ?>
-                                                            <span class="msp-timeline-ref"><?php echo msp2Escape($refLabel); ?></span>
-                                                        <?php endforeach; ?>
-                                                    </div>
                                                 <?php endif; ?>
                                             </div>
                                             <div class="msp-timeline-actions">
                                                 <?php if ($idDocumentoMeta > 0): ?>
-                                                    <a href="<?php echo msp2Escape(msp2Url('documentos_cobro/index.php?filtroDocumento=' . $idDocumentoMeta)); ?>" class="btn btn-outline-info text-dark btn-sm">Ver doc</a>
+                                                    <a href="<?php echo msp2Escape(msp2Url('documentos_cobro/index.php?filtroDocumento=' . $idDocumentoMeta)); ?>" class="btn btn-outline-secondary btn-sm">Ver doc</a>
                                                 <?php endif; ?>
                                                 <?php if ($comprobanteId > 0 && in_array($comprobanteTipo, ['RECEPCION', 'DEVOLUCION'], true)): ?>
                                                     <a href="<?php echo msp2Escape(msp2Url('garantias/comprobante.php?tipo=' . rawurlencode($comprobanteTipo) . '&id=' . $comprobanteId)); ?>" class="btn btn-outline-primary btn-sm">Ver comprobante</a>
@@ -2616,7 +2461,7 @@ if ($totalPaginasDocumentos > 1) {
                                     <div class="mb-3"><label class="form-label" for="cierre_periodo_ficha">Período de corte</label><input type="month" class="form-control" id="cierre_periodo_ficha" name="periodo_corte_mes" required><div class="form-text">Debe ser el último período facturado y conciliado.</div></div>
                                     <div><label class="form-label" for="cierre_motivo_ficha">Motivo (opcional)</label><textarea class="form-control" id="cierre_motivo_ficha" name="motivo_cierre_financiero" rows="2" maxlength="500"></textarea></div>
                                 </div>
-                                <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-dark">Confirmar cierre definitivo</button></div>
+                                <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-warning">Confirmar cierre definitivo</button></div>
                             </form>
                         </div>
                     </div>
@@ -2657,6 +2502,7 @@ if ($totalPaginasDocumentos > 1) {
                     <h2 class="h5 mb-0">Documentos del Contrato</h2>
                     <form method="get" class="d-flex gap-2 align-items-center">
                         <input type="hidden" name="id_contrato_arriendo" value="<?php echo (int) $idContratoArriendo; ?>">
+                        <?php if ($returnToCierre !== ''): ?><input type="hidden" name="return_to" value="<?php echo msp2Escape($returnToCierre); ?>"><?php endif; ?>
                         <input type="hidden" name="lineas_timeline" value="<?php echo (int) $lineasTimeline; ?>">
                         <label for="lineas_documentos" class="small text-muted mb-0">Líneas</label>
                         <select name="lineas_documentos" id="lineas_documentos" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -2830,7 +2676,7 @@ if ($totalPaginasDocumentos > 1) {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

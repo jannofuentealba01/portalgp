@@ -382,8 +382,8 @@ if ($loadError === null && $totalPaginas > 1) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Descuentos de arriendo</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
     <?php msp2RenderSearchableSelectAssets(); ?>
 </head>
@@ -419,7 +419,7 @@ if ($loadError === null && $totalPaginas > 1) {
         <?php else: ?>
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-body">
-                    <form method="get" class="row g-2 align-items-end">
+                    <form method="get" class="row g-2 align-items-end gp-filter-bar">
                         <div class="col-12 col-md-5">
                             <label for="filtroTexto" class="form-label">Contrato, arrendatario, tienda, local o descuento</label>
                             <input type="text" class="form-control" id="filtroTexto" name="filtroTexto" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Buscar...">
@@ -433,9 +433,9 @@ if ($loadError === null && $totalPaginas > 1) {
                                 <option value="todos" <?php echo $filtroEstado === 'todos' ? 'selected' : ''; ?>>Todos</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-2">
+                        <div class="col-12 col-md-2 gp-secondary-filter-field">
                             <label for="lineas" class="form-label">Líneas</label>
-                            <select class="form-select" id="lineas" name="lineas">
+                            <select class="form-select" id="lineas" name="lineas" data-gp-default="25">
                                 <?php foreach ($lineasPermitidas as $lineas): ?>
                                     <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                         <?php echo $lineas; ?>
@@ -443,7 +443,7 @@ if ($loadError === null && $totalPaginas > 1) {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-12 col-md-2 d-grid">
+                        <div class="col-12 col-md-4 d-flex gap-2" data-gp-filter-actions>
                             <button type="submit" class="btn btn-primary">Filtrar</button>
                         </div>
                     </form>
@@ -456,24 +456,20 @@ if ($loadError === null && $totalPaginas > 1) {
                     <span class="small text-muted"><?php echo number_format($totalRegistros, 0, ',', '.'); ?> registro(s)</span>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
+                    <table class="table table-sm align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-rent-discounts-table">
                         <thead class="table-light">
                             <tr>
-                                <th>Contrato</th>
-                                <th>Arrendatario / tienda</th>
+                                <th>Contrato / arrendatario</th>
                                 <th>Locales afectados</th>
-                                <th>Descuento</th>
-                                <th>Tipo y valor</th>
-                                <th>Vigencia</th>
-                                <th>Estado</th>
-                                <th>Asignación / desasignación</th>
+                                <th>Descuento / valor</th>
+                                <th>Vigencia / estado</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                         <?php if ($rows === []): ?>
                             <tr>
-                                <td colspan="9" class="text-center text-muted py-4">No hay asignaciones de descuentos para los filtros seleccionados.</td>
+                                <td colspan="5" class="text-center text-muted py-4">No hay asignaciones de descuentos para los filtros seleccionados.</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($rows as $row): ?>
@@ -488,8 +484,8 @@ if ($loadError === null && $totalPaginas > 1) {
                                 $periodoHasta = msp2DescuentoFmtMonth($row['periodo_hasta'] ?? '');
                                 ?>
                                 <tr>
-                                    <td>#<?php echo $idContrato; ?></td>
                                     <td>
+                                        <div class="fw-semibold">Contrato #<?php echo $idContrato; ?></div>
                                         <div><?php echo msp2Escape((string) ($row['nombre_locatario'] ?? '')); ?></div>
                                         <div class="small text-muted"><?php echo msp2Escape((string) ($row['nombre_comercial'] ?? '')); ?></div>
                                     </td>
@@ -498,12 +494,11 @@ if ($loadError === null && $totalPaginas > 1) {
                                         <div class="small text-muted"><?php echo (int) ($row['locales_count'] ?? 0); ?> local(es)</div>
                                     </td>
                                     <td>
-                                        <div><?php echo msp2Escape((string) ($row['nombre_descuento'] ?? '')); ?></div>
-                                        <div class="small text-muted"><?php echo msp2Escape((string) ($row['codigo_descuento'] ?? '')); ?></div>
+                                        <div class="fw-semibold"><?php echo msp2Escape((string) ($row['nombre_descuento'] ?? '')); ?></div>
+                                        <div class="small text-muted"><?php echo msp2Escape((string) ($row['codigo_descuento'] ?? '')); ?> · <?php echo msp2Escape($tipo . ' · ' . msp2DescuentoFmtValor($tipo, $row['valor_descuento'] ?? null)); ?></div>
                                     </td>
-                                    <td><?php echo msp2Escape($tipo . ' · ' . msp2DescuentoFmtValor($tipo, $row['valor_descuento'] ?? null)); ?></td>
-                                    <td><?php echo msp2Escape($periodoDesde . ' a ' . ($periodoHasta !== '' ? $periodoHasta : 'abierto')); ?></td>
                                     <td>
+                                        <div><?php echo msp2Escape($periodoDesde . ' a ' . ($periodoHasta !== '' ? $periodoHasta : 'abierto')); ?></div>
                                         <?php if ($isActivo): ?>
                                             <span class="badge text-bg-success">Activo</span>
                                         <?php elseif ($estadoAsignacion === 2): ?>
@@ -513,13 +508,15 @@ if ($loadError === null && $totalPaginas > 1) {
                                         <?php else: ?>
                                             <span class="badge text-bg-secondary">Sin estado</span>
                                         <?php endif; ?>
+                                        <div class="small text-muted mt-1">Asignado: <?php echo msp2Escape(msp2DescuentoFmtDateTime($row['fecha_asignacion_min'] ?? null)); ?></div>
+                                        <?php if (!empty($row['fecha_desasignacion_max'])): ?>
+                                            <div class="small text-muted">Desasignado: <?php echo msp2Escape(msp2DescuentoFmtDateTime($row['fecha_desasignacion_max'])); ?></div>
+                                        <?php endif; ?>
                                     </td>
                                     <td>
-                                        <div><?php echo msp2Escape(msp2DescuentoFmtDateTime($row['fecha_asignacion_min'] ?? null)); ?></div>
-                                        <div class="small text-muted"><?php echo msp2Escape(msp2DescuentoFmtDateTime($row['fecha_desasignacion_max'] ?? null)); ?></div>
-                                    </td>
-                                    <td>
-                                        <div class="d-flex flex-wrap gap-1">
+                                        <details class="gp-row-actions">
+                                            <summary class="btn btn-outline-secondary btn-sm">Acciones</summary>
+                                            <div class="gp-row-actions__menu">
                                             <a href="<?php echo msp2Escape(msp2Url('contratos/arriendo_reglas.php?id_contrato_arriendo=' . $idContrato)); ?>" class="btn btn-outline-secondary btn-sm">
                                                 <i class="bi bi-sliders me-1" aria-hidden="true"></i>Cobro local
                                             </a>
@@ -535,7 +532,8 @@ if ($loadError === null && $totalPaginas > 1) {
                                                     </button>
                                                 </form>
                                             <?php endif; ?>
-                                        </div>
+                                            </div>
+                                        </details>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -554,19 +552,19 @@ if ($loadError === null && $totalPaginas > 1) {
                     <nav aria-label="Paginación de descuentos">
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo msp2DescuentoBuildQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>" aria-label="Anterior">&laquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(msp2DescuentoBuildQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>" aria-label="Anterior">&laquo;</a>
                             </li>
                             <?php foreach ($paginationItems as $item): ?>
                                 <?php if ($item === 'ellipsis'): ?>
                                     <li class="page-item disabled"><span class="page-link">...</span></li>
                                 <?php else: ?>
                                     <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo msp2DescuentoBuildQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(msp2DescuentoBuildQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                     </li>
                                 <?php endif; ?>
                             <?php endforeach; ?>
                             <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo msp2DescuentoBuildQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>" aria-label="Siguiente">&raquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(msp2DescuentoBuildQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>" aria-label="Siguiente">&raquo;</a>
                             </li>
                         </ul>
                     </nav>
@@ -578,24 +576,20 @@ if ($loadError === null && $totalPaginas > 1) {
                     <strong>Catálogo de descuentos</strong>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
+                    <table class="table table-sm align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-rent-discount-catalog-table">
                         <thead class="table-light">
                         <tr>
-                            <th>Código</th>
-                            <th>Nombre</th>
-                            <th>Tipo</th>
-                            <th class="text-end">Valor</th>
-                            <th>Desde</th>
-                            <th>Hasta</th>
-                            <th class="text-center">Uso activo</th>
-                            <th>Estado</th>
-                            <th style="min-width: 260px;">Editar</th>
+                            <th>Descuento</th>
+                            <th>Tipo / valor</th>
+                            <th>Vigencia</th>
+                            <th>Uso / estado</th>
+                            <th>Acción</th>
                         </tr>
                         </thead>
                         <tbody>
                         <?php if ($catalogoRows === []): ?>
                             <tr>
-                                <td colspan="9" class="text-center text-muted py-4">No hay descuentos registrados.</td>
+                                <td colspan="5" class="text-center text-muted py-4">No hay descuentos registrados.</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($catalogoRows as $row): ?>
@@ -608,20 +602,19 @@ if ($loadError === null && $totalPaginas > 1) {
                                     : number_format((float) ($row['valor_descuento'] ?? 0), 2, '.', '');
                                 ?>
                                 <tr>
-                                    <td><?php echo msp2Escape((string) ($row['codigo_descuento'] ?? '')); ?></td>
-                                    <td><?php echo msp2Escape((string) ($row['nombre_descuento'] ?? '')); ?></td>
-                                    <td><?php echo msp2Escape($tipo); ?></td>
-                                    <td class="text-end"><?php echo msp2Escape(msp2DescuentoFmtValor($tipo, $valorUi)); ?></td>
-                                    <td><?php echo msp2Escape((string) ($row['periodo_desde'] ?? '')); ?></td>
-                                    <td><?php echo msp2Escape((string) ($row['periodo_hasta'] !== '' ? $row['periodo_hasta'] : '-')); ?></td>
-                                    <td class="text-center"><?php echo (int) ($row['usos_activos'] ?? 0); ?></td>
+                                    <td><div class="fw-semibold"><?php echo msp2Escape((string) ($row['nombre_descuento'] ?? '')); ?></div><div class="small text-muted"><?php echo msp2Escape((string) ($row['codigo_descuento'] ?? '')); ?></div></td>
+                                    <td><div><?php echo msp2Escape($tipo); ?></div><div class="small text-muted"><?php echo msp2Escape(msp2DescuentoFmtValor($tipo, $valorUi)); ?></div></td>
+                                    <td><div><?php echo msp2Escape((string) ($row['periodo_desde'] ?? '')); ?></div><div class="small text-muted">Hasta <?php echo msp2Escape((string) ($row['periodo_hasta'] !== '' ? $row['periodo_hasta'] : 'abierto')); ?></div></td>
                                     <td>
+                                        <div class="small mb-1"><?php echo (int) ($row['usos_activos'] ?? 0); ?> uso(s) activo(s)</div>
                                         <span class="badge <?php echo $isActivoCatalogo ? 'text-bg-success' : 'text-bg-secondary'; ?>">
                                             <?php echo $isActivoCatalogo ? 'Activo' : 'Inactivo'; ?>
                                         </span>
                                     </td>
                                     <td>
-                                        <form method="post" action="<?php echo msp2Escape(msp2Url('contratos/guardar_descuento_arriendo.php')); ?>" class="row g-1">
+                                        <details class="gp-row-detail">
+                                            <summary class="btn btn-outline-primary btn-sm">Editar</summary>
+                                        <form method="post" action="<?php echo msp2Escape(msp2Url('contratos/guardar_descuento_arriendo.php')); ?>" class="row g-1 mt-2 msp-rent-discount-edit-form">
                                             <?php msp2CsrfField(); ?>
                                             <input type="hidden" name="accion" value="actualizar">
                                             <input type="hidden" name="id_descuento_arriendo" value="<?php echo $id; ?>">
@@ -654,9 +647,10 @@ if ($loadError === null && $totalPaginas > 1) {
                                                 <input type="text" class="form-control form-control-sm" name="observaciones" value="<?php echo msp2Escape((string) ($row['observaciones'] ?? '')); ?>" maxlength="500" placeholder="Observaciones">
                                             </div>
                                             <div class="col-12 d-grid">
-                                                <button type="submit" class="btn btn-outline-primary btn-sm">Guardar</button>
+                                                <button type="submit" class="btn btn-primary btn-sm">Guardar cambios</button>
                                             </div>
                                         </form>
+                                        </details>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -756,7 +750,7 @@ if ($loadError === null && $totalPaginas > 1) {
                             $contratoOptions[] = [
                                 'value' => (string) $idContrato,
                                 'label' => $label,
-                                'label_html' => $labelHtml,
+                                'label_html' => msp2SearchableSelectTrustedHtml($labelHtml),
                                 'search' => mb_strtolower($idContrato . ' ' . $rutRaw . ' ' . $rut . ' ' . $arrendatario . ' ' . $tienda . ' ' . $locales, 'UTF-8'),
                                 'attrs' => [
                                     'locales' => $locales,
@@ -801,7 +795,7 @@ if ($loadError === null && $totalPaginas > 1) {
                             $descuentoOptions[] = [
                                 'value' => (string) $idDescuento,
                                 'label' => $label,
-                                'label_html' => $labelHtml,
+                                'label_html' => msp2SearchableSelectTrustedHtml($labelHtml),
                                 'search' => mb_strtolower($idDescuento . ' ' . $codigo . ' ' . $nombre . ' ' . $tipo . ' ' . $valor . ' ' . $vigencia, 'UTF-8'),
                             ];
                         }
@@ -838,7 +832,7 @@ if ($loadError === null && $totalPaginas > 1) {
     </div>
 <?php endif; ?>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const select = document.getElementById('asociar_id_contrato_arriendo');

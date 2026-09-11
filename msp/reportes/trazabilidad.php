@@ -255,7 +255,7 @@ if ($tablaExiste) {
         $dataStmt->execute();
         $registros = $dataStmt->fetchAll();
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar el reporte de trazabilidad. Detalle tecnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.reportes.trazabilidad', 'No fue posible cargar el reporte de trazabilidad.');
     }
 }
 
@@ -291,8 +291,8 @@ if ($tablaExiste && $totalPaginas > 1) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Trazabilidad Cobros</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -321,12 +321,12 @@ if ($tablaExiste && $totalPaginas > 1) {
                 <?php echo msp2Escape($loadError); ?>
             </div>
         <?php else: ?>
-            <form method="get" class="row g-2 mb-3 align-items-end">
-                <div class="col-12 col-md-2">
+            <form method="get" class="row g-2 mb-3 align-items-end gp-filter-bar">
+                <div class="col-12 col-md-3">
                     <label for="filtroAnio" class="form-label">Año</label>
                     <input type="number" id="filtroAnio" name="filtroAnio" class="form-control" min="2000" max="2100" value="<?php echo msp2Escape($filtroAnio); ?>">
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-3">
                     <label for="filtroServicio" class="form-label">Servicio</label>
                     <select id="filtroServicio" name="filtroServicio" class="form-select">
                         <option value="">(Todos)</option>
@@ -337,7 +337,7 @@ if ($tablaExiste && $totalPaginas > 1) {
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-2 gp-secondary-filter-field">
                     <label for="filtroEstado" class="form-label">Estado documento</label>
                     <select id="filtroEstado" name="filtroEstado" class="form-select">
                         <option value="">(Todos)</option>
@@ -348,21 +348,21 @@ if ($tablaExiste && $totalPaginas > 1) {
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-2 gp-secondary-filter-field">
                     <label for="filtroTienda" class="form-label">Tienda</label>
                     <input type="text" id="filtroTienda" name="filtroTienda" class="form-control" value="<?php echo msp2Escape($filtroTienda); ?>" placeholder="Nombre o ID">
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-2 gp-secondary-filter-field">
                     <label for="filtroLocal" class="form-label">Local</label>
                     <input type="text" id="filtroLocal" name="filtroLocal" class="form-control" value="<?php echo msp2Escape($filtroLocal); ?>" placeholder="Codigo/desc">
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-2 gp-secondary-filter-field">
                     <label for="filtroMedidor" class="form-label">Medidor</label>
                     <input type="text" id="filtroMedidor" name="filtroMedidor" class="form-control" value="<?php echo msp2Escape($filtroMedidor); ?>" placeholder="Codigo">
                 </div>
-                <div class="col-6 col-md-1">
+                <div class="col-6 col-md-1 gp-secondary-filter-field">
                     <label for="lineas" class="form-label">Lineas</label>
-                    <select id="lineas" name="lineas" class="form-select">
+                    <select id="lineas" name="lineas" class="form-select" data-gp-default="25">
                         <?php foreach ($lineasPermitidas as $lineas): ?>
                             <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                 <?php echo $lineas; ?>
@@ -370,7 +370,7 @@ if ($tablaExiste && $totalPaginas > 1) {
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-6 col-md-1 d-grid">
+                <div class="col-12 col-md-4 d-flex gap-2" data-gp-filter-actions>
                     <button type="submit" class="btn btn-primary">Filtrar</button>
                 </div>
             </form>
@@ -383,59 +383,67 @@ if ($tablaExiste && $totalPaginas > 1) {
                 </div>
             </div>
 
-            <div class="table-responsive">
-                <table class="table table-bordered table-hover align-middle text-center">
+            <div class="trazabilidad-table-wrap">
+                <table class="table table-bordered table-hover align-middle text-center trazabilidad-table">
+                    <colgroup>
+                        <col style="width: 8%;">
+                        <col style="width: 9%;">
+                        <col style="width: 24%;">
+                        <col style="width: 15%;">
+                        <col style="width: 14%;">
+                        <col style="width: 9%;">
+                        <col style="width: 10%;">
+                        <col style="width: 11%;">
+                    </colgroup>
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 90px;">Periodo</th>
-                            <th style="width: 90px;">Servicio</th>
-                            <th style="width: 140px;">Tienda</th>
-                            <th style="width: 140px;">Arrendatario</th>
-                            <th style="width: 100px;">Local</th>
-                            <th style="width: 110px;">Medidor</th>
-                            <th style="width: 100px;">Lectura ant.</th>
-                            <th style="width: 100px;">Lectura act.</th>
-                            <th style="width: 90px;">Consumo</th>
-                            <th style="width: 110px;">Monto cobro</th>
-                            <th style="width: 120px;">Documento</th>
-                            <th style="width: 140px;">Estado documento</th>
+                            <th>Periodo</th>
+                            <th>Servicio</th>
+                            <th>Tienda / arrendatario</th>
+                            <th>Local / medidor</th>
+                            <th>Lecturas</th>
+                            <th>Consumo</th>
+                            <th>Monto cobro</th>
+                            <th>Documento / estado</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ($registros === []): ?>
                             <tr>
-                                <td colspan="12" class="text-muted">No hay datos de trazabilidad para los filtros actuales.</td>
+                                <td colspan="8" class="text-muted trace-empty">No hay datos de trazabilidad para los filtros actuales.</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($registros as $row): ?>
                                 <?php $estado = $estadosDocumento[(int) ($row['estado_documento'] ?? 0)] ?? ['label' => 'Sin documento', 'badge' => 'text-bg-light text-dark']; ?>
                                 <tr>
-                                    <td><?php echo msp2Escape(formatoTrazabilidadPeriodo($row['periodo_facturacion'] ?? null)); ?></td>
-                                    <td>
+                                    <td data-label="Periodo"><?php echo msp2Escape(formatoTrazabilidadPeriodo($row['periodo_facturacion'] ?? null)); ?></td>
+                                    <td data-label="Servicio">
                                         <span class="badge text-bg-info"><?php echo msp2Escape((string) ($row['nombre_servicio'] ?? '')); ?></span>
                                     </td>
-                                    <td class="text-start">
-                                        <?php echo msp2Escape((string) ($row['nombre_comercial'] ?? 'Sin tienda')); ?>
+                                    <td data-label="Tienda / arrendatario" class="text-start">
+                                        <div class="trace-primary"><?php echo msp2Escape((string) ($row['nombre_comercial'] ?? 'Sin tienda')); ?></div>
                                         <?php if (!empty($row['id_tienda'])): ?>
-                                            <div class="small text-muted">#<?php echo (int) $row['id_tienda']; ?></div>
+                                            <div class="trace-secondary">Tienda #<?php echo (int) $row['id_tienda']; ?></div>
                                         <?php endif; ?>
-                                    </td>
-                                    <td class="text-start">
-                                        <?php echo msp2Escape((string) ($row['nombre_locatario'] ?? 'Sin arrendatario')); ?>
+                                        <div class="mt-1"><?php echo msp2Escape((string) ($row['nombre_locatario'] ?? 'Sin arrendatario')); ?></div>
                                         <?php if (!empty($row['rut'])): ?>
-                                            <div class="small text-muted"><?php echo msp2Escape((string) $row['rut']); ?></div>
+                                            <div class="trace-secondary"><?php echo msp2Escape((string) $row['rut']); ?></div>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="text-start">
-                                        <?php echo msp2Escape((string) ($row['cdo_local'] ?? '')); ?>
-                                        <div class="small text-muted"><?php echo msp2Escape((string) ($row['desc_local'] ?? '')); ?></div>
+                                    <td data-label="Local / medidor" class="text-start">
+                                        <div class="trace-primary"><?php echo msp2Escape((string) ($row['cdo_local'] ?? '')); ?></div>
+                                        <div class="trace-secondary"><?php echo msp2Escape((string) ($row['desc_local'] ?? '')); ?></div>
+                                        <div class="mt-1"><span class="trace-secondary">Medidor:</span> <?php echo msp2Escape((string) ($row['codigo_medidor'] ?? '')); ?></div>
                                     </td>
-                                    <td><?php echo msp2Escape((string) ($row['codigo_medidor'] ?? '')); ?></td>
-                                    <td class="text-end"><?php echo msp2Escape(formatoTrazabilidadNumero($row['lectura_anterior'] ?? null, 4)); ?></td>
-                                    <td class="text-end"><?php echo msp2Escape(formatoTrazabilidadNumero($row['lectura_actual'] ?? null, 4)); ?></td>
-                                    <td class="text-end"><?php echo msp2Escape(formatoTrazabilidadNumero($row['consumo_cobrado'] ?? null, 4)); ?></td>
-                                    <td class="text-end"><?php echo msp2Escape(formatoTrazabilidadMonto($row['monto_total'] ?? null)); ?></td>
-                                    <td class="text-start">
+                                    <td data-label="Lecturas" class="text-end">
+                                        <div class="trace-value-pair">
+                                            <span><small>Anterior</small><strong><?php echo msp2Escape(formatoTrazabilidadNumero($row['lectura_anterior'] ?? null, 4)); ?></strong></span>
+                                            <span><small>Actual</small><strong><?php echo msp2Escape(formatoTrazabilidadNumero($row['lectura_actual'] ?? null, 4)); ?></strong></span>
+                                        </div>
+                                    </td>
+                                    <td data-label="Consumo" class="text-end fw-semibold"><?php echo msp2Escape(formatoTrazabilidadNumero($row['consumo_cobrado'] ?? null, 4)); ?></td>
+                                    <td data-label="Monto cobro" class="text-end fw-semibold"><?php echo msp2Escape(formatoTrazabilidadMonto($row['monto_total'] ?? null)); ?></td>
+                                    <td data-label="Documento / estado" class="text-start">
                                         <?php if (!empty($row['id_documento_cobro'])): ?>
                                             <a href="<?php echo msp2Escape(msp2Url('documentos_cobro/index.php?filtroDocumento=' . (int) $row['id_documento_cobro'])); ?>">
                                                 #<?php echo (int) $row['id_documento_cobro']; ?>
@@ -446,11 +454,9 @@ if ($tablaExiste && $totalPaginas > 1) {
                                         <?php else: ?>
                                             <span class="text-muted">Sin doc.</span>
                                         <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <span class="badge <?php echo $estado['badge']; ?>">
+                                        <div class="mt-1"><span class="badge <?php echo $estado['badge']; ?>">
                                             <?php echo msp2Escape((string) $estado['label']); ?>
-                                        </span>
+                                        </span></div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -468,19 +474,19 @@ if ($tablaExiste && $totalPaginas > 1) {
                     <nav aria-label="Paginacion trazabilidad">
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2TrazabilidadQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>" aria-label="Anterior">&laquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2TrazabilidadQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>" aria-label="Anterior">&laquo;</a>
                             </li>
                             <?php foreach ($paginationItems as $item): ?>
                                 <?php if ($item === 'ellipsis'): ?>
                                     <li class="page-item disabled"><span class="page-link">...</span></li>
                                 <?php else: ?>
                                     <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo buildMsp2TrazabilidadQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(buildMsp2TrazabilidadQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                     </li>
                                 <?php endif; ?>
                             <?php endforeach; ?>
                             <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2TrazabilidadQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>" aria-label="Siguiente">&raquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2TrazabilidadQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>" aria-label="Siguiente">&raquo;</a>
                             </li>
                         </ul>
                     </nav>
@@ -489,7 +495,7 @@ if ($tablaExiste && $totalPaginas > 1) {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

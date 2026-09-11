@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 
-msp2RequireAccess();
+msp2RequireAccess('MSP Cobranza', 'escritura');
 
 function msp2ResolvePagoSaldoFavorRedirect(): string
 {
@@ -59,6 +59,7 @@ if (mb_strlen($observaciones) > 500) {
 }
 
 try {
+    $conn->beginTransaction();
     $stmt = $conn->prepare(
         'EXEC dbo.msp_aplicar_saldo_favor_documento
             @id_documento_cobro = :id_documento_cobro,
@@ -74,6 +75,7 @@ try {
     $resultado = $stmt->fetch() ?: [];
     $montoAplicado = isset($resultado['monto_aplicado']) ? (float) $resultado['monto_aplicado'] : (float) $montoAplicar;
     $saldoRestante = isset($resultado['saldo_favor_restante']) ? (float) $resultado['saldo_favor_restante'] : 0.0;
+    $conn->commit();
 
     msp2SetFlash(
         'success',
@@ -83,6 +85,9 @@ try {
         . '.'
     );
 } catch (PDOException $exception) {
+    if ($conn->inTransaction()) {
+        $conn->rollBack();
+    }
     $message = $exception->getMessage();
 
     if (str_contains($message, '50081')) {

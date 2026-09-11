@@ -1260,25 +1260,16 @@ foreach ($saldoFavorOptionRows as $optionRow) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Cobranza | Saldo a favor manual</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        #saldo_favor_dropdown_btn {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            padding-right: 2rem;
-        }
-    </style>
-    <?php msp2RenderMontoClpAssets(); ?>
+<?php msp2RenderMontoClpAssets(); ?>
     <?php msp2RenderSearchableSelectAssets(); ?>
 </head>
 <body class="d-flex flex-column min-vh-100">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <?php msp2RenderCsrfAutoFieldScript(); ?>
-<main class="gp-main d-flex align-items-center justify-content-center p-4">
-    <div class="box-container-wide">
+<main class="gp-main p-3 p-xl-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2" data-gp-commandbar>
             <a href="<?php echo msp2Escape(msp2Url('cobranza/ajustes.php')); ?>" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1"></i>Volver a Ajustes de cobranza
@@ -1297,8 +1288,6 @@ foreach ($saldoFavorOptionRows as $optionRow) {
         <?php if ($loadError !== null): ?>
             <div class="alert alert-warning"><?php echo msp2Escape($loadError); ?></div>
         <?php else: ?>
-            <div class="card mb-3">
-                <div class="card-body">
                     <form method="get" class="row g-2 align-items-end mb-3" id="form_periodo_saldo_favor">
                         <div class="col-12 col-md-3">
                             <label class="form-label">Periodo</label>
@@ -1569,12 +1558,9 @@ foreach ($saldoFavorOptionRows as $optionRow) {
                                     </div>
                                 <?php endif; ?>
                     <?php endif; ?>
-                </div>
-            </div>
         <?php endif; ?>
-    </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const formPeriodo = document.getElementById('form_periodo_saldo_favor');

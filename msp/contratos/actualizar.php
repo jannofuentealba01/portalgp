@@ -851,23 +851,10 @@ try {
 
     $garantiasUpsertadas = 0;
     $garantiasAsientoRefrescado = 0;
-    $garantiasParaRefrescarAsiento = [];
-    $puedeRefrescarAsientoGarantia = false;
-    $stmtRevertirGarantiaAsiento = null;
-    $stmtGenerarGarantiaAsiento = null;
-    if ($garantiasSolicitadasCount > 0) {
-        $tieneProcRevertirOrigen = (int) ($conn->query("SELECT OBJECT_ID(N'dbo.msp_acc_revertir_origen', N'P')")->fetchColumn() ?: 0) > 0;
-        $tieneProcGenerarGarantia = (int) ($conn->query("SELECT OBJECT_ID(N'dbo.msp_acc_generar_asiento_garantia_constitucion', N'P')")->fetchColumn() ?: 0) > 0;
-        $puedeRefrescarAsientoGarantia = $tieneProcRevertirOrigen && $tieneProcGenerarGarantia;
-        if ($puedeRefrescarAsientoGarantia) {
-            $stmtRevertirGarantiaAsiento = $conn->prepare(
-                "EXEC dbo.msp_acc_revertir_origen N'msp_garantias', :id_origen, :fecha_reversa, :motivo"
-            );
-            $stmtGenerarGarantiaAsiento = $conn->prepare(
-                'EXEC dbo.msp_acc_generar_asiento_garantia_constitucion :id_garantia'
-            );
-        }
-    }
+
+
+
+
     if ($stmtInsertGarantia instanceof PDOStatement && $stmtExisteGarantia instanceof PDOStatement) {
         foreach ($localesCodigo as $codigoLocal) {
             $codeKey = msp2LocalCodeKey($codigoLocal);
@@ -896,19 +883,7 @@ try {
             $refCfg = msp2NormalizeNullableText($garantiaReferenciaRecepcion);
 
             if ($idGarantiaExistente > 0 && $stmtUpdateGarantia instanceof PDOStatement) {
-                $fechaExistente = trim((string) ($garantiaExistente['fecha_constitucion'] ?? ''));
-                $montoExistente = round((float) ($garantiaExistente['monto_inicial'] ?? 0), 2);
-                $obsExistente = msp2NormalizeNullableText((string) ($garantiaExistente['observaciones'] ?? ''));
-                $medioExistente = msp2NormalizeNullableText((string) ($garantiaExistente['medio_recepcion'] ?? ''));
-                $refExistente = msp2NormalizeNullableText((string) ($garantiaExistente['referencia_recepcion'] ?? ''));
-                $montoNuevo = round((float) $montoCfg, 2);
-                $tieneCambio = (
-                    $fechaExistente !== $fechaCfg
-                    || abs($montoExistente - $montoNuevo) > 0.009
-                    || $obsExistente !== $obsCfg
-                    || ($tieneColumnaGarantiaMedioRecepcion && $medioExistente !== msp2NormalizeNullableText($medioCfg))
-                    || ($tieneColumnaGarantiaReferenciaRecepcion && $refExistente !== $refCfg)
-                );
+
 
                 $stmtUpdateGarantia->bindValue(':id_garantia', $idGarantiaExistente, PDO::PARAM_INT);
                 $stmtUpdateGarantia->bindValue(':fecha_constitucion', $fechaCfg, PDO::PARAM_STR);
@@ -922,9 +897,6 @@ try {
                 }
                 $stmtUpdateGarantia->execute();
                 $garantiasUpsertadas++;
-                if ($tieneCambio) {
-                    $garantiasParaRefrescarAsiento[$idGarantiaExistente] = $fechaCfg;
-                }
                 continue;
             }
 
@@ -944,24 +916,6 @@ try {
             }
             $stmtInsertGarantia->execute();
             $garantiasUpsertadas++;
-        }
-    }
-
-    if (
-        $puedeRefrescarAsientoGarantia
-        && $stmtRevertirGarantiaAsiento instanceof PDOStatement
-        && $stmtGenerarGarantiaAsiento instanceof PDOStatement
-        && $garantiasParaRefrescarAsiento !== []
-    ) {
-        foreach ($garantiasParaRefrescarAsiento as $idGarantiaRefrescar => $fechaGarantiaRefrescar) {
-            $stmtRevertirGarantiaAsiento->bindValue(':id_origen', (int) $idGarantiaRefrescar, PDO::PARAM_INT);
-            $stmtRevertirGarantiaAsiento->bindValue(':fecha_reversa', (string) $fechaGarantiaRefrescar, PDO::PARAM_STR);
-            $stmtRevertirGarantiaAsiento->bindValue(':motivo', 'Actualización de garantía desde contratos/index.php', PDO::PARAM_STR);
-            $stmtRevertirGarantiaAsiento->execute();
-
-            $stmtGenerarGarantiaAsiento->bindValue(':id_garantia', (int) $idGarantiaRefrescar, PDO::PARAM_INT);
-            $stmtGenerarGarantiaAsiento->execute();
-            $garantiasAsientoRefrescado++;
         }
     }
 

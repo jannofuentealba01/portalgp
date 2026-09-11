@@ -101,6 +101,19 @@ BEGIN
 END;
 GO
 
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.msp_tesoreria_movimientos')
+      AND name = N'UX_msp_tesoreria_movimientos_recepcion'
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_msp_tesoreria_movimientos_recepcion
+        ON dbo.msp_tesoreria_movimientos(id_recepcion_garantia)
+        WHERE id_recepcion_garantia IS NOT NULL AND estado_movimiento=N'VIGENTE';
+END;
+GO
+
 IF OBJECT_ID(N'dbo.msp_garantia_archivos', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.msp_garantia_archivos (

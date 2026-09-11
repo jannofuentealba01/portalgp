@@ -44,7 +44,7 @@ if (!in_array($lineasPorPagina, $lineasPermitidas, true)) {
 }
 
 $paginaActual = isset($_GET['pagina']) && is_numeric($_GET['pagina']) ? max(1, (int) $_GET['pagina']) : 1;
-$filtroTexto = msp2NormalizeText($_GET['filtroTexto'] ?? null);
+$filtroTexto = msp2SearchQuery($_GET['filtroTexto'] ?? null);
 $filtroEstado = trim((string) ($_GET['filtroEstado'] ?? ''));
 $filtroRubro = trim((string) ($_GET['filtroRubro'] ?? ''));
 
@@ -150,14 +150,31 @@ if ($tablaExiste) {
         $params = [];
 
         if ($filtroTexto !== '') {
-            $conditions[] = "(
-                ISNULL(t.nombre_comercial, '') LIKE :filtro_nombre
-                OR ISNULL(a.nombre_locatario, '') LIKE :filtro_arrendatario
-                OR ISNULL(a.rut, '') LIKE :filtro_rut
-            )";
-            $params[':filtro_nombre'] = '%' . $filtroTexto . '%';
-            $params[':filtro_arrendatario'] = '%' . $filtroTexto . '%';
-            $params[':filtro_rut'] = '%' . $filtroTexto . '%';
+            $searchFields = [
+                't.id_tienda',
+                't.nombre_comercial',
+                'a.nombre_locatario',
+                "REPLACE(REPLACE(REPLACE(ISNULL(a.rut,N''),N'.',N''),N'-',N''),N' ',N'')",
+                'r.nombre_rubro',
+                'e.desc_estado',
+            ];
+            if (msp2TableExists($conn, 'msp_locales') && msp2TableExists($conn, 'msp_ocupacion_locales')) {
+                $searchFields[] = "(
+                    SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),CONCAT(lsearch.cdo_local,N' ',ISNULL(lsearch.desc_local,N''))),N' ')
+                    FROM dbo.msp_ocupacion_locales olsearch
+                    INNER JOIN dbo.msp_locales lsearch ON lsearch.id_local = olsearch.id_local
+                    WHERE olsearch.id_tienda = t.id_tienda
+                )";
+                $searchFields[] = "(
+                    SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),REPLACE(REPLACE(lsearch.cdo_local,N'-',N''),N'.',N'')),N' ')
+                    FROM dbo.msp_ocupacion_locales olsearch
+                    INNER JOIN dbo.msp_locales lsearch ON lsearch.id_local = olsearch.id_local
+                    WHERE olsearch.id_tienda = t.id_tienda
+                )";
+            }
+            $search = msp2BuildSearchCondition($filtroTexto, $searchFields, 'tienda', 't.id_tienda');
+            $conditions[] = $search['sql'];
+            $params = array_merge($params, $search['params']);
         }
 
         if ($filtroEstado !== '' && ctype_digit($filtroEstado)) {
@@ -454,7 +471,7 @@ if ($tablaExiste) {
             }
         }
     } catch (Throwable $exception) {
-        $loadError = 'No fue posible cargar las tiendas. Detalle técnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.tiendas.index', 'No fue posible cargar las tiendas.');
     }
 }
 
@@ -567,26 +584,9 @@ function msp2CargoEstadoBadge(int $estado): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Tiendas</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode((string) filemtime(dirname(__DIR__, 2) . '/styles.css')); ?>">
-    <style>
-        .picker-select-btn {
-            border: 1px solid #ced4da;
-            background-color: #fff;
-            color: #212529;
-        }
-
-        .picker-select-btn:hover,
-        .picker-select-btn:focus,
-        .picker-select-btn:active,
-        .picker-select-btn.show {
-            border-color: #86b7fe;
-            background-color: #fff;
-            color: #212529;
-            box-shadow: 0 0 0 .2rem rgba(13, 110, 253, .25);
-        }
-    </style>
 </head>
 <body class="gp-layout bg-light">
 
@@ -603,7 +603,7 @@ function msp2CargoEstadoBadge(int $estado): string
             </div>
             <h1>Tiendas</h1>
             <div class="d-flex flex-wrap gap-2 msp-management-actions msp-stores-actions">
-                <a href="<?php echo msp2Escape(msp2Url('locales/index.php')); ?>" class="btn btn-outline-dark btn-sm">
+                <a href="<?php echo msp2Escape(msp2Url('locales/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-door-open me-1" aria-hidden="true"></i>Catálogo de locales
                 </a>
                 <a href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
@@ -625,12 +625,12 @@ function msp2CargoEstadoBadge(int $estado): string
                 <?php echo msp2Escape($loadError); ?>
             </div>
         <?php else: ?>
-            <form method="get" class="row g-2 msp-management-filters msp-stores-filters align-items-end">
-                <div class="col-12 col-md-4">
-                    <label for="filtroTexto" class="form-label">Nombre, RUT o arrendatario</label>
-                    <input type="text" id="filtroTexto" name="filtroTexto" class="form-control" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Buscar">
+            <form method="get" class="row g-2 msp-management-filters msp-stores-filters align-items-end gp-filter-bar">
+                <div class="col-12 col-lg-5">
+                    <label for="filtroTexto" class="form-label">Buscar tienda</label>
+                    <input type="search" id="filtroTexto" name="filtroTexto" class="form-control" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Tienda, arrendatario, RUT, local o #ID">
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-2 gp-secondary-filter-field">
                     <label for="filtroRubro" class="form-label">Rubro</label>
                     <select id="filtroRubro" name="filtroRubro" class="form-select">
                         <option value="">(Todos)</option>
@@ -652,9 +652,9 @@ function msp2CargoEstadoBadge(int $estado): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-1 gp-secondary-filter-field">
                     <label for="lineas" class="form-label">Líneas</label>
-                    <select id="lineas" name="lineas" class="form-select">
+                    <select id="lineas" name="lineas" class="form-select" data-gp-default="25">
                         <?php foreach ($lineasPermitidas as $lineas): ?>
                             <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                 <?php echo $lineas; ?>
@@ -662,8 +662,11 @@ function msp2CargoEstadoBadge(int $estado): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-12 col-md-2 d-grid">
-                    <button type="submit" class="btn btn-primary msp-store-filter-submit">Filtrar</button>
+                <div class="col-12 col-lg-4 d-flex gap-2" data-gp-filter-actions>
+                    <button type="submit" class="btn btn-primary flex-grow-1 msp-store-filter-submit">Filtrar</button>
+                    <?php if ($filtroTexto !== '' || $filtroRubro !== '' || $filtroEstado !== ''): ?>
+                        <a class="btn btn-outline-secondary" href="index.php" aria-label="Limpiar filtros">Limpiar</a>
+                    <?php endif; ?>
                 </div>
             </form>
 
@@ -718,7 +721,10 @@ function msp2CargoEstadoBadge(int $estado): string
                                         <?php endif; ?>
                                     </td>
                                     <td class="store-actions">
-                                        <div class="table-actions">
+                                        <details class="gp-row-actions">
+                                            <summary class="btn btn-outline-secondary btn-sm">Acciones</summary>
+                                            <div class="gp-row-actions__menu">
+                                            <div class="table-actions">
                                             <?php if ($contratoData !== null): ?>
                                                 <a
                                                     href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?id_contrato_arriendo=' . (int) ($contratoData['id_contrato_arriendo'] ?? 0))); ?>"
@@ -750,7 +756,7 @@ function msp2CargoEstadoBadge(int $estado): string
                                             <?php if ($moduloCargosHabilitado): ?>
                                                 <button
                                                     type="button"
-                                                    class="btn btn-outline-dark btn-sm js-ver-cargos-tienda"
+                                                    class="btn btn-outline-secondary btn-sm js-ver-cargos-tienda"
                                                     data-bs-toggle="modal"
                                                     data-bs-target="#modalVerCargosTienda"
                                                     data-id="<?php echo $idTienda; ?>"
@@ -803,7 +809,9 @@ function msp2CargoEstadoBadge(int $estado): string
                                                     <i class="bi bi-toggle-off" aria-hidden="true"></i>
                                                 </button>
                                             <?php endif; ?>
-                                        </div>
+                                            </div>
+                                            </div>
+                                        </details>
                                     </td>
                                     <td class="store-contract">
                                         <?php if ($contratoData === null): ?>
@@ -834,19 +842,19 @@ function msp2CargoEstadoBadge(int $estado): string
                     <nav aria-label="Paginación de tiendas">
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2TiendasQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>" aria-label="Anterior">&laquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2TiendasQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>" aria-label="Anterior">&laquo;</a>
                             </li>
                             <?php foreach ($paginationItems as $item): ?>
                                 <?php if ($item === 'ellipsis'): ?>
                                     <li class="page-item disabled"><span class="page-link">...</span></li>
                                 <?php else: ?>
                                     <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo buildMsp2TiendasQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(buildMsp2TiendasQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                     </li>
                                 <?php endif; ?>
                             <?php endforeach; ?>
                             <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2TiendasQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>" aria-label="Siguiente">&raquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2TiendasQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>" aria-label="Siguiente">&raquo;</a>
                             </li>
                         </ul>
                     </nav>
@@ -1359,7 +1367,8 @@ function msp2CargoEstadoBadge(int $estado): string
 <?php endif; ?>
 
 <?php include dirname(__DIR__) . '/templates/components/undo_toast.php'; ?>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<?php msp2RenderSearchAssets(); ?>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const cargosPorTienda = <?php echo $cargosPorTiendaJson !== false ? $cargosPorTiendaJson : '{}'; ?>;
@@ -1451,11 +1460,12 @@ function msp2CargoEstadoBadge(int $estado): string
         });
 
         const applyFilter = () => {
-            const query = filterEl.value.trim().toLowerCase();
+            const query = filterEl.value.trim();
+            const exact = query.match(/^#\s*([1-9][0-9]*)$/);
             options.forEach((option) => {
-                const search = String(option.dataset.search || '').toLowerCase();
-                const label = String(option.dataset.label || '').toLowerCase();
-                const visible = query === '' || search.includes(query) || label.includes(query);
+                const visible = exact
+                    ? String(option.dataset.id || '') === exact[1]
+                    : window.mspSearch.matches(query, option.dataset.search || '', option.dataset.label || '');
                 option.classList.toggle('d-none', !visible);
             });
         };
@@ -1528,16 +1538,17 @@ function msp2CargoEstadoBadge(int $estado): string
         };
 
         const applySearchVisibility = () => {
-            const query = searchEl ? searchEl.value.trim().toLowerCase() : '';
+            const query = searchEl ? searchEl.value.trim() : '';
             let visibleAllowed = 0;
             const options = Array.from(listEl.querySelectorAll('.js-local-picker-option'));
             options.forEach((option) => {
-                const searchToken = String(option.dataset.search || '').toLowerCase();
-                const labelToken = String(option.dataset.label || '').toLowerCase();
-                const codeToken = String(option.dataset.code || '').toLowerCase();
-
                 const allowed = option.dataset.allowed === '1';
-                const matches = query === '' || searchToken.includes(query) || labelToken.includes(query) || codeToken.includes(query);
+                const matches = window.mspSearch.matches(
+                    query,
+                    option.dataset.search || '',
+                    option.dataset.label || '',
+                    option.dataset.code || ''
+                );
                 const visible = allowed && matches;
                 option.classList.toggle('d-none', !visible);
                 option.disabled = !allowed;
@@ -1910,7 +1921,10 @@ function msp2CargoEstadoBadge(int $estado): string
             }
 
             const rowsHtml = cargos.map((cargo) => {
-                const estadoBadge = String(cargo.estado_badge || 'bg-light text-dark');
+                const estadoBadgeRaw = String(cargo.estado_badge || 'bg-light text-dark');
+                const estadoBadge = /^[a-z0-9 _-]+$/i.test(estadoBadgeRaw)
+                    ? estadoBadgeRaw
+                    : 'bg-light text-dark';
                 const estadoLabel = escapeHtml(cargo.estado_label || 'Sin estado');
                 const fechaCargo = escapeHtml(cargo.fecha_cargo_label || '-');
                 const alcance = cargo.codigo_local

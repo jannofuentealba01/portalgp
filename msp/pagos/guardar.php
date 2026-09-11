@@ -6,8 +6,9 @@ require_once dirname(__DIR__) . '/mail_helper.php';
 require_once dirname(__DIR__) . '/cobranza/mail_templates/vale_pago_email.php';
 require_once dirname(__DIR__) . '/cobranza/mail_templates/comprobante_gastos_pdf.php';
 require_once __DIR__ . '/saldo_favor_periodo_helper.php';
+require_once dirname(__DIR__) . '/services/DocumentoCobroTrazabilidadService.php';
 
-msp2RequireAccess();
+msp2RequireAccess('MSP Cobranza', 'escritura');
 
 function msp2ResolvePagoRedirect(): string
 {
@@ -281,10 +282,12 @@ $enTransaccion = false;
 $saldoFavorPeriodoSyncError = null;
 
 try {
-    if ($usarSaldoFavor && $montoSaldoFavor > 0) {
+    if (!$conn->inTransaction()) {
         $conn->beginTransaction();
         $enTransaccion = true;
+    }
 
+    if ($usarSaldoFavor && $montoSaldoFavor > 0) {
         $stmtSaldoFavor = $conn->prepare(
             'EXEC dbo.msp_aplicar_saldo_favor_documento
                 @id_documento_cobro = :id_documento_cobro,
@@ -344,6 +347,20 @@ try {
     }
 
     msp2SyncHistoricalDebtByDocument($conn, (int) $idDocumentoCobro);
+
+    DocumentoCobroTrazabilidadService::registrar(
+        $conn,
+        (int) $idDocumentoCobro,
+        'PAGO_APLICADO',
+        'PAGO',
+        isset($_SESSION['usuario']['id']) ? (int) $_SESSION['usuario']['id'] : null,
+        [
+            'id_pago' => $idPagoGenerado,
+            'monto_aplicado' => round($montoAplicado, 2),
+            'saldo_favor_aplicado' => round($montoSaldoFavorAplicado, 2),
+            'saldo_favor_generado' => round($montoSaldoFavor, 2),
+        ]
+    );
 
     if ($enTransaccion) {
         $conn->commit();
@@ -696,8 +713,15 @@ try {
             $mail->send();
         }
     }
-} catch (Throwable) {
+} catch (Throwable $mailException) {
     // Envío de correo es best-effort: no interrumpe el flujo.
+    error_log('Pago registrado, pero fallo el envio del comprobante: ' . $mailException->getMessage());
+    if ($pagoGuardadoOk && $enviarComprobante) {
+        msp2AppendFlashMessage(
+            'warning',
+            'El pago quedó registrado, pero el comprobante no pudo enviarse por correo. Puedes reenviarlo desde Documentos de cobro.'
+        );
+    }
 }
 
 msp2Redirect($redirectTarget);

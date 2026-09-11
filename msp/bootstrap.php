@@ -3,51 +3,36 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/db.php';
 require_once dirname(__DIR__) . '/permisos.php';
+require_once __DIR__ . '/search_helper.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+pgpSecurityStartSession();
 
-function msp2PermissionExists(string $permission): bool
-{
-    static $cache = [];
-    if (array_key_exists($permission, $cache)) {
-        return $cache[$permission];
-    }
-    try {
-        $stmt = $GLOBALS['conn']->prepare('SELECT COUNT(*) FROM dbo.cr_permisos WHERE nombre_permiso = :permiso');
-        $stmt->execute([':permiso' => $permission]);
-        return $cache[$permission] = (int) $stmt->fetchColumn() > 0;
-    } catch (Throwable) {
-        return $cache[$permission] = false;
-    }
-}
-
-function msp2CurrentUserHasPermission(string $permission): bool
+function msp2CurrentUserHasPermission(string $permission, string $action = 'lectura'): bool
 {
     static $cache = [];
     $idUsuario = (int) ($_SESSION['usuario']['id'] ?? 0);
     if ($idUsuario <= 0) {
         return false;
     }
-    $cacheKey = $idUsuario . '|' . $permission;
+    if (!pgpValidateSession($GLOBALS['conn'])) {
+        return false;
+    }
+    $cacheKey = $idUsuario . '|' . $permission . '|' . $action;
     if (array_key_exists($cacheKey, $cache)) {
         return $cache[$cacheKey];
     }
-    if (tienePermiso($idUsuario, $permission)) {
+    if (tienePermiso($idUsuario, $permission, $action)) {
         return $cache[$cacheKey] = true;
     }
-    // Compatibilidad antes de instalar el patch: cuando el permiso específico
-    // aún no existe, conserva temporalmente el acceso MSP anterior.
-    return $cache[$cacheKey] = str_starts_with($permission, 'MSP ')
-        && $permission !== 'MSP Arriendos'
-        && !msp2PermissionExists($permission)
-        && tienePermiso($idUsuario, 'MSP Arriendos');
+    return $cache[$cacheKey] = false;
 }
 
 function msp2FunctionalPermissions(): array
 {
-    return ['MSP Operacion', 'MSP Cobranza', 'MSP Cierre Mensual', 'MSP Reportes', 'MSP Configuracion'];
+    return [
+        'MSP Operacion', 'MSP Cobranza', 'MSP Tesoreria', 'MSP Cierre Mensual', 'MSP Reportes', 'MSP Configuracion',
+        'MSP Documentos Tienda Carga', 'MSP Documentos Tienda Revision', 'MSP Documentos Tienda Aprobacion',
+    ];
 }
 
 function msp2PermissionForCurrentRoute(): string
@@ -67,6 +52,9 @@ function msp2PermissionForCurrentRoute(): string
     if (str_contains($route, '/msp/cierre_mensual/')) {
         return 'MSP Cierre Mensual';
     }
+    if (str_contains($route, '/msp/tesoreria/')) {
+        return 'MSP Tesoreria';
+    }
     if (str_contains($route, '/msp/dashboard/')
         || str_contains($route, '/msp/reportes/')
         || str_contains($route, '/msp/contabilidad/')
@@ -84,24 +72,29 @@ function msp2PermissionForCurrentRoute(): string
     return 'MSP Operacion';
 }
 
-function msp2RequireAnyAccess(array $permissions): void
+function msp2RequireAnyAccess(array $permissions, ?string $action = null): void
 {
+    pgpRequireEnabledSession($GLOBALS['conn']);
+    pgpRequireInternalAudience();
     if (!isset($_SESSION['usuario']['id'])) {
         echo "<script>alert('Debes iniciar sesión.'); window.location.href = '/portalgp/login.php';</script>";
         exit();
     }
+    $action = $action ?? pgpRequestPermissionAction();
     foreach ($permissions as $permission) {
-        if (is_string($permission) && msp2CurrentUserHasPermission($permission)) {
+        if (is_string($permission) && msp2CurrentUserHasPermission($permission, $action)) {
             msp2RequireValidCsrfToken();
             return;
         }
     }
-    echo "<script>alert('No tienes permiso para esta sección.'); window.location.href = '/portalgp/msp/msp_menu.php';</script>";
+    http_response_code(403);
+    echo "<script>alert('No tienes permiso para esta acción.'); window.location.href = '/portalgp/msp/msp_menu.php';</script>";
     exit();
 }
 
-function msp2RequireAccess(?string $permission = null): void
+function msp2RequireAccess(?string $permission = null, ?string $action = null): void
 {
+    pgpRequireEnabledSession($GLOBALS['conn']);
     if (!isset($_SESSION['usuario']['id'])) {
         echo "<script>alert('Debes iniciar sesión.'); window.location.href = '/portalgp/login.php';</script>";
         exit();
@@ -109,10 +102,10 @@ function msp2RequireAccess(?string $permission = null): void
 
     $permission = $permission ?? msp2PermissionForCurrentRoute();
     if ($permission === '') {
-        msp2RequireAnyAccess(array_merge(msp2FunctionalPermissions(), ['MSP Arriendos']));
+        msp2RequireAnyAccess(msp2FunctionalPermissions(), $action);
         return;
     }
-    msp2RequireAnyAccess([$permission]);
+    msp2RequireAnyAccess([$permission], $action);
 }
 
 function msp2Url(string $path = ''): string
@@ -124,6 +117,36 @@ function msp2Url(string $path = ''): string
     }
 
     return $base . '/' . ltrim($path, '/');
+}
+
+function msp2PendingReturnTo(mixed $value): string
+{
+    $returnTo = trim((string) $value);
+    if ($returnTo === '') {
+        return '';
+    }
+
+    return preg_match(
+        '#^pendientes/index\.php(?:\?[A-Za-z0-9_\-\.\[\]%=&]*)?$#',
+        $returnTo
+    ) === 1 ? $returnTo : '';
+}
+
+function msp2WithPendingReturn(string $path, mixed $value): string
+{
+    $returnTo = msp2PendingReturnTo($value);
+    if ($returnTo === '') {
+        return $path;
+    }
+
+    $fragment = '';
+    $fragmentPos = strpos($path, '#');
+    if ($fragmentPos !== false) {
+        $fragment = substr($path, $fragmentPos);
+        $path = substr($path, 0, $fragmentPos);
+    }
+    $path .= (str_contains($path, '?') ? '&' : '?') . 'return_to=' . rawurlencode($returnTo);
+    return $path . $fragment;
 }
 
 function msp2ModuleAvailable(string $relativePath): bool
@@ -176,7 +199,7 @@ function msp2QuickAccessMainSections(): array
                     'permission' => 'MSP Operacion',
                 ],
                 [
-                    'label' => 'Contratos y asociación',
+                    'label' => 'Contratos',
                     'icon' => 'bi-file-earmark-text',
                     'href' => msp2Url('contratos/index.php'),
                     'enabled' => true,
@@ -203,13 +226,6 @@ function msp2QuickAccessMainSections(): array
                     'href' => msp2Url('pendientes/index.php'),
                     'enabled' => msp2ModuleAvailable('pendientes/index.php'),
                     'badge' => msp2PendingBadgeCount(),
-                    'permission' => 'MSP Operacion',
-                ],
-                [
-                    'label' => 'Medidores y lecturas',
-                    'icon' => 'bi-speedometer2',
-                    'href' => msp2Url('catalogos/medidores.php'),
-                    'enabled' => true,
                     'permission' => 'MSP Operacion',
                 ],
                 [
@@ -254,6 +270,13 @@ function msp2QuickAccessMainSections(): array
                     'href' => msp2Url('documentos_cobro/index.php'),
                     'enabled' => true,
                     'permission' => 'MSP Cobranza',
+                ],
+                [
+                    'label' => 'Carga de PDF por tienda',
+                    'icon' => 'bi-file-earmark-arrow-up',
+                    'href' => msp2Url('documentos_tienda/index.php'),
+                    'enabled' => msp2ModuleAvailable('documentos_tienda/index.php'),
+                    'permissions' => ['MSP Documentos Tienda Carga', 'MSP Documentos Tienda Revision', 'MSP Documentos Tienda Aprobacion'],
                 ],
                 [
                     'label' => 'Registrar pago',
@@ -310,13 +333,6 @@ function msp2QuickAccessMainSections(): array
                     'label' => 'Dashboard',
                     'icon' => 'bi-speedometer2',
                     'href' => msp2Url('dashboard/index.php'),
-                    'enabled' => true,
-                    'permission' => 'MSP Reportes',
-                ],
-                [
-                    'label' => 'Libro Diario',
-                    'icon' => 'bi-journal-text',
-                    'href' => msp2Url('contabilidad/libro.php'),
                     'enabled' => true,
                     'permission' => 'MSP Reportes',
                 ],
@@ -393,6 +409,15 @@ function msp2QuickAccessMenuSections(): array
         $section['items'] = array_values(array_filter(
             (array) ($section['items'] ?? []),
             static function (array $item): bool {
+                $permissions = is_array($item['permissions'] ?? null) ? $item['permissions'] : [];
+                if ($permissions !== []) {
+                    foreach ($permissions as $permissionName) {
+                        if (is_string($permissionName) && msp2CurrentUserHasPermission($permissionName)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
                 $permission = (string) ($item['permission'] ?? '');
                 return $permission === '' || msp2CurrentUserHasPermission($permission);
             }
@@ -631,12 +656,21 @@ function msp2VerifySignedParams(string $scope, array $params): bool
 
 function msp2Redirect(string $path = ''): never
 {
+    $returnTo = msp2PendingReturnTo($_POST['return_to'] ?? $_GET['return_to'] ?? '');
+    if (
+        $returnTo !== ''
+        && !str_starts_with(ltrim($path, '/'), 'pendientes/')
+        && preg_match('/(?:^|[?&])return_to=/', $path) !== 1
+    ) {
+        $path = msp2WithPendingReturn($path, $returnTo);
+    }
     header('Location: ' . msp2Url($path));
     exit();
 }
 
 function msp2SetFlash(string $type, string $message, array $meta = []): void
 {
+    $message = pgpSafePublicMessage($message, 'msp.flash', 'No fue posible completar la operación.');
     $payload = [
         'type' => $type,
         'message' => $message,
@@ -647,6 +681,21 @@ function msp2SetFlash(string $type, string $message, array $meta = []): void
     }
 
     $_SESSION['msp2_flash'] = $payload;
+}
+
+function msp2AppendFlashMessage(string $type, string $message): void
+{
+    $message = pgpSafePublicMessage($message, 'msp.flash.append', 'No fue posible completar una operación complementaria.');
+    $current = $_SESSION['msp2_flash'] ?? null;
+    if (!is_array($current)) {
+        msp2SetFlash($type, $message);
+        return;
+    }
+
+    $currentMessage = trim((string) ($current['message'] ?? ''));
+    $current['type'] = $type;
+    $current['message'] = trim($currentMessage . ($currentMessage !== '' ? ' ' : '') . $message);
+    $_SESSION['msp2_flash'] = $current;
 }
 
 function msp2PullFlash(): ?array
@@ -714,6 +763,15 @@ function msp2LocalCodeKey(?string $value): string
 
 function msp2LocalCodeNaturalOrderSql(string $columnExpr): string
 {
+    $columnExpr = trim($columnExpr);
+    $simpleColumn = preg_match('/^(?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*$/D', $columnExpr) === 1;
+    $allowedExpressions = [
+        "ISNULL(locales_ref.locales_label, ISNULL(da.cdo_local, N'-'))",
+    ];
+    if (!$simpleColumn && !in_array($columnExpr, $allowedExpressions, true)) {
+        throw new InvalidArgumentException('La expresión de orden de locales no está permitida.');
+    }
+
     // Orden natural para códigos como:
     // A-1, A-2, A-3A, ... | B, C, ... | 89, 90, ... | GYM, MODULAR, ...
     $codeExpr = "UPPER(LTRIM(RTRIM({$columnExpr})))";
@@ -1077,18 +1135,25 @@ function msp2ColumnExists(PDO $conn, string $tableName, string $columnName, stri
 
 function msp2EnsureConfiguracionTable(PDO $conn): void
 {
-    $conn->exec(
-        "IF OBJECT_ID(N'dbo.msp_configuracion', N'U') IS NULL
-        BEGIN
-            CREATE TABLE dbo.msp_configuracion (
-                clave NVARCHAR(120) NOT NULL CONSTRAINT PK_msp_configuracion PRIMARY KEY,
-                valor NVARCHAR(4000) NULL,
-                descripcion NVARCHAR(500) NULL,
-                fecha_actualizacion DATETIME2(0) NOT NULL CONSTRAINT DF_msp_configuracion_fecha_actualizacion DEFAULT (SYSDATETIME()),
-                id_usuario_actualizacion INT NULL
-            );
-        END"
-    );
+    if (!msp2TableExists($conn, 'msp_configuracion')) {
+        throw new RuntimeException('Falta instalar la tabla dbo.msp_configuracion mediante las migraciones de PortalGP.');
+    }
+}
+
+function msp2SqlIdentifier(string $identifier): string
+{
+    $parts = explode('.', trim($identifier));
+    if ($parts === [] || count($parts) > 3) {
+        throw new InvalidArgumentException('El identificador SQL no está permitido.');
+    }
+    foreach ($parts as &$part) {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $part) !== 1) {
+            throw new InvalidArgumentException('El identificador SQL no está permitido.');
+        }
+        $part = '[' . str_replace(']', ']]', $part) . ']';
+    }
+    unset($part);
+    return implode('.', $parts);
 }
 
 function msp2ConfiguracionGet(PDO $conn, string $clave, ?string $default = null): ?string
@@ -1275,6 +1340,44 @@ function msp2ImportUploadMaxBytes(): int
     return 1024 * 1024; // 1 MB
 }
 
+function msp2ValidateXlsxArchive(string $path, int $maxExpandedBytes = 52428800, int $maxEntries = 512): ?string
+{
+    if (!class_exists('ZipArchive')) {
+        return 'No se puede inspeccionar de forma segura el archivo XLSX (ZipArchive no disponible).';
+    }
+    $zip = new ZipArchive();
+    if ($zip->open($path) !== true) {
+        return 'El archivo XLSX no contiene una estructura ZIP válida.';
+    }
+    try {
+        if ($zip->numFiles <= 0 || $zip->numFiles > $maxEntries) {
+            return 'El archivo XLSX contiene una cantidad de elementos no permitida.';
+        }
+        $expanded = 0;
+        for ($index = 0; $index < $zip->numFiles; $index++) {
+            $stat = $zip->statIndex($index);
+            if (!is_array($stat)) {
+                return 'No fue posible inspeccionar la estructura interna del XLSX.';
+            }
+            $name = str_replace('\\', '/', (string) ($stat['name'] ?? ''));
+            if ($name === '' || str_starts_with($name, '/') || preg_match('~(?:^|/)\.\.(?:/|$)~', $name) === 1) {
+                return 'El archivo XLSX contiene una ruta interna no permitida.';
+            }
+            $expanded += max(0, (int) ($stat['size'] ?? 0));
+            if ($expanded > $maxExpandedBytes) {
+                return 'El contenido expandido del XLSX supera el límite permitido.';
+            }
+        }
+        if ($zip->locateName('[Content_Types].xml', ZipArchive::FL_NOCASE) === false
+            || $zip->locateName('xl/workbook.xml', ZipArchive::FL_NOCASE) === false) {
+            return 'El archivo no contiene la estructura mínima de un libro XLSX.';
+        }
+    } finally {
+        $zip->close();
+    }
+    return null;
+}
+
 function msp2ValidateSpreadsheetUpload(mixed $file, ?int $maxBytes = null): array
 {
     if (!is_array($file)) {
@@ -1367,6 +1470,13 @@ function msp2ValidateSpreadsheetUpload(mixed $file, ?int $maxBytes = null): arra
     $allowedMimes = $allowedMimesByExtension[$extension] ?? [];
     if (!in_array($mimeType, $allowedMimes, true)) {
         return [false, 'El tipo MIME del archivo no es permitido (`' . $mimeType . '`).', null];
+    }
+
+    if ($extension === 'xlsx') {
+        $archiveError = msp2ValidateXlsxArchive($tmpName);
+        if ($archiveError !== null) {
+            return [false, $archiveError, null];
+        }
     }
 
     return [true, '', [
@@ -1483,7 +1593,7 @@ function msp2ConfigureSpreadsheetValueBinder(): void
     }
 
     $binder = new class extends \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder {
-        public static function dataTypeForValue($pValue)
+        public static function dataTypeForValue(mixed $pValue): string
         {
             if ($pValue === null) {
                 return \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NULL;
@@ -1576,6 +1686,25 @@ function msp2SaveSpreadsheetXlsx(object $writer, string $outputPath): void
     msp2WithSpreadsheetCompatibility(static function () use ($writer, $outputPath): void {
         $writer->save($outputPath);
     });
+}
+
+/** PhpSpreadsheet 2+ removed Worksheet::setCellValueByColumnAndRow(). */
+function msp2SetSpreadsheetCellByColumnAndRow(object $sheet, int $column, int $row, mixed $value): void
+{
+    $coordinate = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($column) . $row;
+    $sheet->setCellValue($coordinate, $value);
+}
+
+/** PhpSpreadsheet 2+ removed Worksheet::setCellValueExplicitByColumnAndRow(). */
+function msp2SetSpreadsheetCellExplicitByColumnAndRow(
+    object $sheet,
+    int $column,
+    int $row,
+    mixed $value,
+    string $dataType
+): void {
+    $coordinate = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($column) . $row;
+    $sheet->setCellValueExplicit($coordinate, $value, $dataType);
 }
 
 function msp2RegisterPsr4Fallback(string $prefix, string $baseDirectory): void

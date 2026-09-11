@@ -1,0 +1,11 @@
+/* Page-specific screen layout. Source: msp/garantias/index.php */
+
+.garantia-options-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); padding: 0 !important; overflow: hidden; }
+        .garantia-option { min-width: 0; height: 100%; border-left: 1px solid var(--color-border); }
+        .garantia-options-grid > :first-child .garantia-option { border-left: 0; }
+        .garantia-option-body { display: flex; flex-direction: column; height: 100%; padding: .7rem; }
+        .garantia-option-body p { font-size: .78rem; line-height: 1.25; }
+        .garantia-option-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; font-size: 1.05rem; }
+        .garantias-resultados-wrap { width: 100%; overflow-x: visible !important; }
+        @media(max-width:1199.98px){.garantia-options-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.garantia-option{border-top:1px solid var(--color-border)}}
+        @media(max-width:575.98px){.garantia-options-grid{grid-template-columns:1fr}.garantia-option{border-left:0}}

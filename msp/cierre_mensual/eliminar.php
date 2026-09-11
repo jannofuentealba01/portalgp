@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/CierreMensualService.php';
 
 msp2RequireAccess();
 
@@ -19,45 +20,14 @@ if ($idCierre === false || $idCierre === null) {
 }
 
 try {
-    $estadoStmt = $conn->prepare('SELECT estado_cierre FROM dbo.msp_cierre_mensual WHERE id_cierre_mensual = :id');
-    $estadoStmt->execute([':id' => $idCierre]);
-    $estadoActual = $estadoStmt->fetchColumn();
-    if ($estadoActual === false || (int) $estadoActual !== 1) {
-        msp2SetFlash('warning', 'Solo puedes eliminar un cierre en estado Borrador.');
-        msp2Redirect('cierre_mensual/index.php');
-    }
-    if (msp2TableExists($conn, 'msp_procesos_cobro_servicio')) {
-        $stmt = $conn->prepare('SELECT COUNT(*) FROM dbo.msp_procesos_cobro_servicio WHERE id_cierre_mensual = :id');
-        $stmt->bindValue(':id', $idCierre, PDO::PARAM_INT);
-        $stmt->execute();
-        if ((int) $stmt->fetchColumn() > 0) {
-            msp2SetFlash('warning', 'No puedes eliminar un cierre con procesos asociados.');
-            msp2Redirect('cierre_mensual/index.php');
-        }
-    }
-
-    if (msp2TableExists($conn, 'msp_documentos_cobro')) {
-        $stmt = $conn->prepare('SELECT COUNT(*) FROM dbo.msp_documentos_cobro WHERE periodo_facturacion = (SELECT periodo_facturacion FROM dbo.msp_cierre_mensual WHERE id_cierre_mensual = :id)');
-        $stmt->bindValue(':id', $idCierre, PDO::PARAM_INT);
-        $stmt->execute();
-        if ((int) $stmt->fetchColumn() > 0) {
-            msp2SetFlash('warning', 'No puedes eliminar un cierre con documentos asociados.');
-            msp2Redirect('cierre_mensual/index.php');
-        }
-    }
-
-    $deleteStmt = $conn->prepare('DELETE FROM dbo.msp_cierre_mensual WHERE id_cierre_mensual = :id');
-    $deleteStmt->bindValue(':id', $idCierre, PDO::PARAM_INT);
-    $deleteStmt->execute();
-
-    if ($deleteStmt->rowCount() === 0) {
-        msp2SetFlash('warning', 'El cierre que intentas eliminar ya no existe.');
-        msp2Redirect('cierre_mensual/index.php');
-    }
-
+    (new CierreMensualService($conn))->eliminarBorrador(
+        (int) $idCierre,
+        'Eliminación manual de borrador vacío desde Cierre mensual',
+        isset($_SESSION['usuario']['id']) ? (int) $_SESSION['usuario']['id'] : null
+    );
     msp2SetFlash('success', 'Cierre eliminado correctamente.');
-} catch (PDOException $exception) {
-    msp2SetFlash('danger', 'No fue posible eliminar el cierre mensual.');
+} catch (Throwable $exception) {
+    msp2SetFlash('danger', $exception instanceof RuntimeException ? $exception->getMessage() : 'No fue posible eliminar el cierre mensual.');
 }
 
 msp2Redirect('cierre_mensual/index.php');

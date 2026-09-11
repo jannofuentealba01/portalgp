@@ -1,0 +1,36 @@
+/* Page-specific screen layout. Source: msp/garantias/recepciones.php */
+
+.recepcion-card .card-header {
+            padding: .55rem .8rem;
+        }
+        .recepcion-card .card-body {
+            padding: .7rem .8rem .75rem;
+        }
+        #formRecepcion {
+            --bs-gutter-y: .55rem;
+            --bs-gutter-x: .75rem;
+        }
+        #formRecepcion .form-label {
+            margin-bottom: .2rem;
+            font-size: .88rem;
+            font-weight: 600;
+        }
+        #formRecepcion .form-control,
+        #formRecepcion .form-select,
+        #formRecepcion .input-group-text {
+            min-height: 36px;
+            padding-top: .34rem;
+            padding-bottom: .34rem;
+            font-size: .88rem;
+        }
+        #formRecepcion .form-text {
+            margin-top: .15rem;
+            font-size: .75rem;
+            line-height: 1.25;
+        }
+        #formRecepcion textarea.form-control {
+            min-height: 38px;
+            resize: vertical;
+        }
+
+        .garantia-respaldos-list { display: flex; flex-wrap: wrap; gap: .25rem; }

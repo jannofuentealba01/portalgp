@@ -1,0 +1,622 @@
+/* MSP screen components: shared and loaded once by templates/header.php. */
+.gp-nav-button {
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+/* A single, visible keyboard focus treatment throughout MSP. */
+.gp-module-msp :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/* Long business data must remain inside its own card or table cell. */
+.gp-module-msp main :where(td, th, dd, .card, .alert, .badge) > :where(a, span, strong, small, div, p) {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.gp-module-msp main table:not(.gp-table-matrix) :is(td, th).gp-cell-number,
+.gp-module-msp main table:not(.gp-table-matrix) :is(td, th).text-end {
+    overflow-wrap: anywhere;
+    white-space: normal !important;
+}
+
+.gp-module-msp main table:not(.gp-table-matrix) td > :where(a, span, strong, small, div, p):not(.btn):not(.badge) {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* Shared picker used by tenant and store maintenance views. */
+.picker-select-btn {
+    border: 1px solid var(--color-border);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+}
+
+.picker-select-btn:hover,
+.picker-select-btn:focus,
+.picker-select-btn:active,
+.picker-select-btn.show {
+    border-color: var(--color-info-border);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: 0 0 0 .2rem rgba(var(--color-info-rgb), .25);
+}
+
+/* Reusable two-option module hub. */
+.msp-hub-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.msp-hub-header h1 {
+    margin: 0;
+    color: var(--color-primary);
+    font-size: clamp(1.45rem, 2vw, 2rem);
+    text-align: center;
+}
+
+.msp-hub-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.msp-hub-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-surface);
+    box-shadow: 0 2px 8px rgba(var(--color-shadow-rgb), .06);
+}
+
+.msp-hub-icon {
+    display: grid;
+    flex: 0 0 auto;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 11px;
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+    font-size: 1.35rem;
+}
+
+.msp-hub-content {
+    min-width: 0;
+    flex: 1;
+}
+
+.msp-hub-content h2 {
+    margin: 0 0 4px;
+    font-size: 1.12rem;
+}
+
+.msp-hub-content p {
+    margin: 0 0 10px;
+    color: var(--color-text-muted);
+    font-size: .92rem;
+    line-height: 1.35;
+}
+
+.msp-hub-action {
+    display: inline-flex;
+    width: auto !important;
+    min-width: 0 !important;
+    padding-inline: .75rem;
+    white-space: nowrap;
+}
+
+/* Shared feedback while an email is being generated or sent. */
+.msp-mail-sending-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(var(--color-shadow-rgb), .45);
+    backdrop-filter: blur(1.5px);
+}
+
+.msp-mail-sending-box {
+    min-width: 250px;
+    max-width: 92vw;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--color-border);
+    border-radius: .85rem;
+    background: var(--color-surface);
+    box-shadow: 0 16px 42px rgba(var(--color-shadow-rgb), .18);
+    text-align: center;
+}
+
+.msp-mail-sending-plane {
+    display: inline-block;
+    color: var(--color-info);
+    font-size: 1.65rem;
+    transform-origin: center;
+    animation: msp-mail-plane-fly 1.2s ease-in-out infinite;
+}
+
+.msp-mail-sending-text {
+    margin-top: .4rem;
+    color: var(--color-text);
+    font-size: .95rem;
+    font-weight: 600;
+}
+
+body.msp-mail-sending-open {
+    overflow: hidden;
+}
+
+@keyframes msp-mail-plane-fly {
+    0% { transform: translateX(-10px) translateY(2px) rotate(-16deg); opacity: .72; }
+    45% { transform: translateX(10px) translateY(-3px) rotate(12deg); opacity: 1; }
+    100% { transform: translateX(-10px) translateY(2px) rotate(-16deg); opacity: .72; }
+}
+
+/* Shared chart viewport for the water, electricity and gas reports. */
+.msp-report-chart-box {
+    position: relative;
+    height: 220px;
+    min-height: 220px;
+}
+
+.msp-report-chart-box canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Shared shell for the electricity and gas consumption reports. */
+.gas-report-shell { max-width: 1640px; width: 100%; margin: 0 auto; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+.gas-report-header { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 1rem; margin-bottom: .85rem; }
+.gas-report-header h1 { grid-column: 2; grid-row: 1; justify-self: center; margin: 0; color: var(--color-primary); font-size: 1.75rem; font-weight: 600; line-height: 1.2; }
+.gas-report-back { grid-column: 1; grid-row: 1; justify-self: start; }
+.gas-report-actions { grid-column: 3; grid-row: 1; justify-self: end; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.gas-report-header .btn { min-height: 34px; padding: .35rem .65rem; font-size: .825rem; line-height: 1.2; }
+.gas-report-filter { margin-bottom: .85rem; }
+.gas-report-filter .form-label { margin-bottom: .25rem; font-size: .88rem; }
+.gas-report-filter .btn { min-height: 38px; padding-top: .38rem; padding-bottom: .38rem; }
+.gas-report-kpi { height: 100%; padding: .65rem .75rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); }
+.gas-report-kpi .small { font-size: .72rem; }
+.gas-report-kpi .h4 { color: var(--color-primary); font-size: 1.08rem; line-height: 1.25; }
+.gas-report-section { margin-top: .85rem; padding-top: .7rem; border-top: 1px solid var(--color-border); }
+.gas-report-panel { height: 100%; padding: .65rem .75rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); }
+.gas-report-panel h2,
+.gas-report-panel h3 { margin-bottom: .45rem; }
+.gas-report-panel .table > :not(caption) > * > * { padding: .38rem .45rem; font-size: .82rem; }
+.gas-report-main-chart { height: 320px; min-height: 320px; }
+
+@media (max-width: 700px) {
+    .gas-report-header { display: flex; flex-direction: column; align-items: stretch; }
+    .gas-report-header h1 { order: 1; align-self: center; text-align: center; }
+    .gas-report-back { order: 2; }
+    .gas-report-actions { order: 3; justify-content: flex-start; }
+    .gas-report-actions .btn { flex: 1 1 auto; }
+    .msp-report-chart-box,
+    .gas-report-main-chart { height: 240px; min-height: 240px; }
+}
+
+@media (max-width: 767.98px) {
+    .msp-hub-header {
+        grid-template-columns: 1fr;
+    }
+
+    .msp-hub-header h1 {
+        grid-row: 1;
+    }
+
+    .msp-hub-header > :first-child {
+        grid-row: 2;
+        justify-self: start;
+    }
+
+    .msp-hub-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .msp-hub-card {
+        align-items: flex-start;
+        padding: 14px;
+    }
+}
+
+/* Origen: msp/templates/components/flash_toast.php */
+.msp-success-burst {
+        position: fixed;
+        top: 1.1rem;
+        right: 1.1rem;
+        z-index: 1105;
+        pointer-events: none;
+        display: none;
+    }
+    .msp-success-burst.is-active {
+        display: block;
+        animation: msp-success-burst-fade 1.2s ease-out forwards;
+    }
+    .msp-success-burst__badge {
+        width: 56px;
+        height: 56px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 32% 28%, var(--color-info-border) 0%, var(--color-primary) 58%, var(--color-primary) 100%);
+        color: var(--color-surface);
+        box-shadow: 0 14px 30px rgba(var(--color-primary-rgb), 0.34);
+        font-size: 1.5rem;
+        transform: scale(.7);
+        opacity: .35;
+        animation: msp-success-burst-pop 1.2s cubic-bezier(.2,.9,.2,1) forwards;
+    }
+    .msp-success-burst__plane {
+        transform: translateX(-1px) rotate(-14deg);
+    }
+    .msp-success-burst__ok {
+        position: absolute;
+        right: -4px;
+        bottom: -2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        background: var(--color-success);
+        color: var(--color-surface);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.72rem;
+        box-shadow: 0 6px 12px rgba(var(--color-success-rgb), 0.34);
+        animation: msp-success-burst-ok-pop .9s cubic-bezier(.2,.9,.2,1) .15s both;
+    }
+    .msp-success-burst__spark {
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--color-primary);
+        opacity: 0;
+        animation: msp-success-burst-spark 1.2s ease-out forwards;
+    }
+    .msp-success-burst__spark--1 { top: -6px; left: 24px; animation-delay: .02s; }
+    .msp-success-burst__spark--2 { top: 14px; right: -9px; animation-delay: .09s; }
+    .msp-success-burst__spark--3 { bottom: 7px; right: -5px; animation-delay: .15s; }
+    .msp-success-burst__spark--4 { bottom: -8px; left: 21px; animation-delay: .11s; }
+    .msp-success-burst__spark--5 { bottom: 13px; left: -10px; animation-delay: .06s; }
+    .msp-success-burst__spark--6 { top: 9px; left: -8px; animation-delay: .13s; }
+
+    @keyframes msp-success-burst-pop {
+        0% { transform: scale(.7); opacity: .35; }
+        30% { transform: scale(1.08); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes msp-success-burst-fade {
+        0%, 70% { opacity: 1; }
+        100% { opacity: 0; }
+    }
+    @keyframes msp-success-burst-ok-pop {
+        0% { transform: scale(.5); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes msp-success-burst-spark {
+        0% { transform: translate(0, 0) scale(.5); opacity: 0; }
+        20% { opacity: .95; }
+        100% { transform: translate(var(--sx, 0), var(--sy, 0)) scale(1.15); opacity: 0; }
+    }
+    .msp-success-burst__spark--1 { --sx: 0px; --sy: -16px; }
+    .msp-success-burst__spark--2 { --sx: 15px; --sy: -6px; }
+    .msp-success-burst__spark--3 { --sx: 13px; --sy: 9px; }
+    .msp-success-burst__spark--4 { --sx: 0px; --sy: 16px; }
+    .msp-success-burst__spark--5 { --sx: -14px; --sy: 8px; }
+    .msp-success-burst__spark--6 { --sx: -13px; --sy: -7px; }
+
+/* Origen: msp/templates/components/monto_clp_input.php */
+.msp-monto-label {
+                margin-bottom: .25rem;
+                font-size: .78rem;
+                font-weight: 700;
+                color: var(--color-success);
+            }
+
+            .msp-monto-label i {
+                margin-right: .25rem;
+            }
+
+            .msp-monto-group .input-group-text {
+                background: var(--color-success-soft);
+                border-color: var(--color-success);
+                color: var(--color-success);
+                font-weight: 700;
+            }
+
+            .msp-monto-input {
+                font-size: 1.25rem;
+                font-weight: 700;
+                border-color: var(--color-success);
+                box-shadow: 0 0 0 1px var(--color-success-border);
+                color: var(--color-success);
+            }
+
+/* Origen: msp/templates/components/quick_access_offcanvas.php */
+.msp-quick-access {
+        --msp-qa-icon-bg: rgba(var(--color-primary-rgb), 0.09);
+        --msp-qa-hover-bg: var(--color-surface-soft);
+        --msp-qa-section-bg: var(--color-surface-soft);
+        --bs-offcanvas-width: min(380px, 94vw);
+        width: min(380px, 94vw) !important;
+        max-height: 100vh;
+    }
+
+    .msp-quick-access-hot-edge {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 34px;
+        height: 100vh;
+        z-index: 1038;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--color-primary);
+        cursor: pointer;
+    }
+
+    .msp-quick-access-hot-edge i {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 66px;
+        border: 1px solid rgba(var(--color-primary-rgb), 0.2);
+        border-left: 0;
+        border-radius: 0 10px 10px 0;
+        background: rgba(var(--color-surface-rgb), 0.92);
+        box-shadow: 0 8px 22px rgba(var(--color-shadow-rgb), 0.12);
+        font-size: 18px;
+        line-height: 1;
+        transform: translateY(-50%);
+        transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+    }
+
+    .msp-quick-access-hot-edge::after {
+        content: "";
+        position: absolute;
+        top: 30%;
+        left: 0;
+        width: 4px;
+        height: 40%;
+        border-radius: 0 6px 6px 0;
+        background: rgba(var(--color-primary-rgb), 0.18);
+        opacity: 0;
+        transition: opacity 0.16s ease, width 0.16s ease;
+    }
+
+    .msp-quick-access-hot-edge:hover::after,
+    .msp-quick-access-hot-edge:focus-visible::after {
+        width: 7px;
+        opacity: 1;
+    }
+
+    .msp-quick-access-hot-edge:hover i,
+    .msp-quick-access-hot-edge:focus-visible i {
+        background: var(--color-surface);
+        border-color: rgba(var(--color-primary-rgb), 0.35);
+        color: var(--color-primary-hover);
+        transform: translateY(-50%) translateX(2px);
+    }
+
+    .msp-quick-access .offcanvas-header {
+        border-bottom: 1px solid var(--color-border);
+        min-height: 64px;
+        padding: 12px 16px;
+    }
+
+    .msp-quick-access-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0;
+        color: var(--color-primary);
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    .msp-quick-access-title i {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--msp-qa-icon-bg);
+        font-size: 15px;
+    }
+
+    .msp-quick-access-body {
+        flex: 1 1 auto !important;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 0;
+        max-height: calc(100vh - 64px);
+        padding: 12px 12px 16px;
+        background: var(--color-bg);
+        overflow-x: hidden;
+        overflow-y: scroll !important;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+    }
+
+    .msp-quick-access-home {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 40px;
+        padding: 8px 10px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: var(--color-surface);
+        color: var(--color-primary);
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .msp-quick-access-home:hover {
+        background: var(--msp-qa-hover-bg);
+        color: var(--color-primary-hover);
+    }
+
+    .msp-quick-access-section {
+        flex: 0 0 auto;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--color-surface);
+    }
+
+    .msp-quick-access-section-title {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin: 0;
+        min-height: 36px;
+        padding: 8px 10px;
+        background: var(--msp-qa-section-bg);
+        border-bottom: 1px solid var(--color-border);
+        color: var(--color-primary);
+        font-size: 11.5px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .msp-quick-access-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 6px;
+    }
+
+    .msp-quick-access-link,
+    .msp-quick-access-disabled {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        padding: 5px 8px;
+        border-radius: 6px;
+        color: var(--color-text);
+        text-decoration: none;
+    }
+
+    .msp-quick-access-link:hover,
+    .msp-quick-access-link.is-active {
+        background: var(--msp-qa-hover-bg);
+        color: var(--color-primary);
+    }
+
+    .msp-quick-access-link:focus-visible,
+    .msp-quick-access-home:focus-visible {
+        outline: 3px solid var(--focus-ring);
+        outline-offset: 2px;
+    }
+
+    .msp-quick-access-item-icon {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        background: var(--msp-qa-icon-bg);
+        color: var(--color-primary);
+        font-size: 13px;
+    }
+
+    .msp-quick-access-item-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13.5px;
+        font-weight: 600;
+    }
+
+    .msp-quick-access-disabled {
+        opacity: 0.48;
+    }
+
+    @media (hover: none), (pointer: coarse), (max-width: 768px) {
+        .msp-quick-access-hot-edge {
+            display: none;
+        }
+    }
+
+/* Origen: msp/templates/components/searchable_select.php */
+.msp-searchable-select-menu {
+            min-width: 100%;
+        }
+
+        .msp-searchable-select-list {
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+        }
+
+        [data-msp-searchable-select] [data-searchable-btn] {
+            display: block;
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-right: 2.25rem;
+        }
+
+/* Origen: msp/templates/flash.php */
+.msp-success-plane {
+            position: fixed;
+            top: 1.1rem;
+            right: 1.1rem;
+            z-index: 1105;
+            pointer-events: none;
+            animation: msp-success-plane-fade 1.2s ease-out forwards;
+        }
+        .msp-success-plane__badge {
+            width: 56px;
+            height: 56px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 32% 28%, var(--color-info-border) 0%, var(--color-primary) 58%, var(--color-primary) 100%);
+            color: var(--color-surface);
+            box-shadow: 0 14px 30px rgba(var(--color-primary-rgb), 0.34);
+            font-size: 1.5rem;
+            transform: translateX(-1px) rotate(-14deg) scale(.78);
+            animation: msp-success-plane-pop 1.2s cubic-bezier(.2,.9,.2,1) forwards;
+        }
+        @keyframes msp-success-plane-pop {
+            0% { transform: translateX(-1px) rotate(-14deg) scale(.78); opacity: .4; }
+            30% { transform: translateX(-1px) rotate(-10deg) scale(1.07); opacity: 1; }
+            100% { transform: translateX(-1px) rotate(-14deg) scale(1); opacity: 1; }
+        }
+        @keyframes msp-success-plane-fade {
+            0%, 70% { opacity: 1; }
+            100% { opacity: 0; }
+        }

@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once dirname(__DIR__) . '/secret_paths.php';
+
 function ctMailEnvString(string $key): string
 {
     $value = getenv($key);
@@ -71,13 +73,8 @@ function ctMailConfig(): array
         'blocked_domains' => $blockedDomains,
     ];
 
-    $configPath = __DIR__ . '/config/mail.php';
-    if (!is_file($configPath)) {
-        return $config;
-    }
-
-    $loaded = require $configPath;
-    if (!is_array($loaded)) {
+    $loaded = pgpLoadSecretConfig('ct_mail.php');
+    if ($loaded === []) {
         return $config;
     }
 
@@ -178,7 +175,7 @@ function ctMailBuildSmtp(): \PHPMailer\PHPMailer\PHPMailer
     $fromName = trim((string) ($smtpConfig['from_name'] ?? ''));
 
     if ($host === '' || $username === '' || $password === '') {
-        throw new RuntimeException('Falta configuración SMTP de CT. Revisa ct/config/mail.php o variables CT_MAIL_SMTP_*.');
+        throw new RuntimeException('Falta configuración SMTP de CT. Revisa el almacén externo o variables CT_MAIL_SMTP_*.');
     }
 
     $encryption = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;

@@ -15,6 +15,16 @@
 
 :ON ERROR EXIT
 :setvar MSP_DB_DIR "msp\db"
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET ARITHABORT ON;
+SET NUMERIC_ROUNDABORT OFF;
+GO
+
+:r $(MSP_DB_DIR)\patch_schema_migrations.sql
 
 PRINT '==== MSP install: A1 base ====';
 :r $(MSP_DB_DIR)\msp_agrupacion_locales.sql
@@ -153,10 +163,14 @@ PRINT '==== MSP install: patch gestion operacional de cobranza ====';
 :r $(MSP_DB_DIR)\patch_gestion_cobranza_operacional.sql
 :r $(MSP_DB_DIR)\patch_cierre_mensual_transiciones.sql
 :r $(MSP_DB_DIR)\patch_permisos_msp_por_funcion.sql
-:r \patch_convenios_pago_cuotas.sql
+:r $(MSP_DB_DIR)\patch_convenios_pago_cuotas.sql
 
 PRINT '==== MSP install: patch correcciones selectivas ====';
 :r $(MSP_DB_DIR)\patch_correcciones_selectivas.sql
+:r $(MSP_DB_DIR)\patch_correcciones_selectivas_v2.sql
+
+-- Multas y cargos con alcance de tienda
+:r $(MSP_DB_DIR)\patch_multa_por_tienda.sql
 
 PRINT '==== MSP install: prorrata de inicio y modalidad CLP fija ====';
 :r $(MSP_DB_DIR)\patch_arriendo_inicio_prorrata.sql
@@ -165,19 +179,24 @@ PRINT '==== MSP install: prorrata de inicio y modalidad CLP fija ====';
 PRINT '==== MSP install: cierre financiero con deuda histórica ====';
 :r $(MSP_DB_DIR)\patch_cierre_deuda_historica.sql
 
+-- Centro documental, vacancias e integración final del cierre
+:r $(MSP_DB_DIR)\patch_liquidacion_final.sql
+:r $(MSP_DB_DIR)\patch_comercial_vacancia_documentos.sql
+:r $(MSP_DB_DIR)\patch_cierre_integracion_final.sql
+
 PRINT '==== MSP install: saldo a favor y anulaciones por periodo ====';
 :r $(MSP_DB_DIR)\patch_saldo_favor_anulaciones_periodo.sql
 
 PRINT '==== MSP install: base operativa de tesoreria ====';
 :r $(MSP_DB_DIR)\patch_garantias_tesoreria_base.sql
-:r $(MSP_DB_DIR)\patch_garantias_resumen_recepcion_real.sql
 :r $(MSP_DB_DIR)\patch_tesoreria_conciliacion_cierre.sql
 :r $(MSP_DB_DIR)\patch_tesoreria_depositos.sql
 :r $(MSP_DB_DIR)\patch_tesoreria_reapertura_caja.sql
 
 PRINT '==== MSP install: garantias operativas, archivos, reportes y devoluciones ====';
-:r $(MSP_DB_DIR)\patch_garantias_etapa1_operativa.sql
 :r $(MSP_DB_DIR)\patch_garantias_devolucion_operativa.sql
+:r $(MSP_DB_DIR)\patch_garantias_etapa1_operativa.sql
+:r $(MSP_DB_DIR)\patch_garantias_resumen_recepcion_real.sql
 :r $(MSP_DB_DIR)\patch_garantias_archivos_respaldo.sql
 :r $(MSP_DB_DIR)\patch_garantias_reporte_control.sql
 :r $(MSP_DB_DIR)\patch_garantias_etapa2_contabilidad.sql
@@ -185,7 +204,26 @@ PRINT '==== MSP install: garantias operativas, archivos, reportes y devoluciones
 PRINT '==== MSP install: configuracion de correo ====';
 :r $(MSP_DB_DIR)\patch_configuracion_correo.sql
 
+PRINT '==== MSP install: carga masiva de PDF por tienda ====';
+:r $(MSP_DB_DIR)\patch_documentos_tienda_carga_masiva.sql
+:r $(MSP_DB_DIR)\patch_documentos_tienda_etapa2.sql
+
 PRINT '==== MSP install: nota ====';
+:r $(MSP_DB_DIR)\patch_seguridad_acceso_etapa1.sql
+:r $(MSP_DB_DIR)\patch_seguridad_acceso_etapa2.sql
+:r $(MSP_DB_DIR)\patch_seguridad_financiera_etapa2.sql
+
+PRINT '==== MSP install: seguridad financiera etapa 4 puntos 1 a 3 ====';
+:r $(MSP_DB_DIR)\patch_seguridad_financiera_etapa4_puntos1_3.sql
+
+PRINT '==== MSP install: regularizacion documental y financiera historica ====';
+:r $(MSP_DB_DIR)\patch_documentos_cobro_flujo_integral.sql
+
+PRINT '==== MSP install: auditoria historica de saldo a favor ====';
+:r $(MSP_DB_DIR)\patch_auditoria_saldo_favor_historico.sql
+
+PRINT '==== MSP install: seguridad financiera etapa 4 eliminacion, regeneracion y reapertura ====';
+:r $(MSP_DB_DIR)\patch_seguridad_financiera_etapa4_eliminacion_regeneracion_rollback.sql
 PRINT 'SQL Agent Job de envio lotes NO se instala automaticamente.';
 PRINT 'Si necesitas ejecucion automatica, ejecutar manualmente patch_sql_agent_envio_lotes_job.sql con rutas/permiso sysadmin.';
 

@@ -235,7 +235,7 @@ if ($tablaExiste) {
         $dataStmt->execute();
         $registros = $dataStmt->fetchAll();
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar la vista de deuda/garantía. Detalle tecnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.deuda_garantia.index', 'No fue posible cargar la vista de deuda/garantía.');
     }
 }
 
@@ -271,8 +271,8 @@ if ($tablaExiste && $totalPaginas > 1) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Deuda y Garantía</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -364,23 +364,20 @@ if ($tablaExiste && $totalPaginas > 1) {
             </div>
 
             <div class="table-responsive">
-                <table class="table table-bordered table-hover align-middle">
+                <table class="table table-bordered table-hover align-middle gp-table-compact gp-table-mobile-cards msp-debt-guarantee-table">
                     <thead class="table-light text-center">
                         <tr>
-                            <th style="width: 130px;">Contrato</th>
-                            <th style="width: 170px;">Tienda</th>
-                            <th style="width: 200px;">Arrendatario</th>
-                            <th style="width: 170px;">Local</th>
-                            <th style="width: 220px;">Garantía</th>
-                            <th style="width: 220px;">Deuda</th>
-                            <th style="width: 180px;">Cargos (cantidad)</th>
-                            <th style="width: 130px;">Acción</th>
+                            <th>Contrato</th>
+                            <th>Tienda / arrendatario / local</th>
+                            <th>Garantía</th>
+                            <th>Deuda / cargos</th>
+                            <th>Acción</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ($registros === []): ?>
                             <tr>
-                                <td colspan="8" class="text-center text-muted">
+                                <td colspan="5" class="text-center text-muted">
                                     No hay resultados para los filtros actuales.
                                 </td>
                             </tr>
@@ -404,36 +401,24 @@ if ($tablaExiste && $totalPaginas > 1) {
                                     </td>
                                     <td>
                                         <div class="fw-semibold"><?php echo msp2Escape((string) ($row['nombre_comercial'] ?? 'Sin tienda')); ?></div>
-                                        <div class="small text-muted">#<?php echo (int) ($row['id_tienda'] ?? 0); ?></div>
-                                    </td>
-                                    <td>
                                         <div><?php echo msp2Escape((string) ($row['nombre_locatario'] ?? 'Sin arrendatario')); ?></div>
                                         <div class="small text-muted"><?php echo msp2Escape((string) ($row['rut'] ?? '-')); ?></div>
+                                        <div class="small text-muted">Tienda #<?php echo (int) ($row['id_tienda'] ?? 0); ?> · Local <?php echo msp2Escape((string) ($row['cdo_local'] ?? '')); ?><?php echo trim((string) ($row['desc_local'] ?? '')) !== '' ? ' · ' . msp2Escape((string) $row['desc_local']) : ''; ?></div>
                                     </td>
                                     <td>
-                                        <div class="fw-semibold"><?php echo msp2Escape((string) ($row['cdo_local'] ?? '')); ?></div>
-                                        <div class="small text-muted"><?php echo msp2Escape((string) ($row['desc_local'] ?? '')); ?></div>
-                                        <div class="small text-muted">Garantía #<?php echo (int) ($row['id_garantia'] ?? 0); ?></div>
-                                    </td>
-                                    <td>
+                                        <div class="small text-muted mb-1">Garantía #<?php echo (int) ($row['id_garantia'] ?? 0); ?></div>
                                         <div class="small">Inicial: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['monto_inicial'] ?? 0)); ?></strong></div>
                                         <div class="small">Disponible: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['saldo_disponible'] ?? 0)); ?></strong></div>
                                         <div class="small">Reservado: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['saldo_reservado'] ?? 0)); ?></strong></div>
                                         <div class="small">Aplicado: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['saldo_aplicado'] ?? 0)); ?></strong></div>
                                     </td>
                                     <td>
-                                        <div class="small">Cargos totales: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['total_cargos'] ?? 0)); ?></strong></div>
+                                        <div class="small">Total: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['total_cargos'] ?? 0)); ?></strong></div>
                                         <div class="small">Pendiente: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['total_cargos_pendientes'] ?? 0)); ?></strong></div>
                                         <div class="small">Reservado: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['total_cargos_reservados'] ?? 0)); ?></strong></div>
                                         <div class="small">Aplicado: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($row['total_cargos_aplicados'] ?? 0)); ?></strong></div>
                                         <div class="small">Deuda activa: <strong><?php echo msp2Escape(msp2DeudaGarantiaMonto($deudaActivaFila)); ?></strong></div>
-                                    </td>
-                                    <td>
-                                        <div class="small">Total: <strong><?php echo (int) ($row['cantidad_cargos_total'] ?? 0); ?></strong></div>
-                                        <div class="small">Pend: <strong><?php echo (int) ($row['cantidad_cargos_pendiente'] ?? 0); ?></strong></div>
-                                        <div class="small">Res: <strong><?php echo (int) ($row['cantidad_cargos_reservado'] ?? 0); ?></strong></div>
-                                        <div class="small">Apl: <strong><?php echo (int) ($row['cantidad_cargos_aplicado'] ?? 0); ?></strong></div>
-                                        <div class="small">Pag: <strong><?php echo (int) ($row['cantidad_cargos_pagado'] ?? 0); ?></strong></div>
+                                        <div class="small text-muted mt-1"><?php echo (int) ($row['cantidad_cargos_total'] ?? 0); ?> cargo(s): <?php echo (int) ($row['cantidad_cargos_pendiente'] ?? 0); ?> pend. · <?php echo (int) ($row['cantidad_cargos_reservado'] ?? 0); ?> res. · <?php echo (int) ($row['cantidad_cargos_aplicado'] ?? 0); ?> apl. · <?php echo (int) ($row['cantidad_cargos_pagado'] ?? 0); ?> pag.</div>
                                     </td>
                                     <td class="text-center">
                                         <div class="d-grid gap-1">
@@ -465,19 +450,19 @@ if ($tablaExiste && $totalPaginas > 1) {
                     <nav aria-label="Paginacion deuda garantia">
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2DeudaGarantiaQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>" aria-label="Anterior">&laquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2DeudaGarantiaQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>" aria-label="Anterior">&laquo;</a>
                             </li>
                             <?php foreach ($paginationItems as $item): ?>
                                 <?php if ($item === 'ellipsis'): ?>
                                     <li class="page-item disabled"><span class="page-link">...</span></li>
                                 <?php else: ?>
                                     <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo buildMsp2DeudaGarantiaQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(buildMsp2DeudaGarantiaQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                     </li>
                                 <?php endif; ?>
                             <?php endforeach; ?>
                             <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2DeudaGarantiaQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>" aria-label="Siguiente">&raquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2DeudaGarantiaQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>" aria-label="Siguiente">&raquo;</a>
                             </li>
                         </ul>
                     </nav>
@@ -486,7 +471,7 @@ if ($tablaExiste && $totalPaginas > 1) {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     document.querySelectorAll('.js-form-cerrar-contrato').forEach((form) => {

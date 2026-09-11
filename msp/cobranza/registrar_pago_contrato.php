@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/mail_helper.php';
 require_once dirname(__DIR__) . '/templates/components/searchable_select.php';
+require_once dirname(__DIR__) . '/pagos/pago_contrato_redirect_helper.php';
 require_once __DIR__ . '/pago_contrato_import_helper.php';
 
 msp2RequireAccess();
@@ -199,7 +200,9 @@ function rpcFetchDocumentosDeudaContrato(PDO $conn, int $idContratoArriendo): ar
                 dc.id_documento_cobro,
                 COALESCE(NULLIF(dc.numero_documento, ''), CONCAT(N'DOC-', dc.id_documento_cobro)) AS numero_documento,
                 CONVERT(CHAR(10), dc.periodo_facturacion, 126) AS periodo_facturacion,
+                CONVERT(CHAR(10), dc.fecha_emision, 126) AS fecha_emision,
                 CONVERT(CHAR(10), dc.fecha_vencimiento, 126) AS fecha_vencimiento,
+                dc.monto_total,
                 dc.saldo_pendiente,
                 COALESCE(NULLIF(t.nombre_comercial, ''), CONCAT(N'Tienda #', t.id_tienda)) AS nombre_tienda
             FROM dbo.msp_documentos_cobro dc
@@ -295,9 +298,14 @@ if (($idContratoArriendo === false || $idContratoArriendo === null) && $idContra
 $bloquearContextoContrato = (string) ($_GET['contexto_contrato'] ?? '') === '1'
     && $idContratoArriendo !== false
     && $idContratoArriendo !== null;
-$returnTo = trim((string) ($_GET['return_to'] ?? ''));
-if ($returnTo !== '' && preg_match('#^cobranza/gestionar\.php\?id_contrato=\d+(?:&return_to=[A-Za-z0-9_\-\.\[%\]=&]*)?$#', $returnTo) !== 1) {
-    $returnTo = '';
+$returnTo = msp2PagoContratoSafeReturnTo($_GET['return_to'] ?? '');
+$returnLabel = 'Volver a MSP';
+if (str_starts_with($returnTo, 'arrendatarios/ficha.php?') || str_starts_with($returnTo, 'contratos/ficha.php?')) {
+    $returnLabel = 'Volver a la ficha';
+} elseif (str_starts_with($returnTo, 'cobranza/gestionar.php?')) {
+    $returnLabel = 'Volver a Gestión de Cobranza';
+} elseif (str_starts_with($returnTo, 'pendientes/index.php')) {
+    $returnLabel = 'Volver a pendientes';
 }
 
 if (($idArrendatario === false || $idArrendatario === null) && $idContratoArriendo !== false && $idContratoArriendo !== null) {
@@ -675,163 +683,28 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Pago por Contrato</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .pc-required-mark {
-            color: #dc3545;
-            margin-left: 0.15rem;
-        }
-        .pc-optional-mark {
-            color: #6c757d;
-            font-size: 0.85em;
-            font-weight: 400;
-            margin-left: 0.2rem;
-        }
-        .pc-success-flight {
-            position: fixed;
-            top: 1rem;
-            left: 0;
-            width: 100%;
-            z-index: 2100;
-            pointer-events: none;
-            overflow: hidden;
-        }
-        .pc-success-flight__plane {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.45rem;
-            color: #0b3ea8;
-            background: rgba(255, 255, 255, 0.96);
-            border: 1px solid #bfdbfe;
-            border-radius: 999px;
-            box-shadow: 0 12px 24px rgba(30, 64, 175, 0.22);
-            padding: 0.45rem 0.8rem;
-            font-size: 0.95rem;
-            font-weight: 600;
-            transform: translateX(-120%);
-            animation: pc-success-flight-move 1.9s cubic-bezier(.2,.7,.2,1) forwards;
-        }
-        .pc-success-flight__icon {
-            font-size: 1.05rem;
-            transform: rotate(-14deg);
-        }
-        @keyframes pc-success-flight-move {
-            0% { transform: translateX(-120%); opacity: 0; }
-            12% { opacity: 1; }
-            55% { transform: translateX(36vw); opacity: 1; }
-            100% { transform: translateX(110vw); opacity: 0; }
-        }
-        .msp-mail-sending-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(15, 23, 42, 0.45);
-            backdrop-filter: blur(1.5px);
-        }
-        .msp-mail-sending-box {
-            min-width: 250px;
-            max-width: 92vw;
-            border-radius: 0.85rem;
-            border: 1px solid #dbe4f0;
-            background: #fff;
-            box-shadow: 0 16px 42px rgba(15, 23, 42, 0.18);
-            padding: 1rem 1.15rem;
-            text-align: center;
-        }
-        .msp-mail-sending-plane {
-            display: inline-block;
-            font-size: 1.65rem;
-            color: #1d4ed8;
-            animation: msp-mail-plane-fly 1.2s ease-in-out infinite;
-            transform-origin: center;
-        }
-        .msp-mail-sending-text {
-            margin-top: 0.4rem;
-            color: #1f2937;
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-        @keyframes msp-mail-plane-fly {
-            0% { transform: translateX(-10px) translateY(2px) rotate(-16deg); opacity: .72; }
-            45% { transform: translateX(10px) translateY(-3px) rotate(12deg); opacity: 1; }
-            100% { transform: translateX(-10px) translateY(2px) rotate(-16deg); opacity: .72; }
-        }
-        body.msp-mail-sending-open {
-            overflow: hidden;
-        }
-        #pc_banco_dropdown_btn {
-            color: #1f2937;
-            background: #fff;
-            border-color: #ced4da;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            padding-right: 2rem;
-        }
-        #pc_banco_dropdown_btn.show,
-        #pc_banco_picker.show #pc_banco_dropdown_btn,
-        #pc_banco_dropdown_btn:focus,
-        #pc_banco_dropdown_btn:focus-visible {
-            color: #1f2937;
-            background: #fff;
-            border-color: #86b7fe;
-        }
-        #pc_banco_picker .dropdown-menu {
-            z-index: 2000;
-        }
-        #pc_banco_dropdown_list .list-group-item {
-            display: block;
-            font-size: 0.98rem;
-            line-height: 1.3;
-            padding: 0.5rem 0.75rem;
-            min-height: 2.2rem;
-            color: #1f2937;
-            background: #fff;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        #pc_banco_dropdown_list .list-group-item.active,
-        #pc_banco_dropdown_list .list-group-item:active {
-            color: #fff;
-            background-color: #0d6efd;
-            border-color: #0d6efd;
-        }
-        #form_pago_contrato.pc-banco-dropdown-open {
-            overflow: visible;
-        }
-        #form_pago_contrato.pc-banco-dropdown-open .modal-body {
-            overflow-y: visible;
-        }
-    </style>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css">
-    <?php msp2RenderSearchableSelectAssets(); ?>
+<?php msp2RenderSearchableSelectAssets(); ?>
 </head>
-<body class="gp-layout bg-light">
+<body class="gp-layout bg-light gp-module-msp">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <?php msp2RenderCsrfAutoFieldScript(); ?>
 <main class="gp-main d-flex align-items-center justify-content-center p-4">
-    <div class="box-container-wide" data-tour="rpc-root">
+    <div class="box-container-wide">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2" data-gp-commandbar>
             <a href="<?php echo msp2Escape($returnTo !== '' ? msp2Url($returnTo) : msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i><?php echo $returnTo !== '' ? 'Volver a Gestión de Cobranza' : 'Volver a MSP'; ?>
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i><?php echo msp2Escape($returnLabel); ?>
             </a>
             <div>
                 <p class="section-kicker text-center mb-0">MSP / Cobranza</p>
                 <h1 class="form-title text-center mb-0">Pago por contrato</h1>
             </div>
             <div class="d-flex gap-2">
-                <a href="<?php echo msp2Escape(msp2Url('pagos/archivos_pdf.php')); ?>" class="btn btn-outline-dark btn-sm">
+                <a href="<?php echo msp2Escape(msp2Url('pagos/archivos_pdf.php')); ?>" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-archive me-1" aria-hidden="true"></i>Respaldo PDFs
                 </a>
-                <button type="button" class="btn btn-success btn-sm" id="rpc_start_demo_btn" data-tour="rpc-start-demo">
-                    <i class="bi bi-magic me-1" aria-hidden="true"></i>Demo guiada
-                </button>
             </div>
         </div>
 
@@ -895,13 +768,11 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                         </div>
                         <?php if ($importPreviewRows !== []): ?>
                             <div class="table-responsive mb-2">
-                                <table class="table table-sm table-bordered align-middle">
+                                <table class="table table-sm table-bordered align-middle gp-table-compact gp-table-mobile-cards msp-import-results-table">
                                     <thead class="table-light">
                                         <tr>
-                                            <th>Estado</th>
-                                            <th>Fila</th>
-                                            <th>Arrendatario</th>
-                                            <th>Contrato</th>
+                                            <th>Estado / fila</th>
+                                            <th>Arrendatario / contrato</th>
                                             <th>Fecha</th>
                                             <th class="text-end">Monto</th>
                                             <th>Medio</th>
@@ -911,18 +782,17 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                                     <tbody>
                                         <?php foreach ($importPreviewRows as $row): ?>
                                             <tr>
-                                                <td>
+                                                <td data-gp-label="Estado / fila">
                                                     <span class="badge <?php echo (($row['status'] ?? '') === 'OK') ? 'text-bg-success' : 'text-bg-warning'; ?>">
                                                         <?php echo msp2Escape((string) ($row['status'] ?? 'ERROR')); ?>
                                                     </span>
+                                                    <div class="small text-muted mt-1">Fila <?php echo (int) ($row['row_number'] ?? 0); ?></div>
                                                 </td>
-                                                <td><?php echo (int) ($row['row_number'] ?? 0); ?></td>
-                                                <td><?php echo msp2Escape((string) ($row['arrendatario_raw'] ?? '')); ?></td>
-                                                <td>#<?php echo (int) ($row['id_contrato_arriendo'] ?? 0); ?></td>
-                                                <td><?php echo msp2Escape(rpcFmtFecha((string) ($row['fecha_pago'] ?? ''))); ?></td>
-                                                <td class="text-end"><?php echo msp2Escape(rpcFmtMoney((float) ($row['monto_pagado'] ?? 0))); ?></td>
-                                                <td><?php echo msp2Escape((string) ($row['medio_pago'] ?? '')); ?></td>
-                                                <td>
+                                                <td data-gp-label="Arrendatario / contrato"><strong><?php echo msp2Escape((string) ($row['arrendatario_raw'] ?? '')); ?></strong><div class="small text-muted">Contrato #<?php echo (int) ($row['id_contrato_arriendo'] ?? 0); ?></div></td>
+                                                <td data-gp-label="Fecha"><?php echo msp2Escape(rpcFmtFecha((string) ($row['fecha_pago'] ?? ''))); ?></td>
+                                                <td data-gp-label="Monto" class="text-end"><?php echo msp2Escape(rpcFmtMoney((float) ($row['monto_pagado'] ?? 0))); ?></td>
+                                                <td data-gp-label="Medio"><?php echo msp2Escape((string) ($row['medio_pago'] ?? '')); ?></td>
+                                                <td data-gp-label="Resultado">
                                                     <?php if (($row['status'] ?? '') === 'OK'): ?>
                                                         <span class="text-success">Listo para importar</span>
                                                     <?php else: ?>
@@ -961,7 +831,8 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                 <?php if ($contratosConDeuda === [] && !$bloquearContextoContrato): ?>
                     <div class="alert alert-info mb-0">No hay contratos con deuda pendiente para operar.</div>
                 <?php else: ?>
-                    <form method="get" id="form_pago_contrato_filtro" class="row g-3 align-items-end" data-tour="rpc-filtro">
+                    <form method="get" id="form_pago_contrato_filtro" class="row g-3 align-items-start">
+                        <?php if ($returnTo !== ''): ?><input type="hidden" name="return_to" value="<?php echo msp2Escape($returnTo); ?>"><?php endif; ?>
                         <?php
                         if ($bloquearContextoContrato && is_array($contextoContratoDirecto)):
                             $arrendatarioBloqueadoLabel = '(' . rpcFmtRut((string) ($contextoContratoDirecto['rut'] ?? '')) . ') ' . trim((string) ($contextoContratoDirecto['nombre_arrendatario'] ?? ''));
@@ -971,7 +842,7 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                             <input type="hidden" id="id_arrendatario" name="id_arrendatario" value="<?php echo (int) $idArrendatario; ?>">
                             <input type="hidden" id="id_contrato_arriendo" name="id_contrato_arriendo" value="<?php echo (int) $idContratoArriendo; ?>">
                             <input type="hidden" name="contexto_contrato" value="1">
-                            <div class="col-12 col-lg-6"><label class="form-label" for="arrendatario_bloqueado">Arrendatario</label><select id="arrendatario_bloqueado" class="form-select" disabled><option><?php echo msp2Escape($arrendatarioBloqueadoLabel); ?></option></select><div class="form-text">Preseleccionado desde la ficha del contrato.</div></div>
+                            <div class="col-12 col-lg-6"><label class="form-label" for="arrendatario_bloqueado">Arrendatario</label><select id="arrendatario_bloqueado" class="form-select" disabled><option><?php echo msp2Escape($arrendatarioBloqueadoLabel); ?></option></select><div class="form-text"><?php echo str_starts_with($returnTo, 'arrendatarios/ficha.php?') ? 'Preseleccionado desde la ficha del arrendatario.' : 'Preseleccionado desde la ficha del contrato.'; ?></div></div>
                             <div class="col-12 col-lg-6"><label class="form-label" for="contrato_bloqueado">Contrato</label><select id="contrato_bloqueado" class="form-select" disabled><option><?php echo msp2Escape($contratoBloqueadoLabel); ?></option></select></div>
                         <?php else:
                         msp2RenderSearchableSelectField([
@@ -1034,14 +905,16 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                                     type="button"
                                     class="btn btn-success btn-sm"
                                     id="rpc_open_modal_btn"
-                                    data-tour="rpc-open-modal"
                                     data-bs-toggle="modal"
                                     data-bs-target="#modalPagoContrato">
                                     <i class="bi bi-cash-coin me-1" aria-hidden="true"></i>Registrar pago
                                 </button>
                             </div>
                         </div>
-                        <div class="small text-muted mb-3">Orden de aplicación automático: período más antiguo, luego vencimiento, luego ID de documento.</div>
+                        <details class="gp-context-help">
+                            <summary>¿Cómo se distribuye el pago?</summary>
+                            <p>Se aplica automáticamente al período más antiguo, luego al vencimiento más antiguo y finalmente al menor ID de documento.</p>
+                        </details>
                         <div class="alert <?php echo $saldoFavorDisponible > 0.005 ? 'alert-success' : 'alert-light border'; ?> d-flex flex-wrap justify-content-between align-items-center gap-3">
                             <div>
                                 <div class="fw-semibold"><i class="bi bi-wallet2 me-1" aria-hidden="true"></i>Saldo a favor disponible: <?php echo msp2Escape(rpcFmtMoney($saldoFavorDisponible)); ?></div>
@@ -1065,16 +938,14 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                                 </button>
                             </form>
                         </div>
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-hover align-middle text-center mb-0">
+                        <div class="table-responsive gp-table-shell">
+                            <table class="table table-bordered table-hover align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-contract-debt-table">
                                 <thead class="table-light">
                                 <tr>
-                                    <th style="width: 90px;">Doc</th>
-                                    <th class="text-start">Tienda</th>
-                                    <th style="width: 130px;">Número</th>
-                                    <th style="width: 120px;">Período</th>
-                                    <th style="width: 120px;">Venc.</th>
-                                    <th style="width: 130px;" class="text-end">Saldo</th>
+                                    <th>Documento / período</th>
+                                    <th>Tienda</th>
+                                    <th>Emisión / vencimiento</th>
+                                    <th>Resumen financiero</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -1093,16 +964,16 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                                     );
                                     ?>
                                     <tr>
-                                        <td>#<?php echo $docId; ?></td>
-                                        <td class="text-start"><?php echo msp2Escape((string) ($doc['nombre_tienda'] ?? '-')); ?></td>
-                                        <td>
+                                        <td data-gp-label="Documento / período">
                                             <a href="<?php echo msp2Escape($docPortalUrl); ?>" target="_blank" rel="noopener">
-                                                <?php echo msp2Escape((string) ($doc['numero_documento'] ?? '')); ?>
+                                                <strong><?php echo msp2Escape((string) ($doc['numero_documento'] ?? ('Documento #' . $docId))); ?></strong>
                                             </a>
+                                            <div class="small text-muted">ID #<?php echo $docId; ?> · Período <?php echo msp2Escape(substr((string) ($doc['periodo_facturacion'] ?? ''), 0, 7)); ?></div>
                                         </td>
-                                        <td><?php echo msp2Escape(substr((string) ($doc['periodo_facturacion'] ?? ''), 0, 7)); ?></td>
-                                        <td><?php echo msp2Escape(rpcFmtFecha((string) ($doc['fecha_vencimiento'] ?? ''))); ?></td>
-                                        <td class="text-end fw-semibold"><?php echo msp2Escape(rpcFmtMoney((float) ($doc['saldo_pendiente'] ?? 0))); ?></td>
+                                        <td data-gp-label="Tienda"><?php echo msp2Escape((string) ($doc['nombre_tienda'] ?? '-')); ?></td>
+                                        <td data-gp-label="Emisión / vencimiento"><span class="gp-data-pair"><span>Emisión</span><strong><?php echo msp2Escape(rpcFmtFecha((string) ($doc['fecha_emision'] ?? ''))); ?></strong></span><span class="gp-data-pair"><span>Vencimiento</span><strong><?php echo msp2Escape(rpcFmtFecha((string) ($doc['fecha_vencimiento'] ?? ''))); ?></strong></span></td>
+                                        <?php $montoDocumento = (float) ($doc['monto_total'] ?? 0); $saldoDocumento = (float) ($doc['saldo_pendiente'] ?? 0); ?>
+                                        <td data-gp-label="Resumen financiero" class="gp-financial-cell"><span class="gp-data-pair"><span>Monto</span><strong><?php echo msp2Escape(rpcFmtMoney($montoDocumento)); ?></strong></span><span class="gp-data-pair"><span>Pagado</span><strong><?php echo msp2Escape(rpcFmtMoney(max(0, $montoDocumento - $saldoDocumento))); ?></strong></span><span class="gp-data-pair gp-data-pair--total"><span>Saldo</span><strong><?php echo msp2Escape(rpcFmtMoney($saldoDocumento)); ?></strong></span></td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>
@@ -1115,7 +986,7 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
     </div>
 </main>
 
-<div class="modal fade" id="modalPagoContrato" tabindex="-1" aria-hidden="true" data-tour="rpc-modal">
+<div class="modal fade" id="modalPagoContrato" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('pagos/guardar_pago_contrato.php')); ?>" id="form_pago_contrato"
               style="border-radius:var(--gp-radius-lg,12px);">
@@ -1129,7 +1000,7 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
             <input type="hidden" name="demo_email_confirmado" value="">
             <input type="hidden" name="demo_email_override" value="">
 
-            <div class="modal-header" style="background:var(--color-surface,#fff);border-bottom:1px solid var(--color-border,#e5e7eb);">
+            <div class="modal-header" style="background:var(--color-surface);border-bottom:1px solid var(--color-border);">
                 <div>
                     <h2 class="modal-title fs-5 mb-0">Registrar pago</h2>
                     <div class="small text-muted" style="margin-top:2px;">
@@ -1139,11 +1010,18 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
 
-            <div class="modal-body" style="background:var(--color-bg,#f9fafb);">
+            <div class="modal-body" style="background:var(--color-bg);">
                 <div class="small text-muted mb-3">
                     <span class="pc-required-mark">*</span> Campo obligatorio
                     <span class="mx-1">|</span>
                     <span class="pc-optional-mark">(opcional)</span> Campo no obligatorio
+                </div>
+                <div class="gp-operation-summary mb-3">
+                    <div class="row g-2 text-center">
+                        <div class="col-4"><span class="small text-muted d-block">Documentos pendientes</span><strong><?php echo count($documentosDeuda); ?></strong></div>
+                        <div class="col-4"><span class="small text-muted d-block">Deuda del contrato</span><strong><?php echo msp2Escape(rpcFmtMoney($totalDeudaContrato)); ?></strong></div>
+                        <div class="col-4"><span class="small text-muted d-block">Saldo a favor disponible</span><strong class="text-success"><?php echo msp2Escape(rpcFmtMoney($saldoFavorDisponible)); ?></strong></div>
+                    </div>
                 </div>
                 <div class="alert alert-light border d-flex align-items-start gap-2 py-2 mb-3">
                     <input class="form-check-input mt-1" type="checkbox" id="pc_descargar_pdfs_pago" name="descargar_pdfs_pago" value="1" checked>
@@ -1153,19 +1031,19 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                     </div>
                 </div>
                 <div class="row g-2 mb-3 align-items-end">
-                    <div class="col-sm-4" data-tour="rpc-monto">
+                    <div class="col-sm-4">
                         <label for="pc_monto_pagado_view" class="form-label mb-1 small fw-bold text-success">
                             <i class="bi bi-cash-coin me-1" aria-hidden="true"></i>Monto pagado
                             <span class="pc-required-mark">*</span>
                         </label>
                         <div class="input-group">
-                            <span class="input-group-text fw-bold" style="background:#f0fdf4;border-color:#16a34a;color:#15803d;">$</span>
+                            <span class="input-group-text fw-bold" style="background:var(--color-success-soft);border-color:var(--color-success);color:var(--color-success-text);">$</span>
                             <input type="text" inputmode="decimal" class="form-control fw-bold" id="pc_monto_pagado_view"
                                    placeholder="0,00" required autocomplete="off"
-                                   style="font-size:1.25rem;border-color:#16a34a;box-shadow:0 0 0 1px #bbf7d0;color:#15803d;">
+                                   style="font-size:1.25rem;border-color:var(--color-success);box-shadow:0 0 0 1px var(--color-success-border);color:var(--color-success-text);">
                         </div>
                     </div>
-                    <div class="col-sm-3" data-tour="rpc-fecha-pago">
+                    <div class="col-sm-3">
                         <label for="pc_fecha_pago" class="form-label mb-1 small fw-semibold">
                             Fecha pago
                             <span class="pc-required-mark">*</span>
@@ -1180,7 +1058,7 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                             max="<?php echo msp2Escape($fechaPagoMaxima); ?>"
                             required>
                     </div>
-                    <div class="col-sm-3" data-tour="rpc-medio-pago">
+                    <div class="col-sm-3">
                         <label for="pc_medio_pago" class="form-label mb-1 small fw-semibold">
                             Medio de pago
                             <span class="pc-required-mark">*</span>
@@ -1192,7 +1070,7 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="col-sm-2" data-tour="rpc-referencia">
+                    <div class="col-sm-2">
                         <label for="pc_referencia_pago" class="form-label mb-1 small fw-semibold" id="pc_referencia_label">
                             Referencia
                             <span class="pc-optional-mark">(opcional)</span>
@@ -1269,13 +1147,13 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                     <?php endif; ?>
                 </div>
 
-                <div style="border-radius:10px;overflow:hidden;border:1px solid var(--color-border,#e5e7eb);background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.06);" data-tour="rpc-preview">
+                <div style="border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--color-border);background:var(--color-surface);box-shadow:0 1px 4px rgba(var(--color-shadow-rgb),.06);">
                     <table class="table align-middle mb-0" style="font-size:.92rem;">
                         <thead class="table-light">
                         <tr>
-                            <th class="text-start ps-3" style="font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">Documento</th>
-                            <th class="text-end" style="width:140px;font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">Saldo</th>
-                            <th class="text-end" style="width:150px;font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">Se aplica</th>
+                            <th class="text-start ps-3" style="font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">Documento</th>
+                            <th class="text-end" style="width:140px;font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">Saldo</th>
+                            <th class="text-end" style="width:150px;font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">Se aplica</th>
                         </tr>
                         </thead>
                         <tbody id="pc_preview_body">
@@ -1286,9 +1164,9 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                 <div id="pc_preview_summary" class="small text-success mt-3"></div>
             </div>
 
-            <div class="modal-footer" style="background:var(--color-surface,#fff);border-top:1px solid var(--color-border,#e5e7eb);">
+            <div class="modal-footer" style="background:var(--color-surface);border-top:1px solid var(--color-border);">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="submit" class="btn btn-success" id="pc_submit_btn" data-tour="rpc-submit-btn" disabled>Guardar pago</button>
+                <button type="submit" class="btn btn-success" id="pc_submit_btn" disabled>Guardar pago</button>
             </div>
         </form>
     </div>
@@ -1377,7 +1255,7 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
 </div>
 <?php endif; ?>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const formFiltro = document.getElementById('form_pago_contrato_filtro');
@@ -1971,8 +1849,6 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
     renderPreview();
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js"></script>
-<script src="<?php echo msp2Escape(msp2Url('assets/msp_tour_registrar_pago_contrato.js')); ?>"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

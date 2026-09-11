@@ -3,9 +3,9 @@ include 'db.php';
 include 'permisos.php';
 include 'Templates/header.php';
 
-// Verificar si el usuario ha iniciado sesión
+// Verificar si el usuario ha iniciado sesiï¿½n
 if (!isset($_SESSION['usuario'])) {
-    echo "<script>alert('Debes iniciar sesión.'); window.location.href = 'login.php';</script>";
+    echo "<script>alert('Debes iniciar sesiï¿½n.'); window.location.href = 'login.php';</script>";
     exit();
 }
 
@@ -23,11 +23,11 @@ $roles = $conn->query("SELECT id, nombre_rol FROM cr_roles")->fetchAll(PDO::FETC
 $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
-<!-- Agregar Bootstrap CSS (si no está incluido en el header) -->
-<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+<!-- Agregar Bootstrap CSS (si no estï¿½ incluido en el header) -->
+<link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-4.5.2/css/bootstrap.min.css">
 
 <style>
-    /* Estilos personalizados (mismo diseño que editar_marca.php) */
+    /* Estilos personalizados (mismo diseï¿½o que editar_marca.php) */
     body {
         background-color: #f0f2f5;
     }
@@ -51,11 +51,11 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
     .btn-volver {
         background-color: #6c757d;
         color: #fff;
-        border-radius: 4px; /* Ajusta el radio para que sea más rectangular */
-        padding: 10px 20px; /* Ajusta el tamaño interno del botón */
+        border-radius: 4px; /* Ajusta el radio para que sea mï¿½s rectangular */
+        padding: 10px 20px; /* Ajusta el tamaï¿½o interno del botï¿½n */
         border: none; /* Remueve bordes predeterminados si es necesario */
-        cursor: pointer; /* Muestra un cursor de mano al pasar sobre el botón */
-        font-size: 16px; /* Ajusta el tamaño del texto */
+        cursor: pointer; /* Muestra un cursor de mano al pasar sobre el botï¿½n */
+        font-size: 16px; /* Ajusta el tamaï¿½o del texto */
         transition: all 0.3s ease;
     }
 
@@ -97,20 +97,20 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
     }
 
     .btn-editar {
-		border-radius: 4px !important; /* Ajusta el radio para que sea más rectangular */
-        padding: 10px 20px !important; /* Ajusta el tamaño interno del botón */
+		border-radius: 4px !important; /* Ajusta el radio para que sea mï¿½s rectangular */
+        padding: 10px 20px !important; /* Ajusta el tamaï¿½o interno del botï¿½n */
         border: none !important; /* Remueve bordes predeterminados si es necesario */
-        cursor: pointer !important; /* Muestra un cursor de mano al pasar sobre el botón */
-        font-size: 16px !important; /* Ajusta el tamaño del texto */
+        cursor: pointer !important; /* Muestra un cursor de mano al pasar sobre el botï¿½n */
+        font-size: 16px !important; /* Ajusta el tamaï¿½o del texto */
 	}
     .btn-eliminar {
         background-color: #dc3545;
         color: #fff;
-		border-radius: 4px; /* Ajusta el radio para que sea más rectangular */
-        padding: 10px 10px; /* Ajusta el tamaño interno del botón */
+		border-radius: 4px; /* Ajusta el radio para que sea mï¿½s rectangular */
+        padding: 10px 10px; /* Ajusta el tamaï¿½o interno del botï¿½n */
         border: none; /* Remueve bordes predeterminados si es necesario */
-        cursor: pointer; /* Muestra un cursor de mano al pasar sobre el botón */
-        font-size: 16px; /* Ajusta el tamaño del texto */
+        cursor: pointer; /* Muestra un cursor de mano al pasar sobre el botï¿½n */
+        font-size: 16px; /* Ajusta el tamaï¿½o del texto */
     }
 
     .btn-editar {
@@ -145,11 +145,11 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
    .edit-field input {
         flex: 1; /* Esto hace que el ancho sea flexible con respecto al contenedor */
         adding: 8px 10px; /* Ajusta el espacio interno */
-        font-size: 14px; /* Ajusta el tamaño del texto */
-        border: 1px solid #ced4da; /* Añade un borde visible */
+        font-size: 14px; /* Ajusta el tamaï¿½o del texto */
+        border: 1px solid #ced4da; /* Aï¿½ade un borde visible */
         border-radius: 4px; /* Esquinas ligeramente redondeadas */
-        text-transform: uppercase; /* Mantiene el texto en mayúsculas */
-        width: 300px; /* Cambia el ancho aquí */
+        text-transform: uppercase; /* Mantiene el texto en mayï¿½sculas */
+        width: 300px; /* Cambia el ancho aquï¿½ */
 		height: 40px; /* Ajusta el alto */
 }
 
@@ -168,11 +168,11 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
     .btn-guardar {
         background-color: #28a745;
         color: #fff;
-		border-radius: 4px; /* Ajusta el radio para que sea más rectangular */
-        padding: 10px 20px; /* Ajusta el tamaño interno del botón */
+		border-radius: 4px; /* Ajusta el radio para que sea mï¿½s rectangular */
+        padding: 10px 20px; /* Ajusta el tamaï¿½o interno del botï¿½n */
         border: none; /* Remueve bordes predeterminados si es necesario */
-        cursor: pointer; /* Muestra un cursor de mano al pasar sobre el botón */
-        font-size: 16px; /* Ajusta el tamaño del texto */
+        cursor: pointer; /* Muestra un cursor de mano al pasar sobre el botï¿½n */
+        font-size: 16px; /* Ajusta el tamaï¿½o del texto */
     }
 
     .btn-guardar:hover {
@@ -184,11 +184,11 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
     .btn-descartar {
         background-color: #6c757d;
         color: #fff;
-		border-radius: 4px; /* Ajusta el radio para que sea más rectangular */
-        padding: 10px 20px; /* Ajusta el tamaño interno del botón */
+		border-radius: 4px; /* Ajusta el radio para que sea mï¿½s rectangular */
+        padding: 10px 20px; /* Ajusta el tamaï¿½o interno del botï¿½n */
         border: none; /* Remueve bordes predeterminados si es necesario */
-        cursor: pointer; /* Muestra un cursor de mano al pasar sobre el botón */
-        font-size: 16px; /* Ajusta el tamaño del texto */
+        cursor: pointer; /* Muestra un cursor de mano al pasar sobre el botï¿½n */
+        font-size: 16px; /* Ajusta el tamaï¿½o del texto */
     }
 
     .btn-descartar:hover {
@@ -210,7 +210,7 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
         padding: 0;
         display: flex;
         flex-direction: column;
-        min-height: 100vh; /* Altura mínima igual a la altura de la ventana */
+        min-height: 100vh; /* Altura mï¿½nima igual a la altura de la ventana */
     }
 
    .editar-usuario-container {
@@ -247,7 +247,7 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
         <tbody>
             <?php foreach ($usuarios as $usuario): ?>
             <tr>
-                <td><?= $usuario['id'] ?></td>
+                <td><?= (int) $usuario['id'] ?></td>
                 <td><?= htmlspecialchars($usuario['UserName'], ENT_QUOTES, 'UTF-8') ?></td>
                 <td><?= htmlspecialchars($usuario['nombre_completo'], ENT_QUOTES, 'UTF-8') ?></td>
                 <td><?= htmlspecialchars($usuario['correo_electronico'], ENT_QUOTES, 'UTF-8') ?></td>
@@ -262,7 +262,7 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
                     $has_movements = $stmt_movements->fetchColumn() > 0;
                     ?>
                     <form action="procesar_eliminar_usuario.php" method="POST" onsubmit="return verificarEliminacion(<?= $has_movements ? 'true' : 'false' ?>)" style="display: inline;">
-                        <input type="hidden" name="id" value="<?= $usuario['id'] ?>">
+                        <input type="hidden" name="id" value="<?= (int) $usuario['id'] ?>">
                         <button type="submit" class="btn btn-eliminar">Eliminar</button>
                     </form>
                 </td>
@@ -272,7 +272,7 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
     </table>
 </div>
 
-<!-- Modal de edición -->
+<!-- Modal de ediciï¿½n -->
 <div id="modalEdicion" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center;">
     <div style="background-color: white; padding: 20px; border-radius: 8px; width: 400px; position: relative;">
         <h3>Editar Usuario</h3>
@@ -298,7 +298,7 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
                 <label>Rol:</label>
                 <select name="rol_id" id="edit_rol" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
                     <?php foreach ($roles as $rol): ?>
-                        <option value="<?= $rol['id'] ?>"><?= $rol['nombre_rol'] ?></option>
+                        <option value="<?= (int) $rol['id'] ?>"><?= htmlspecialchars((string) $rol['nombre_rol'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -306,7 +306,7 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
                 <label>Estado:</label>
                 <select name="estado_id" id="edit_estado" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
                     <?php foreach ($estados as $estado): ?>
-                        <option value="<?= $estado['id'] ?>"><?= $estado['estado'] ?></option>
+                        <option value="<?= (int) $estado['id'] ?>"><?= htmlspecialchars((string) $estado['estado'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -340,7 +340,7 @@ function verificarEliminacion(hasMovements) {
         alert('No se puede eliminar este usuario porque tiene movimientos asociados. Puede deshabilitarlo en su lugar.');
         return false;
     }
-    return confirm('¿Seguro que deseas eliminar este usuario?');
+    return confirm('ï¿½Seguro que deseas eliminar este usuario?');
 }
 </script>
 

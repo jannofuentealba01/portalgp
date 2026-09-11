@@ -1876,765 +1876,12 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Control diario</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .cd-body {
-            min-height: 100vh;
-            background:
-                radial-gradient(circle at top left, rgba(11, 58, 110, 0.08), transparent 30%),
-                linear-gradient(180deg, #f5f8fc 0%, #e9eef5 100%);
-        }
-
-        .cd-main {
-            padding: 0.85rem;
-        }
-
-        .cd-shell {
-            display: flex;
-            flex-direction: column;
-            gap: 0.65rem;
-            width: 100%;
-        }
-
-        .cd-focusbar {
-            position: sticky;
-            top: 0;
-            z-index: 70;
-            border: 1px solid #d4deeb;
-            border-radius: 14px;
-            background: rgba(248, 251, 255, 0.96);
-            box-shadow: 0 14px 28px rgba(15, 42, 76, 0.08);
-            backdrop-filter: blur(10px);
-            overflow: hidden;
-        }
-
-        .cd-focusbar-main {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-            padding: 0.7rem 0.85rem;
-        }
-
-        .cd-focusbar-brand {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            min-width: 0;
-        }
-
-        .cd-focusbar-title {
-            margin: 0;
-            font-size: 1.05rem;
-            line-height: 1.1;
-            color: #0e2f52;
-        }
-
-        .cd-focusbar-subtitle {
-            margin: 2px 0 0;
-            font-size: 12px;
-            color: #5f7389;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .cd-focusbar-actions {
-            display: flex;
-            align-items: end;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-        }
-
-        .cd-year-form {
-            display: flex;
-            align-items: end;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .cd-year-field {
-            min-width: 92px;
-        }
-
-        .cd-focusbar-panel {
-            border-top: 1px solid #e0e8f1;
-            background: rgba(255, 255, 255, 0.92);
-        }
-
-        .cd-focusbar-panel-inner {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .cd-focusbar.is-collapsed .cd-focusbar-panel {
-            display: none;
-        }
-
-        .cd-focusbar.is-collapsed .cd-focusbar-subtitle {
-            display: none;
-        }
-
-        .control-grid-card {
-            border: 1px solid #d5dfec;
-            border-radius: var(--radius-md);
-            overflow: hidden;
-            box-shadow: var(--shadow-sm);
-            background: #fff;
-            position: relative;
-        }
-
-        .control-grid-card.is-preparing .control-grid-content,
-        .control-grid-card.is-loading .control-grid-content {
-            filter: blur(1px);
-            opacity: 0.42;
-            pointer-events: none;
-            user-select: none;
-        }
-
-        .control-loading-layer {
-            position: absolute;
-            inset: 0;
-            z-index: 80;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
-            background: rgba(248, 251, 255, 0.88);
-            backdrop-filter: blur(2px);
-        }
-
-        .control-grid-card.is-preparing .control-loading-layer,
-        .control-grid-card.is-loading .control-loading-layer {
-            display: flex;
-        }
-
-        .control-loading-panel {
-            width: min(380px, 100%);
-            border: 1px solid #d5dfec;
-            border-radius: var(--radius-md);
-            background: rgba(255, 255, 255, 0.96);
-            box-shadow: var(--shadow-md);
-            padding: 1.25rem;
-            text-align: center;
-        }
-
-        .control-loading-icon {
-            width: 44px;
-            height: 44px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            background: #edf6ff;
-            color: #123e6d;
-            margin-bottom: 0.75rem;
-        }
-
-        .control-loading-title {
-            color: #123e6d;
-            font-size: 0.95rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-        }
-
-        .control-loading-text {
-            color: #5c6f86;
-            font-size: 0.82rem;
-            margin-bottom: 1rem;
-        }
-
-        .control-loading-track {
-            height: 4px;
-            border-radius: 999px;
-            background: #e3edf8;
-            overflow: hidden;
-        }
-
-        .control-loading-bar {
-            width: 38%;
-            height: 100%;
-            border-radius: inherit;
-            background: #0b3a6e;
-            animation: control-loading-slide 1.05s ease-in-out infinite;
-        }
-
-        @keyframes control-loading-slide {
-            0% {
-                transform: translateX(-120%);
-            }
-
-            100% {
-                transform: translateX(280%);
-            }
-        }
-
-        .control-grid-wrap {
-            width: 100%;
-            overflow-x: auto;
-            overflow-y: auto;
-            max-height: calc(100vh - 214px);
-            background: #fff;
-        }
-
-        .control-grid {
-            --control-head-row-1-height: 48px;
-            --sticky-local-width: 160px;
-            --sticky-arr-width: 228px;
-            border-collapse: separate;
-            border-spacing: 0;
-            min-width: 4200px;
-            width: max-content;
-            margin: 0;
-            font-size: 12px;
-        }
-
-        .control-grid.month-single-mode {
-            --sticky-local-width: 88px;
-            --sticky-arr-width: 164px;
-            min-width: 0;
-            width: 100%;
-        }
-
-        .control-grid.month-single-mode tbody td {
-            padding: 4px 5px;
-            font-size: 11px;
-        }
-
-        .control-grid.month-single-mode .sticky-col {
-            vertical-align: top;
-        }
-
-        .control-grid.month-single-mode .js-month-col {
-            min-width: 70px;
-        }
-
-        .control-grid.month-single-mode .js-uf-base-head,
-        .control-grid.month-single-mode .js-uf-base-cell {
-            min-width: 54px;
-            max-width: 54px;
-            padding-left: 4px;
-            padding-right: 4px;
-        }
-
-        .control-grid.month-single-mode .garantia-col {
-            min-width: 56px;
-        }
-
-        .control-grid.month-single-mode .status-col {
-            min-width: 64px;
-        }
-
-        .control-grid.month-single-mode .month-static {
-            width: 82px;
-            min-height: 24px;
-            font-size: 10px;
-            padding: 2px 5px;
-        }
-
-        .control-grid.month-single-mode .local-label {
-            font-size: 10px;
-            min-height: 2.35em;
-        }
-
-        .control-grid.month-single-mode .arr-label {
-            max-width: 152px;
-            min-height: 2.45em;
-        }
-
-        .control-grid.month-single-mode .arr-rut {
-            font-size: 10px;
-        }
-
-        .control-grid-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 8px;
-            padding: 0.55rem 0.7rem;
-            border-bottom: 1px solid #e6edf6;
-            background: #fff;
-            flex-wrap: nowrap;
-        }
-
-        .month-tracker-label {
-            font-size: 12px;
-            color: #1f3e62;
-            font-weight: 600;
-        }
-
-        .month-switcher {
-            display: grid;
-            grid-template-columns: minmax(82px, 1fr) minmax(180px, 4fr) minmax(82px, 1fr);
-            align-items: center;
-            gap: 6px;
-            width: 100%;
-            min-width: 0;
-        }
-
-        .month-slider-stack {
-            display: grid;
-            grid-template-rows: auto auto;
-            gap: 3px;
-        }
-
-        .month-switcher input[type="range"] {
-            width: 100%;
-            margin: 0;
-        }
-
-        .control-filters {
-            display: flex;
-            align-items: end;
-            gap: 6px;
-            flex-wrap: wrap;
-            padding: 0.55rem 0.7rem 0.7rem;
-            background: #fff;
-        }
-
-        .control-filter-item {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            min-width: 152px;
-        }
-
-        .control-filter-item.search {
-            flex: 1 1 260px;
-        }
-
-        .control-filter-item label {
-            font-size: 11px;
-            color: #4a5f78;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-        }
-
-        .control-filter-input {
-            font-size: 0.875rem;
-        }
-
-        .control-filter-input:focus {
-            box-shadow: none;
-        }
-
-        .month-scale {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 10px;
-            font-weight: 700;
-            color: #b8c6d8;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-            user-select: none;
-        }
-
-        .month-scale-item {
-            text-align: center;
-            padding-top: 1px;
-            transition: color 0.16s ease;
-            line-height: 1;
-        }
-
-        .month-scale-item.is-disabled {
-            color: #d2dbe8;
-        }
-
-        .month-scale-item.is-active {
-            color: #0f4f91;
-        }
-
-        .btn-month-nav {
-            min-width: 76px;
-            width: 100%;
-        }
-
-        .is-month-hidden {
-            display: none !important;
-        }
-
-        .control-grid thead th {
-            position: sticky;
-            z-index: 30;
-            background: #123e6d;
-            color: #fff;
-            border-right: 1px solid rgba(255, 255, 255, 0.15);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.22);
-            text-align: center;
-            padding: 6px 7px;
-            white-space: nowrap;
-        }
-
-        .control-grid thead tr:first-child th {
-            top: 0;
-            z-index: 36;
-        }
-
-        .control-grid thead tr:nth-child(2) th {
-            top: var(--control-head-row-1-height);
-            z-index: 35;
-        }
-
-        .control-grid thead tr:first-child th[rowspan] {
-            top: 0;
-            z-index: 38;
-        }
-
-        .control-grid thead .month-group {
-            background: #0b3a6e;
-            font-size: 11px;
-            letter-spacing: 0.02em;
-            vertical-align: top;
-        }
-
-        .control-grid thead .month-head-inner {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .control-grid .month-static {
-            width: 96px;
-            min-height: 26px;
-            border-radius: 5px;
-            border: 1px solid #cee0f5;
-            padding: 2px 6px;
-            text-align: right;
-            font-size: 11px;
-            background: #f5f9ff;
-            color: #123a63;
-            font-weight: 700;
-        }
-
-        .control-grid tbody td {
-            background: #fff;
-            border-right: 1px solid #dce3ee;
-            border-bottom: 1px solid #dce3ee;
-            padding: 5px 6px;
-            white-space: nowrap;
-            vertical-align: middle;
-        }
-
-        .control-grid tfoot td {
-            background: #edf3fb;
-            border-right: 1px solid #c5d3e6;
-            border-bottom: 1px solid #c5d3e6;
-            border-top: 2px solid #8fa8c5;
-            padding: 6px;
-            white-space: nowrap;
-            vertical-align: middle;
-            font-weight: 700;
-        }
-
-        .control-grid .js-month-col {
-            min-width: 82px;
-        }
-
-        .control-grid .js-uf-base-head,
-        .control-grid .js-uf-base-cell {
-            min-width: 64px;
-        }
-
-        .control-grid .status-col {
-            min-width: 82px;
-        }
-
-        .control-grid .garantia-col {
-            min-width: 64px;
-        }
-
-        .control-grid tbody tr:nth-child(even) td {
-            background: #f9fbfe;
-        }
-
-        .control-grid tbody tr.is-row-link {
-            cursor: pointer;
-        }
-
-        .control-grid tbody tr.is-row-link:hover td {
-            background: #eef5ff;
-        }
-
-        .control-grid tbody tr.is-row-link:focus-visible {
-            outline: 2px solid #0b5ed7;
-            outline-offset: -2px;
-        }
-
-        .control-grid .sticky-col {
-            position: sticky;
-            z-index: 25;
-            background: #f4f8ff;
-            box-shadow: inset -1px 0 0 #dce3ee;
-        }
-
-        .control-grid thead .sticky-col {
-            z-index: 42;
-            background: #143e6d;
-        }
-
-        .control-grid .sticky-col-local {
-            left: 0;
-            min-width: var(--sticky-local-width);
-            max-width: var(--sticky-local-width);
-        }
-
-        .control-grid .sticky-col-arr {
-            left: var(--sticky-local-width);
-            min-width: var(--sticky-arr-width);
-            max-width: var(--sticky-arr-width);
-        }
-
-        .cell-num {
-            text-align: right;
-            font-variant-numeric: tabular-nums;
-        }
-
-        .cell-total {
-            background: #edf6ff !important;
-            font-weight: 700;
-        }
-
-        .has-tooltip {
-            cursor: help;
-            text-decoration: underline dotted #9fb6d6;
-            text-underline-offset: 2px;
-        }
-
-        .reserva-cell-content {
-            display: inline-flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 6px;
-            width: 100%;
-        }
-
-        .reserva-cell-info {
-            color: #7395bf;
-            font-size: 12px;
-            line-height: 1;
-            flex: 0 0 auto;
-        }
-
-        .cell-subtotal {
-            font-weight: 600;
-            background: #f5f8ff !important;
-        }
-
-        .month-input {
-            width: 120px;
-            text-align: right;
-            font-variant-numeric: tabular-nums;
-            padding: 4px 8px;
-            border-radius: 6px;
-            border: 1px solid #cfd9e7;
-            min-height: 31px;
-            background: #fff;
-        }
-
-        .status-chip {
-            border: 0;
-            border-radius: 7px;
-            min-width: 72px;
-            padding: 3px 6px;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            color: #fff;
-            cursor: pointer;
-            box-shadow: none;
-            transition: filter 0.16s ease;
-        }
-
-        .status-chip:hover {
-            filter: brightness(1.05);
-        }
-
-        .status-chip.is-paid {
-            background: #1f8a4d;
-        }
-
-        .status-chip.is-pending {
-            background: #b68500;
-        }
-
-        .status-chip.is-late {
-            background: #c3312f;
-        }
-
-        .status-chip.is-no-close {
-            background: #6b7280;
-        }
-
-        .status-chip.is-terminated {
-            background: #7c2d12;
-        }
-
-        .cell-readonly {
-            background: #f8fbff !important;
-            color: #173f6d;
-            font-weight: 600;
-        }
-
-        .local-label {
-            font-weight: 700;
-            color: #12375f;
-            display: -webkit-box;
-            -webkit-box-orient: vertical;
-            -webkit-line-clamp: 2;
-            overflow: hidden;
-            white-space: normal;
-            word-break: break-word;
-            line-height: 1.18;
-            font-size: 11px;
-        }
-
-        .arr-label {
-            display: -webkit-box;
-            -webkit-box-orient: vertical;
-            -webkit-line-clamp: 2;
-            overflow: hidden;
-            white-space: normal;
-            word-break: break-word;
-            line-height: 1.2;
-            max-width: 180px;
-        }
-
-        .arr-cell-stack {
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-            min-width: 0;
-        }
-
-        .arr-rut {
-            font-size: 11px;
-            line-height: 1.15;
-            color: #61748b;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .control-footnote {
-            color: var(--color-text-muted);
-            font-size: 12px;
-            margin-top: 10px;
-        }
-
-        .control-nav-summary {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px 14px;
-        }
-
-        .control-nav-item-label {
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: #5e7288;
-            margin-bottom: 2px;
-        }
-
-        .control-nav-item-value {
-            color: #16395f;
-            font-size: 0.95rem;
-            line-height: 1.25;
-            word-break: break-word;
-        }
-
-        .control-nav-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            color: #4a6077;
-        }
-
-        .control-nav-countdown {
-            font-size: 12px;
-            color: #5b6f85;
-        }
-
-        @media (max-width: 992px) {
-            .control-grid-wrap {
-                max-height: calc(100vh - 250px);
-            }
-
-            .control-grid {
-                --sticky-local-width: 120px;
-                --sticky-arr-width: 190px;
-            }
-
-            .month-switcher {
-                grid-template-columns: 1fr;
-                width: 100%;
-            }
-
-            .control-grid-meta {
-                flex-wrap: wrap;
-            }
-
-            .cd-focusbar-main {
-                flex-wrap: wrap;
-                align-items: stretch;
-            }
-
-            .cd-focusbar-brand,
-            .cd-focusbar-actions,
-            .cd-year-form {
-                width: 100%;
-            }
-
-            .cd-year-field {
-                flex: 1 1 140px;
-            }
-
-            .control-filters {
-                padding: 8px;
-            }
-
-            .control-filter-item,
-            .control-filter-item.search {
-                min-width: 100%;
-                flex: 1 1 100%;
-            }
-
-            .cd-shell {
-                gap: 0.5rem;
-            }
-
-            .control-loading-panel {
-                padding: 0.85rem;
-            }
-
-            .control-nav-summary {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @media (min-width: 993px) {
-            .cd-body.cd-focusbar-collapsed .control-grid-wrap {
-                max-height: calc(100vh - 146px);
-            }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .control-loading-bar {
-                animation: none;
-                width: 100%;
-            }
-        }
-    </style>
 </head>
 <body class="gp-layout cd-body">
+<?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main cd-main">
         <div class="cd-shell">
             <section class="cd-focusbar js-control-focusbar" aria-label="Controles de Control diario">
@@ -2701,6 +1948,13 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                 </div>
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-month-nav" id="month-next-btn">Siguiente</button>
                             </div>
+                            <div class="control-column-groups" role="group" aria-label="Información visible del mes">
+                                <span class="control-column-groups__label">Ver</span>
+                                <button type="button" class="btn btn-primary btn-sm is-active" data-control-column-group="summary" aria-pressed="true">Resumen</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" data-control-column-group="rent" aria-pressed="false">Arriendo</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" data-control-column-group="services" aria-pressed="false">Servicios</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" data-control-column-group="guarantee" aria-pressed="false">Garantía</button>
+                            </div>
                         </div>
                         <div class="control-filters">
                             <div class="control-filter-item">
@@ -2756,8 +2010,8 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             <?php else: ?>
                 <div class="control-grid-card is-preparing" aria-busy="true">
                 <div class="control-grid-content">
-                <div class="control-grid-wrap">
-                    <table class="control-grid">
+                <div class="control-grid-wrap gp-table-matrix-wrap">
+                    <table class="control-grid gp-table-matrix">
                         <thead>
                             <tr>
                                 <th rowspan="2" class="sticky-col sticky-col-local">Locales</th>
@@ -3121,7 +2375,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 <script>
 (function () {
@@ -3681,6 +2935,68 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         apply();
     }
 
+    function initColumnGroupNavigator() {
+        const table = document.querySelector('.control-grid');
+        const buttons = Array.from(document.querySelectorAll('[data-control-column-group]'));
+        if (!table || buttons.length === 0 || !table.tHead || table.tHead.rows.length < 2) {
+            return;
+        }
+
+        const groups = {
+            summary: [3, 9, 10],
+            rent: [0, 1, 2, 3, 9],
+            services: [5, 6, 7, 9],
+            guarantee: [4, 8, 9],
+        };
+        const monthHeader = table.tHead.rows[0].querySelector('.js-month-group');
+        const detailHeaders = Array.from(table.tHead.rows[1].cells);
+        const dataRows = [
+            ...Array.from(table.tBodies).flatMap((body) => Array.from(body.rows)),
+            ...(table.tFoot ? Array.from(table.tFoot.rows) : []),
+        ];
+
+        const applyGroup = (groupName) => {
+            const visible = groups[groupName] || groups.summary;
+            detailHeaders.forEach((cell, index) => {
+                cell.hidden = !visible.includes(index);
+            });
+            dataRows.forEach((row) => {
+                Array.from(row.cells).forEach((cell, cellIndex) => {
+                    if (cellIndex < 2) return;
+                    cell.hidden = !visible.includes(cellIndex - 2);
+                });
+            });
+            if (monthHeader) monthHeader.colSpan = visible.length;
+            table.dataset.controlColumnGroup = groupName;
+            table.style.setProperty('--control-visible-month-columns', String(visible.length));
+            buttons.forEach((button) => {
+                const active = button.dataset.controlColumnGroup === groupName;
+                button.classList.toggle('btn-primary', active);
+                button.classList.toggle('btn-outline-primary', !active);
+                button.classList.toggle('is-active', active);
+                button.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+            try {
+                window.sessionStorage.setItem('msp-control-column-group', groupName);
+            } catch (error) {
+                // El selector sigue operativo aunque el navegador bloquee storage.
+            }
+        };
+
+        buttons.forEach((button) => button.addEventListener('click', () => {
+            applyGroup(button.dataset.controlColumnGroup || 'summary');
+        }));
+
+        let initialGroup = 'summary';
+        try {
+            const stored = window.sessionStorage.getItem('msp-control-column-group') || '';
+            if (Object.prototype.hasOwnProperty.call(groups, stored)) initialGroup = stored;
+        } catch (error) {
+            initialGroup = 'summary';
+        }
+        applyGroup(initialGroup);
+    }
+
     function decorateNavigableRows() {
         document.querySelectorAll('tbody tr[data-local-id]').forEach((row) => {
             const arrIdMap = getRowMonthMap(row, 'data-arrendatario-id-by-month', '__arrendatarioIdByMonth');
@@ -3852,6 +3168,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         initFilters();
         markFront('init_filters');
         initMonthNavigator();
+        initColumnGroupNavigator();
         markFront('init_month_navigator');
         syncStickyHeaderOffset();
         markFront('sync_sticky_once');

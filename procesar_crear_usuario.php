@@ -53,6 +53,7 @@ try {
 
     echo "<script>alert('Usuario creado exitosamente.'); window.location.href = 'editar_usuario.php';</script>";
 } catch (Exception $e) {
-    echo "<script>alert('Error al crear el usuario: " . $e->getMessage() . "'); window.history.back();</script>";
+    pgpLogException($e, 'legacy_user_create');
+    echo "<script>alert('No fue posible crear el usuario.'); window.history.back();</script>";
 }
 ?>

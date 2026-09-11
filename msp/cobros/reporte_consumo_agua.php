@@ -24,6 +24,9 @@ $periodLabel = $periodDate instanceof DateTimeImmutable
     : strtoupper($periodoYm);
 
 try {
+    // Carga el autoloader común tanto para la salida XLSX como para Dompdf.
+    msp2LoadSpreadsheetLibrary();
+
     $processStmt = $conn->prepare(
         "SELECT TOP (1)
             p.id_proceso_cobro,
@@ -149,5 +152,5 @@ try {
     echo $output;
 } catch (Throwable $exception) {
     http_response_code(500);
-    echo 'No fue posible generar el reporte de agua. Detalle: ' . htmlspecialchars($exception->getMessage());
+    echo msp2Escape(pgpPublicException($exception, 'msp.cobros.reporte_agua', 'No fue posible generar el reporte de agua.'));
 }

@@ -1,7 +1,8 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once dirname(__DIR__) . '/db.php';
+require_once dirname(__DIR__) . '/security.php';
+pgpRequireEnabledSession($conn);
+
 
 if (!isset($_SESSION['usuario'])) {
     header('Location: /portalgp/login.php');
@@ -18,16 +19,37 @@ $gpRequestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
 $gpIsMsp2Route = str_contains($gpRequestUri, '/portalgp/msp/');
 $gpStylesPath = dirname(__DIR__) . '/styles.css';
 $gpStylesVersion = is_file($gpStylesPath) ? (string) filemtime($gpStylesPath) : '1';
+$gpMspAssetsRoot = dirname(__DIR__) . '/msp/assets';
+$gpMspScreenStylesPath = $gpMspAssetsRoot . '/screen.css';
+$gpMspPrintStylesPath = $gpMspAssetsRoot . '/print.css';
+$gpMspViewStyleUrl = null;
+$gpMspViewStylePath = null;
+
+if ($gpIsMsp2Route) {
+    $gpScriptPath = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+    $gpMspMarker = '/msp/';
+    $gpMspMarkerPosition = strpos($gpScriptPath, $gpMspMarker);
+    if ($gpMspMarkerPosition !== false) {
+        $gpMspRelativeScript = substr($gpScriptPath, $gpMspMarkerPosition + strlen($gpMspMarker));
+        $gpMspViewStyleKey = preg_replace('/\.php$/i', '', $gpMspRelativeScript) ?? '';
+        $gpMspViewStyleKey = preg_replace('/[^a-zA-Z0-9_-]+/', '--', $gpMspViewStyleKey) ?? '';
+        $gpMspViewStyleKey = trim($gpMspViewStyleKey, '-');
+        if ($gpMspViewStyleKey !== '') {
+            $gpMspViewStylePath = $gpMspAssetsRoot . '/views/' . $gpMspViewStyleKey . '.css';
+            if (is_file($gpMspViewStylePath)) {
+                $gpMspViewStyleUrl = '/portalgp/msp/assets/views/' . rawurlencode($gpMspViewStyleKey) . '.css';
+            }
+        }
+    }
+}
 ?>
 <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode($gpStylesVersion); ?>">
-<?php if ($gpIsMsp2Route && function_exists('msp2QuickAccessSections')): ?>
-    <style>
-        .gp-nav-button {
-            background: transparent;
-            cursor: pointer;
-            font-family: inherit;
-        }
-    </style>
+<?php if ($gpIsMsp2Route): ?>
+    <link rel="stylesheet" href="/portalgp/msp/assets/screen.css?v=<?php echo rawurlencode((string) @filemtime($gpMspScreenStylesPath)); ?>">
+    <?php if ($gpMspViewStyleUrl !== null && $gpMspViewStylePath !== null): ?>
+        <link rel="stylesheet" href="<?php echo htmlspecialchars($gpMspViewStyleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>?v=<?php echo rawurlencode((string) @filemtime($gpMspViewStylePath)); ?>">
+    <?php endif; ?>
+    <link rel="stylesheet" href="/portalgp/msp/assets/print.css?v=<?php echo rawurlencode((string) @filemtime($gpMspPrintStylesPath)); ?>" media="print">
 <?php endif; ?>
 
 <header class="gp-header" id="gp-main-header">
@@ -99,6 +121,8 @@ $gpStylesVersion = is_file($gpStylesPath) ? (string) filemtime($gpStylesPath) : 
 
 <?php if ($gpIsMsp2Route): ?>
     <script src="/portalgp/msp/assets/modal_form_feedback.js" defer></script>
+    <script src="/portalgp/msp/assets/button_system.js?v=<?php echo rawurlencode((string) @filemtime(dirname(__DIR__) . '/msp/assets/button_system.js')); ?>" defer></script>
+    <script src="/portalgp/msp/assets/table_system.js?v=<?php echo rawurlencode((string) @filemtime(dirname(__DIR__) . '/msp/assets/table_system.js')); ?>" defer></script>
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/components/page_navigation.php'; ?>

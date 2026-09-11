@@ -40,7 +40,7 @@ try {
     $historialLista = is_array($ficha['historialLista'] ?? null) ? $ficha['historialLista'] : [];
     $trazabilidad = is_array($ficha['trazabilidad'] ?? null) ? $ficha['trazabilidad'] : $trazabilidad;
 } catch (Throwable $exception) {
-    $fichaError = $exception->getMessage();
+    $fichaError = pgpPublicOrBusinessException($exception, 'ct.terrenos.ficha', 'No fue posible cargar la ficha del terreno.');
 }
 
 $pageTitle = $terreno !== null

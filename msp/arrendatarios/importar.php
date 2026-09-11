@@ -248,6 +248,14 @@ function msp2ArrImportFetchExistingByRut(PDO $conn, array $ruts): array
 
 function msp2ArrImportFetchContactMap(PDO $conn, array $ids, string $tableName, string $idColumn, string $valueColumn): array
 {
+    $allowedSources = [
+        'dbo.msp_arrendatarios_correos|id_arrendatario_correo|correo',
+        'dbo.msp_arrendatarios_telefonos|id_arrendatario_telefono|telefono',
+    ];
+    if (!in_array($tableName . '|' . $idColumn . '|' . $valueColumn, $allowedSources, true)) {
+        throw new InvalidArgumentException('El origen de contactos solicitado no está permitido.');
+    }
+
     if ($ids === []) {
         return [];
     }
@@ -262,10 +270,10 @@ function msp2ArrImportFetchContactMap(PDO $conn, array $ids, string $tableName, 
         }
 
         $sql =
-            'SELECT id_arrendatario, ' . $valueColumn . ' AS value_item, es_principal
-             FROM ' . $tableName . '
+            'SELECT id_arrendatario, ' . msp2SqlIdentifier($valueColumn) . ' AS value_item, es_principal
+             FROM ' . msp2SqlIdentifier($tableName) . '
              WHERE id_arrendatario IN (' . implode(', ', $placeholders) . ')
-             ORDER BY id_arrendatario ASC, es_principal DESC, ' . $idColumn . ' ASC';
+             ORDER BY id_arrendatario ASC, es_principal DESC, ' . msp2SqlIdentifier($idColumn) . ' ASC';
 
         $stmt = $conn->prepare($sql);
 
@@ -724,8 +732,8 @@ if ($summary['errors'] === 0 && $summary['valid'] > 0) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Vista Previa Importación de Arrendatarios</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -782,43 +790,35 @@ if ($summary['errors'] === 0 && $summary['valid'] > 0) {
             <?php endif; ?>
         </div>
 
-        <div class="table-responsive mt-3">
-            <table class="table table-bordered table-hover align-middle text-center">
+        <div class="table-responsive gp-table-shell mt-3">
+            <table class="table table-bordered table-hover align-middle gp-table-compact gp-table-mobile-cards gp-import-preview-table mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 90px;">Fila</th>
-                        <th>RUT</th>
-                        <th>Tipo</th>
-                        <th>Nombre locatario</th>
-                        <th>Representante</th>
-                        <th>Correos</th>
-                        <th>Teléfonos</th>
-                        <th>Dirección</th>
-                        <th>Comuna</th>
-                        <th>Estado</th>
-                        <th style="width: 130px;">Acción</th>
-                        <th>Comparación</th>
+                        <th data-gp-column-kind="short">Fila</th>
+                        <th>Arrendatario</th>
+                        <th>Representación / dirección</th>
+                        <th>Contacto</th>
+                        <th data-gp-column-kind="state">Resultado</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($previewRows as $row): ?>
                         <tr>
-                            <td><?php echo (int) $row['row_number']; ?></td>
-                            <td><?php echo msp2Escape((string) $row['rut']); ?></td>
-                            <td><?php echo msp2Escape((string) $row['tipo_label']); ?></td>
-                            <td class="text-start"><?php echo msp2Escape((string) $row['nombre_locatario']); ?></td>
-                            <td class="text-start"><?php echo msp2Escape((string) ($row['nombre_representante'] ?: '-')); ?></td>
-                            <td class="text-start"><?php echo msp2Escape((string) $row['correos_display']); ?></td>
-                            <td class="text-start"><?php echo msp2Escape((string) $row['telefonos_display']); ?></td>
-                            <td class="text-start"><?php echo msp2Escape((string) ($row['direccion'] ?: '-')); ?></td>
-                            <td class="text-start">
-                                <?php echo msp2Escape((string) $row['desc_comuna']); ?>
+                            <td data-gp-label="Fila" class="text-center"><?php echo (int) $row['row_number']; ?></td>
+                            <td data-gp-label="Arrendatario" class="gp-cell-description">
+                                <strong><?php echo msp2Escape((string) $row['nombre_locatario']); ?></strong>
+                                <div class="small text-muted"><?php echo msp2Escape((string) $row['rut']); ?> · <?php echo msp2Escape((string) $row['tipo_label']); ?></div>
+                                <span class="badge bg-secondary"><?php echo msp2Escape((string) $row['desc_estado']); ?></span>
+                            </td>
+                            <td data-gp-label="Representación / dirección" class="gp-cell-description">
+                                <strong><?php echo msp2Escape((string) ($row['nombre_representante'] ?: 'Sin representante')); ?></strong>
+                                <div class="small text-muted"><?php echo msp2Escape((string) ($row['direccion'] ?: 'Sin dirección')); ?> · <?php echo msp2Escape((string) $row['desc_comuna']); ?></div>
                                 <?php if ((bool) ($row['comuna_pending_create'] ?? false) && (string) $row['desc_comuna'] !== '-'): ?>
                                     <span class="badge bg-warning text-dark ms-1">Nueva</span>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo msp2Escape((string) $row['desc_estado']); ?></td>
-                            <td>
+                            <td data-gp-label="Contacto" class="gp-cell-description"><div><?php echo msp2Escape((string) $row['correos_display']); ?></div><div class="small text-muted"><?php echo msp2Escape((string) $row['telefonos_display']); ?></div></td>
+                            <td data-gp-label="Resultado" class="gp-cell-state">
                                 <?php
                                     $badge = 'bg-secondary';
                                     if ($row['action'] === 'CREAR') {
@@ -828,13 +828,9 @@ if ($summary['errors'] === 0 && $summary['valid'] > 0) {
                                     }
                                 ?>
                                 <span class="badge <?php echo $badge; ?>"><?php echo msp2Escape((string) $row['action']); ?></span>
-                            </td>
-                            <td class="text-start">
-                                <?php if ($row['status'] === 'OK'): ?>
-                                    <?php echo msp2Escape(implode(' | ', $row['change_details'])); ?>
-                                <?php else: ?>
-                                    <span class="text-danger"><?php echo msp2Escape(implode(' ', $row['errors'])); ?></span>
-                                <?php endif; ?>
+                                <details class="gp-row-detail mt-1"><summary>Ver detalle</summary><div class="gp-row-detail__content">
+                                    <?php if ($row['status'] === 'OK'): ?><?php echo msp2Escape(implode(' | ', $row['change_details'])); ?><?php else: ?><span class="text-danger"><?php echo msp2Escape(implode(' ', $row['errors'])); ?></span><?php endif; ?>
+                                </div></details>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -844,7 +840,7 @@ if ($summary['errors'] === 0 && $summary['valid'] > 0) {
     </div>
 </main>
 <?php msp2RenderCsrfAutoFieldScript(); ?>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

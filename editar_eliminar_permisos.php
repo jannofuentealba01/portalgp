@@ -51,7 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['eliminar_permiso'])) 
             return $rol['nombre_rol'];
         }, $roles_asociados);
         $roles_string = implode(', ', $roles_list);
-        echo "<script>alert('No se puede eliminar este permiso porque está asociado a los siguientes roles: $roles_string');</script>";
+        $roles_message = 'No se puede eliminar este permiso porque está asociado a los siguientes roles: ' . $roles_string;
+        echo '<script>alert(' . pgpJsonForHtml($roles_message, '"No se puede eliminar este permiso."') . ');</script>';
     } else {
         // Intentar eliminar el permiso si no está asociado
         $stmt = $conn->prepare("DELETE FROM cr_permisos WHERE id = :id");
@@ -87,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['eliminar_permiso'])) 
                 <td>
                     <button class="btn btn-warning btn-sm" onclick="abrirModalEdicion(<?= htmlspecialchars(json_encode($permiso), ENT_QUOTES, 'UTF-8') ?>)">Editar</button>
                     <form method="POST" style="display: inline-block;">
-                        <input type="hidden" name="id" value="<?= $permiso['id'] ?>">
+                        <input type="hidden" name="id" value="<?= (int) $permiso['id'] ?>">
                         <button type="submit" name="eliminar_permiso" class="btn btn-danger btn-sm" onclick="return confirm('¿Estás seguro de eliminar este permiso?');">Eliminar</button>
                     </form>
                 </td>

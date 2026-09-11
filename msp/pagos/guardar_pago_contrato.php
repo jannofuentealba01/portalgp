@@ -7,9 +7,10 @@ require_once dirname(__DIR__) . '/cobranza/mail_templates/vale_pago_email.php';
 require_once dirname(__DIR__) . '/cobranza/mail_templates/vale_pago_pdf.php';
 require_once dirname(__DIR__) . '/cobranza/mail_templates/comprobante_gastos_pdf.php';
 require_once __DIR__ . '/pago_contrato_archivos_helper.php';
+require_once __DIR__ . '/pago_contrato_redirect_helper.php';
 require_once __DIR__ . '/saldo_favor_periodo_helper.php';
 
-msp2RequireAccess();
+msp2RequireAccess('MSP Cobranza', 'escritura');
 
 function msp2PagoRequireDompdf(): void
 {
@@ -92,8 +93,8 @@ function msp2PagoContratoPdfDownloadItem(string $type, array $pagoData, array $a
 
 function msp2ResolvePagoContratoRedirect(): string
 {
-    $returnTo = trim((string) ($_POST['return_to'] ?? ''));
-    if ($returnTo !== '' && preg_match('#^cobranza/gestionar\.php\?id_contrato=\d+(?:&return_to=[A-Za-z0-9_\-\.\[%\]=&]*)?$#', $returnTo) === 1) {
+    $returnTo = msp2PagoContratoSafeReturnTo($_POST['return_to'] ?? '');
+    if ($returnTo !== '') {
         return $returnTo;
     }
     $volverQuery = trim((string) ($_POST['volver_query'] ?? ''));

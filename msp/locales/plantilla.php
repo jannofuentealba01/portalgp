@@ -34,7 +34,7 @@ try {
         ];
 
         foreach ($headers as $index => $header) {
-            $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, $index + 1, 1, $header);
         }
 
         $sheet->setCellValue('A2', 'LC-001');

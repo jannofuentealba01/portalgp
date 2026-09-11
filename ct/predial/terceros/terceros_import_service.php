@@ -22,7 +22,7 @@ function ctTercerosImportDownloadTemplateXlsx(): never
 
         $headers = ['tipo_persona', 'rut', 'nombre_razon_social'];
         foreach ($headers as $index => $header) {
-            $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+            ctSetSpreadsheetCellByColumnAndRow($sheet, $index + 1, 1, $header);
         }
 
         $sheet->setCellValue('A2', 'N');
@@ -537,6 +537,15 @@ function ctTercerosImportParseUpload(array $file): array
         throw new RuntimeException('Formato no soportado. Usa .xlsx o .csv.');
     }
 
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = strtolower((string) $finfo->file($tmpName));
+    $allowedMimes = $extension === 'xlsx'
+        ? ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip', 'application/x-zip-compressed']
+        : ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel', 'text/comma-separated-values'];
+    if (!in_array($mime, $allowedMimes, true)) {
+        throw new RuntimeException('El contenido del archivo no coincide con su extensión.');
+    }
+
     $rawRows = $extension === 'xlsx'
         ? ctTercerosImportParseXlsx($tmpName)
         : ctTercerosImportParseCsv($tmpName);
@@ -611,6 +620,28 @@ function ctTercerosImportParseXlsx(string $path): array
     }
 
     try {
+        if ($zip->numFiles <= 0 || $zip->numFiles > 512) {
+            throw new RuntimeException('El XLSX contiene una cantidad de elementos no permitida.');
+        }
+        $expandedBytes = 0;
+        for ($index = 0; $index < $zip->numFiles; $index++) {
+            $stat = $zip->statIndex($index);
+            if (!is_array($stat)) {
+                throw new RuntimeException('No fue posible inspeccionar el contenido del XLSX.');
+            }
+            $entryName = str_replace('\\', '/', (string) ($stat['name'] ?? ''));
+            if ($entryName === '' || str_starts_with($entryName, '/') || preg_match('~(?:^|/)\.\.(?:/|$)~', $entryName) === 1) {
+                throw new RuntimeException('El XLSX contiene una ruta interna no permitida.');
+            }
+            $expandedBytes += max(0, (int) ($stat['size'] ?? 0));
+            if ($expandedBytes > 50 * 1024 * 1024) {
+                throw new RuntimeException('El contenido expandido del XLSX supera 50 MB.');
+            }
+        }
+        if ($zip->locateName('[Content_Types].xml', ZipArchive::FL_NOCASE) === false
+            || $zip->locateName('xl/workbook.xml', ZipArchive::FL_NOCASE) === false) {
+            throw new RuntimeException('El archivo no contiene la estructura mínima de un XLSX.');
+        }
         $sheetPath = ctTercerosImportFirstSheetPath($zip);
         $sheetXmlRaw = $zip->getFromName($sheetPath);
         if (!is_string($sheetXmlRaw) || $sheetXmlRaw === '') {

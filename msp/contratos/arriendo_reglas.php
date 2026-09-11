@@ -18,6 +18,9 @@ $rows = [];
 $contratoInfo = null;
 $descuentosCatalogo = [];
 $historialDescuentos = [];
+$idContratoLocalFocus = filter_input(INPUT_GET, 'id_contrato_local', FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1],
+]) ?: 0;
 
 function msp2ArriendoReglasFmtInput(mixed $value, int $decimals): string
 {
@@ -320,7 +323,7 @@ try {
     }
 } catch (Throwable $exception) {
     if ($exception instanceof RuntimeException) {
-        $loadError = $exception->getMessage();
+        $loadError = pgpPublicOrBusinessException($exception, 'msp.contratos.arriendo_reglas', 'No fue posible cargar las reglas de arriendo.');
     } else {
         $loadError = 'No fue posible cargar la configuración de cobro por local.';
     }
@@ -332,53 +335,9 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Cobro por local</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .msp2-kpi {
-            border: 1px solid #e6eaef;
-            border-radius: .6rem;
-            background: #f8fafc;
-            padding: .75rem .9rem;
-            height: 100%;
-        }
-        .msp2-kpi-label {
-            display: block;
-            font-size: .75rem;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            color: #6c757d;
-            margin-bottom: .25rem;
-        }
-        .msp2-kpi-value {
-            font-size: 1.15rem;
-            font-weight: 600;
-            line-height: 1.2;
-            color: #0f172a;
-        }
-        .msp2-descuento-option {
-            display: flex;
-            gap: .55rem;
-            align-items: flex-start;
-            border: 1px solid #e1e6ed;
-            border-radius: .5rem;
-            padding: .55rem .65rem;
-            background: #fbfcfe;
-        }
-        .msp2-descuento-option:hover {
-            border-color: #b9d0f8;
-            background: #f3f8ff;
-        }
-        .msp2-descuento-option .form-check-input {
-            margin-top: .15rem;
-        }
-        .msp2-history-controls {
-            border-top: 1px solid #eef1f5;
-            border-bottom: 1px solid #eef1f5;
-            background: #fafbfd;
-        }
-    </style>
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
@@ -390,7 +349,7 @@ try {
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a contratos
             </a>
             <?php if ($descuentosHabilitados && is_array($contratoInfo)): ?>
-                <a href="<?php echo msp2Escape(msp2Url('contratos/descuentos_arriendo.php?id_contrato_arriendo=' . (int) ($contratoInfo['id_contrato_arriendo'] ?? 0))); ?>" class="btn btn-outline-dark btn-sm">
+                <a href="<?php echo msp2Escape(msp2Url('contratos/descuentos_arriendo.php?id_contrato_arriendo=' . (int) ($contratoInfo['id_contrato_arriendo'] ?? 0))); ?>" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-tags me-1" aria-hidden="true"></i>Catálogo descuentos
                 </a>
             <?php endif; ?>
@@ -464,7 +423,7 @@ try {
                                 <tbody>
                                 <?php foreach ($rows as $row): ?>
                                     <?php $idContratoLocal = (int) ($row['id_contrato_local'] ?? 0); ?>
-                                    <tr class="js-arriendo-row" data-id-contrato-local="<?php echo $idContratoLocal; ?>">
+                                    <tr id="contrato-local-<?php echo $idContratoLocal; ?>" class="js-arriendo-row <?php echo $idContratoLocalFocus === $idContratoLocal ? 'table-warning' : ''; ?>" data-id-contrato-local="<?php echo $idContratoLocal; ?>">
                                         <td>
                                             <div><strong><?php echo msp2Escape((string) ($row['cdo_local'] ?? '')); ?></strong></div>
                                             <div class="small text-muted"><?php echo msp2Escape((string) ($row['desc_local'] ?? '')); ?> | Contrato-local #<?php echo $idContratoLocal; ?></div>
@@ -670,7 +629,7 @@ try {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const rows = Array.from(document.querySelectorAll('.js-arriendo-row'));

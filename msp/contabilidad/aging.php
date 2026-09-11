@@ -444,7 +444,7 @@ if ($tablaExiste) {
             );
         }
     } catch (PDOException $e) {
-        $loadError = 'No fue posible cargar Aging. Detalle: ' . $e->getMessage();
+        $loadError = pgpPublicException($e, 'msp.contabilidad.aging', 'No fue posible cargar Aging.');
     }
 }
 ?>
@@ -454,100 +454,9 @@ if ($tablaExiste) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Aging Deudores</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .ag-parent { background: #eef4fb; cursor: pointer; font-weight: 600; }
-        .ag-parent:hover { background: #e2ecfa; }
-        .ag-child td { border-top: 0; }
-        .ag-hide { display: none; }
-        .ag-subtable th { font-size: .75rem; color: #64748b; text-transform: uppercase; }
-        .ag-toggle {
-            display: inline-flex;
-            width: 28px;
-            height: 28px;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid #cbd5e1;
-            border-radius: 999px;
-            background: #fff;
-            margin-right: 8px;
-            font-size: 12px;
-        }
-        .ag-parent[aria-expanded="true"] .ag-toggle { transform: rotate(180deg); }
-        .ag-doc-link {
-            color: #1d4ed8;
-            text-decoration: underline;
-            text-underline-offset: 2px;
-            font-weight: 600;
-        }
-        .ag-table-wrap,
-        .ag-subtable-wrap { overflow-x: hidden; }
-        .ag-table,
-        .ag-subtable {
-            width: 100% !important;
-            min-width: 0 !important;
-            table-layout: fixed;
-        }
-        .ag-table th,
-        .ag-table td,
-        .ag-subtable th,
-        .ag-subtable td {
-            min-width: 0 !important;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .ag-col-main { width: 28%; min-width: 0; }
-        .ag-table th:nth-child(2) { width: 6%; }
-        .ag-table th:nth-child(3),
-        .ag-table th:nth-child(4),
-        .ag-table th:nth-child(5),
-        .ag-table th:nth-child(6) { width: 11%; }
-        .ag-table th:nth-child(7) { width: 13%; }
-        .ag-table th:nth-child(8) { width: 9%; }
-        .ag-subtable th:nth-child(1) { width: 13%; }
-        .ag-subtable th:nth-child(2) { width: 8%; }
-        .ag-subtable th:nth-child(3),
-        .ag-subtable th:nth-child(4) { width: 13%; }
-        .ag-subtable th:nth-child(5) { width: 14%; }
-        .ag-subtable th:nth-child(6) { width: 10%; }
-        .ag-subtable th:nth-child(7),
-        .ag-subtable th:nth-child(8) { width: 14.5%; }
-        .ag-arr-name {
-            display: inline-block;
-            max-width: 52%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            vertical-align: bottom;
-        }
-        .ag-locales {
-            display: inline-block;
-            max-width: 28%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            vertical-align: bottom;
-        }
-        .cxp-matrix-wrap { overflow-x: auto; }
-        .cxp-matrix { min-width: 760px; table-layout: fixed; }
-        .cxp-matrix th, .cxp-matrix td { white-space: nowrap; vertical-align: middle; }
-        .cxp-matrix .cxp-tenant { width: 290px; white-space: normal; }
-        .cxp-matrix .cxp-period { width: 125px; }
-        .cxp-matrix .cxp-total { width: 145px; }
-        .cxp-balance-link { color: #0f3f78; font-weight: 600; text-decoration: none; }
-        .cxp-balance-link:hover { text-decoration: underline; }
-        .cxp-zero { color: #94a3b8; }
-        .cxp-matrix tfoot td { background: #eaf1f9; font-weight: 700; }
-        @media (max-width: 992px) {
-            .ag-table-wrap, .ag-subtable-wrap { overflow-x: auto; }
-            .ag-table, .ag-subtable { min-width: 850px !important; }
-            .ag-col-main { width: 40%; }
-            .ag-arr-name, .ag-locales { max-width: 220px; }
-        }
-    </style>
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
@@ -570,7 +479,7 @@ if ($tablaExiste) {
         <?php if ($tablaExiste && $loadError === null): ?>
             <div class="card shadow-sm mb-3">
                 <div class="card-body">
-                    <form class="row g-2 align-items-end" method="get">
+                    <form class="row g-2 align-items-end gp-filter-bar" method="get">
                         <div class="col-6 col-md-2">
                             <label class="form-label" for="periodo_desde">Desde</label>
                             <select class="form-select" name="periodo_desde" id="periodo_desde">
@@ -596,7 +505,7 @@ if ($tablaExiste) {
                                 id="corte_aging"
                                 value="<?php echo msp2Escape($corteAging); ?>">
                         </div>
-                        <div class="col-12 col-md-auto">
+                        <div class="col-12 col-md-auto" data-gp-filter-actions>
                             <button class="btn btn-primary" type="submit">Aplicar</button>
                         </div>
                         <div class="col-12 col-md-auto">
@@ -627,8 +536,8 @@ if ($tablaExiste) {
                     </div>
                     <span class="badge text-bg-primary"><?php echo count($matrizPorArrendatario); ?> arrendatarios</span>
                 </div>
-                <div class="table-responsive cxp-matrix-wrap">
-                    <table class="table table-sm table-hover mb-0 cxp-matrix" style="min-width: <?php echo 435 + (count($periodosMatriz) * 125); ?>px;">
+                <div class="table-responsive cxp-matrix-wrap gp-table-matrix-wrap">
+                    <table class="table table-sm table-hover mb-0 cxp-matrix gp-table-matrix" style="min-width: <?php echo 435 + (count($periodosMatriz) * 125); ?>px;">
                         <thead>
                             <tr>
                                 <th class="cxp-tenant">Arrendatario</th>
@@ -697,27 +606,24 @@ if ($tablaExiste) {
             </div>
 
             <div class="card shadow-sm">
-                <div class="table-responsive ag-table-wrap">
-                    <table class="table table-sm mb-0 ag-table">
+                <div class="table-responsive ag-table-wrap gp-table-shell">
+                    <table class="table table-sm mb-0 ag-table gp-table-compact gp-table-mobile-cards">
                         <thead>
                             <tr>
                                 <th class="ag-col-main">Locales / Arrendatario</th>
-                                <th class="text-end">Docs</th>
-                                <th class="text-end">0-30</th>
-                                <th class="text-end">31-60</th>
-                                <th class="text-end">61-90</th>
-                                <th class="text-end">91+</th>
-                                <th class="text-end">Saldo</th>
-                                <th class="text-center">Detalle</th>
+                                <th data-gp-column-kind="short">Docs</th>
+                                <th>Antigüedad de la deuda</th>
+                                <th data-gp-column-kind="number">Saldo</th>
+                                <th data-gp-column-kind="actions">Detalle</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($filas)): ?>
-                                <tr><td colspan="8" class="text-center text-muted py-3">Sin deudores para el filtro.</td></tr>
+                                <tr class="gp-table-empty-row"><td colspan="5" class="gp-table-empty-cell">Sin deudores para el filtro.</td></tr>
                             <?php else: ?>
                                 <?php $ix = 0; foreach ($filas as $f): $ix++; $arrId = (int) ($f['id_arrendatario'] ?? 0); ?>
                                     <tr class="ag-parent" data-g="<?php echo $ix; ?>" aria-expanded="false">
-                                        <td>
+                                        <td data-gp-label="Locales / Arrendatario">
                                             <?php
                                                 $localesTxt = implode(' / ', $localesPorArrendatario[$arrId] ?? ['SIN LOCAL']);
                                                 $nombreArr = (string) ($f['nombre_arrendatario'] ?? '');
@@ -728,32 +634,30 @@ if ($tablaExiste) {
                                             <span class="ag-arr-name" title="<?php echo msp2Escape($nombreArr); ?>"><?php echo msp2Escape($nombreArr); ?></span>
                                             <small class="text-muted"><?php echo msp2Escape(msp2RutFormatDisplay((string) ($f['rut'] ?? ''))); ?></small>
                                         </td>
-                                        <td class="text-end"><?php echo (int) ($f['docs'] ?? 0); ?></td>
-                                        <td class="text-end"><?php echo msp2Escape(agFmtMonto($f['b0_30'] ?? 0)); ?></td>
-                                        <td class="text-end"><?php echo msp2Escape(agFmtMonto($f['b31_60'] ?? 0)); ?></td>
-                                        <td class="text-end"><?php echo msp2Escape(agFmtMonto($f['b61_90'] ?? 0)); ?></td>
-                                        <td class="text-end"><?php echo msp2Escape(agFmtMonto($f['b91_plus'] ?? 0)); ?></td>
-                                        <td class="text-end fw-bold"><?php echo msp2Escape(agFmtMonto($f['total'] ?? 0)); ?></td>
-                                        <td class="text-center"><span class="ag-toggle"><i class="bi bi-chevron-down"></i></span></td>
+                                        <td data-gp-label="Docs" class="text-center"><?php echo (int) ($f['docs'] ?? 0); ?></td>
+                                        <td data-gp-label="Antigüedad de la deuda" class="gp-aging-buckets">
+                                            <span class="gp-data-pair"><span>0–30 días</span><strong><?php echo msp2Escape(agFmtMonto($f['b0_30'] ?? 0)); ?></strong></span>
+                                            <span class="gp-data-pair"><span>31–60 días</span><strong><?php echo msp2Escape(agFmtMonto($f['b31_60'] ?? 0)); ?></strong></span>
+                                            <span class="gp-data-pair"><span>61–90 días</span><strong><?php echo msp2Escape(agFmtMonto($f['b61_90'] ?? 0)); ?></strong></span>
+                                            <span class="gp-data-pair"><span>91+ días</span><strong><?php echo msp2Escape(agFmtMonto($f['b91_plus'] ?? 0)); ?></strong></span>
+                                        </td>
+                                        <td data-gp-label="Saldo" class="text-end fw-bold"><?php echo msp2Escape(agFmtMonto($f['total'] ?? 0)); ?></td>
+                                        <td data-gp-label="Detalle" class="text-center"><button type="button" class="btn btn-outline-secondary btn-sm ag-toggle" aria-label="Mostrar documentos pendientes"><i class="bi bi-chevron-down" aria-hidden="true"></i></button></td>
                                     </tr>
                                     <tr class="ag-child ag-hide ag-g-<?php echo $ix; ?>">
-                                        <td colspan="8" class="ps-4">
+                                        <td colspan="5" class="p-2">
                                             <?php $detalles = $detallePorGrupo[$arrId] ?? []; ?>
                                             <?php if ($detalles === []): ?>
                                                 <div class="text-muted">Sin documentos pendientes para este arrendatario.</div>
                                             <?php else: ?>
-                                                <div class="table-responsive ag-subtable-wrap">
-                                                    <table class="table table-sm ag-subtable mb-0">
+                                                <div class="table-responsive ag-subtable-wrap gp-table-shell">
+                                                    <table class="table table-sm ag-subtable mb-0 gp-table-compact gp-table-mobile-cards">
                                                         <thead>
                                                             <tr>
-                                                                <th>Locales</th>
-                                                                <th>Tipo</th>
-                                                                <th>Fecha Emisión</th>
-                                                                <th>Fecha Vencimiento</th>
-                                                                <th>N° Documento</th>
-                                                                <th class="text-end">Días Atraso</th>
-                                                                <th class="text-end">Monto Documento</th>
-                                                                <th class="text-end">Saldo Pendiente</th>
+                                                                <th>Local / documento</th>
+                                                                <th>Emisión / vencimiento</th>
+                                                                <th data-gp-column-kind="short">Mora</th>
+                                                                <th>Resumen financiero</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
@@ -774,14 +678,10 @@ if ($tablaExiste) {
                                                                     $localesDoc = implode(' / ', $localesPorDocumento[$docId] ?? ['SIN LOCAL']);
                                                                 ?>
                                                                 <tr>
-                                                                    <td><?php echo msp2Escape($localesDoc); ?></td>
-                                                                    <td>Factura</td>
-                                                                    <td><?php echo msp2Escape(agFmtFecha((string) ($d['fecha_emision'] ?? ''))); ?></td>
-                                                                    <td><?php echo msp2Escape(agFmtFecha((string) ($d['fecha_vencimiento'] ?? ''))); ?></td>
-                                                                    <td><a class="ag-doc-link" href="<?php echo msp2Escape($docPortalUrl); ?>" target="_blank" rel="noopener"><?php echo msp2Escape((string) ($d['numero_documento'] ?? '')); ?></a></td>
-                                                                    <td class="text-end"><?php echo msp2Escape(agFmtDias($dias)); ?></td>
-                                                                    <td class="text-end"><?php echo msp2Escape(agFmtMonto($d['monto_total'] ?? 0)); ?></td>
-                                                                    <td class="text-end fw-semibold"><?php echo msp2Escape(agFmtMonto($d['saldo_pendiente'] ?? 0)); ?></td>
+                                                                    <td data-gp-label="Local / documento"><strong><?php echo msp2Escape($localesDoc); ?></strong><div class="small text-muted">Factura · <a class="ag-doc-link" href="<?php echo msp2Escape($docPortalUrl); ?>" target="_blank" rel="noopener"><?php echo msp2Escape((string) ($d['numero_documento'] ?? '')); ?></a></div></td>
+                                                                    <td data-gp-label="Emisión / vencimiento"><span class="gp-data-pair"><span>Emisión</span><strong><?php echo msp2Escape(agFmtFecha((string) ($d['fecha_emision'] ?? ''))); ?></strong></span><span class="gp-data-pair"><span>Vence</span><strong><?php echo msp2Escape(agFmtFecha((string) ($d['fecha_vencimiento'] ?? ''))); ?></strong></span></td>
+                                                                    <td data-gp-label="Mora" class="text-center"><?php echo msp2Escape(agFmtDias($dias)); ?></td>
+                                                                    <td data-gp-label="Resumen financiero" class="gp-financial-cell"><span class="gp-data-pair"><span>Documento</span><strong><?php echo msp2Escape(agFmtMonto($d['monto_total'] ?? 0)); ?></strong></span><span class="gp-data-pair gp-data-pair--total"><span>Saldo</span><strong><?php echo msp2Escape(agFmtMonto($d['saldo_pendiente'] ?? 0)); ?></strong></span></td>
                                                                 </tr>
                                                             <?php endforeach; ?>
                                                         </tbody>
@@ -799,8 +699,8 @@ if ($tablaExiste) {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
 <script>
 document.querySelectorAll('.ag-parent').forEach(function (r) {
   r.addEventListener('click', function () {
@@ -824,8 +724,8 @@ if (periodoDesdeEl && periodoHastaEl) {
 
 const agingChartEl = document.getElementById('agingClasificacionChart');
 if (agingChartEl && window.Chart) {
-  const labels = <?php echo json_encode($agingChartLabels, JSON_UNESCAPED_UNICODE); ?>;
-  const values = <?php echo json_encode($agingChartData, JSON_UNESCAPED_UNICODE); ?>;
+  const labels = <?php echo pgpJsonForHtml($agingChartLabels, '[]'); ?>;
+  const values = <?php echo pgpJsonForHtml($agingChartData, '[]'); ?>;
   const clp = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
   new Chart(agingChartEl, {

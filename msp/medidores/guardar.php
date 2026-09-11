@@ -8,7 +8,7 @@ msp2RequireAccess();
 function msp2MedidoresRedirectFromPost(): never
 {
     $redirectTo = trim((string) ($_POST['redirect_to'] ?? ''));
-    $allowed = ['locales/index.php'];
+    $allowed = ['locales/index.php', 'catalogos/medidores.php'];
 
     if (!in_array($redirectTo, $allowed, true)) {
         $redirectTo = 'locales/index.php';

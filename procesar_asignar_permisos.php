@@ -1,39 +1,30 @@
 <?php
-include 'db.php'; // Conexión a la base de datos
-session_start();
-
-// Verificar si el usuario es administrador
-if (!isset($_SESSION['usuario']['roles']) || !in_array('Administrador', $_SESSION['usuario']['roles'])) {
-    echo "<p style='color: red; text-align: center;'>Acceso denegado: Solo los administradores pueden realizar esta acción.</p>";
+declare(strict_types=1);
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/permission_service.php';
+pgpRequireEnabledSession($conn);
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    header('Location: /portalgp/sistema/gestion/roles.php', true, 303);
     exit;
 }
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // Borrar permisos anteriores
-    $conn->exec("DELETE FROM cr_rol_permisos");
-
-    // Procesar permisos seleccionados
-    foreach ($_POST['permisos'] as $rol_id => $permisos) {
-        foreach ($permisos as $permiso_id => $acciones) {
-            $lectura = isset($acciones['lectura']) ? 1 : 0;
-            $escritura = isset($acciones['escritura']) ? 1 : 0;
-            $eliminacion = isset($acciones['eliminacion']) ? 1 : 0;
-
-            $stmt = $conn->prepare("INSERT INTO cr_rol_permisos (rol_id, permiso_id, lectura, escritura, eliminacion) VALUES (:rol_id, :permiso_id, :lectura, :escritura, :eliminacion)");
-            $stmt->bindParam(':rol_id', $rol_id, PDO::PARAM_INT);
-            $stmt->bindParam(':permiso_id', $permiso_id, PDO::PARAM_INT);
-            $stmt->bindParam(':lectura', $lectura, PDO::PARAM_INT);
-            $stmt->bindParam(':escritura', $escritura, PDO::PARAM_INT);
-            $stmt->bindParam(':eliminacion', $eliminacion, PDO::PARAM_INT);
-            $stmt->execute();
-        }
+pgpRequireCsrf();
+if (!pgpCanManagePermissions($conn, (int)$_SESSION['usuario']['id'])) {
+    pgpSecurityAbort(403, 'No tienes autorización para modificar permisos.');
+}
+try {
+    $roles = $_POST['permisos'] ?? null;
+    if (!is_array($roles) || count($roles) !== 1) {
+        throw new InvalidArgumentException('Selecciona un solo rol; no se permite reemplazar todos los permisos.');
     }
-
-    // Redireccionar de vuelta a la página de asignación de permisos
-    header("Location: asignar_permisos.php?success=1");
-    exit();
-} else {
-    echo "<p style='color: red; text-align: center;'>Error: Solicitud no válida.</p>";
-    exit;
+    $id = filter_var(array_key_first($roles), FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+    if (!$id) { throw new InvalidArgumentException('Rol inválido.'); }
+    pgpReplaceRolePermissions($conn, (int)$_SESSION['usuario']['id'], (int)$id, reset($roles));
+    $_SESSION['gp_gestion_flash'] = ['type'=>'success', 'message'=>'Permisos actualizados correctamente.'];
+} catch (InvalidArgumentException $e) {
+    pgpSecurityAbort(422, $e->getMessage());
+} catch (Throwable $e) {
+    pgpLogException($e, 'permissions.update');
+    pgpSecurityAbort(409, 'No se actualizaron los permisos. Revisa la selección y evita reducir tu propio acceso.');
 }
-?>
+header('Location: /portalgp/sistema/gestion/roles.php', true, 303);
+exit;

@@ -663,25 +663,9 @@ function omMailConfig(): array
         ],
     ];
 
-    $configCandidates = [
-        dirname(__DIR__, 2) . '/config/mail.php', // .../msp/config/mail.php
-        dirname(__DIR__, 3) . '/config/mail.php', // .../portalgp/config/mail.php
-        dirname(__DIR__) . '/config/mail.php',     // legacy fallback
-    ];
-    $configPath = '';
-    foreach ($configCandidates as $candidate) {
-        if (is_file($candidate)) {
-            $configPath = $candidate;
-            break;
-        }
-    }
-
-    if ($configPath === '') {
-        return $config;
-    }
-
-    $loaded = require $configPath;
-    if (!is_array($loaded)) {
+    require_once dirname(__DIR__, 3) . '/secret_paths.php';
+    $loaded = pgpLoadSecretConfig('msp_mail.php');
+    if ($loaded === []) {
         return $config;
     }
 
@@ -777,7 +761,7 @@ function omBuildSmtpMailerFromEnv(): \PHPMailer\PHPMailer\PHPMailer
     $fromName = trim((string) ($smtpConfig['from_name'] ?? ''));
 
     if ($host === '' || $username === '' || $password === '') {
-        throw new RuntimeException('Falta configuracion SMTP. Revisa msp/config/mail.php (o variables MAIL_SMTP_*).');
+        throw new RuntimeException('Falta configuracion SMTP. Revisa el almacen externo o variables MAIL_SMTP_*.');
     }
 
     $encryption = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;

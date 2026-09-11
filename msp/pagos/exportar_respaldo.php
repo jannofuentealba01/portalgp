@@ -133,7 +133,7 @@ try {
         $pagosSheet->setTitle(msp2PagosBackupSheetPagos());
         $pagosHeaders = msp2PagosBackupHeadersPagos();
         foreach ($pagosHeaders as $index => $header) {
-            $pagosSheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+            msp2SetSpreadsheetCellByColumnAndRow($pagosSheet, $index + 1, 1, $header);
         }
         $pagosSheet->getStyle('A1:T1')->getFont()->setBold(true);
         $pagosSheet->freezePane('A2');
@@ -142,7 +142,7 @@ try {
         $detalleSheet->setTitle(msp2PagosBackupSheetDetalle());
         $detalleHeaders = msp2PagosBackupHeadersDetalle();
         foreach ($detalleHeaders as $index => $header) {
-            $detalleSheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+            msp2SetSpreadsheetCellByColumnAndRow($detalleSheet, $index + 1, 1, $header);
         }
         $detalleSheet->getStyle('A1:F1')->getFont()->setBold(true);
         $detalleSheet->freezePane('A2');
@@ -183,7 +183,7 @@ try {
             ];
 
             foreach ($pagosData as $columnIndex => $value) {
-                $pagosSheet->setCellValueByColumnAndRow($columnIndex + 1, $pagoRowIndex, $value);
+                msp2SetSpreadsheetCellByColumnAndRow($pagosSheet, $columnIndex + 1, $pagoRowIndex, $value);
             }
 
             foreach ($detallePago as $detalleOrder => $detalleItem) {
@@ -196,7 +196,7 @@ try {
                     round((float) ($detalleItem['monto_aplicado'] ?? 0), 2),
                 ];
                 foreach ($detalleData as $columnIndex => $value) {
-                    $detalleSheet->setCellValueByColumnAndRow($columnIndex + 1, $detalleRowIndex, $value);
+                    msp2SetSpreadsheetCellByColumnAndRow($detalleSheet, $columnIndex + 1, $detalleRowIndex, $value);
                 }
                 $detalleRowIndex++;
             }

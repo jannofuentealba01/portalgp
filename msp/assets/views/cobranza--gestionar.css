@@ -1,0 +1,24 @@
+/* Page-specific screen layout. Source: msp/cobranza/gestionar.php */
+
+.gcc-shell{max-width:1450px}
+        .gcc-page .btn:not(.btn-close){display:inline-flex;width:auto;min-width:0;max-width:100%;flex:0 0 auto;align-items:center;justify-content:center;white-space:nowrap}
+        .gcc-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.4rem}
+        .gcc-context{border:1px solid var(--color-border);border-radius:12px;background:var(--color-surface-soft)}
+        .gcc-context h2,.gcc-context .fw-semibold{line-height:1.25}
+        .gcc-context h2{font-size:1rem}
+        .gcc-kpi{border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface);padding:.62rem .72rem;height:100%;min-height:76px}
+        .gcc-kpi-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);line-height:1.2}
+        .gcc-kpi-value{font-size:1.08rem;font-weight:700;line-height:1.2;color:var(--color-primary);margin-top:.18rem}
+        .gcc-action{border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface);padding:.65rem .75rem;height:100%}
+        .gcc-action h3{margin:.25rem 0 .15rem}
+        .gcc-action p{margin-bottom:.45rem}
+        .gcc-section>.card-header{padding:.6rem .75rem}
+        .gcc-section>.card-body{padding:.7rem .75rem}
+        .gcc-section .table>:not(caption)>*>*{padding:.42rem .5rem}
+        .gcc-detail{background:var(--color-surface-soft)}
+        .gcc-event{border-left:3px solid var(--color-text-muted);padding:.3rem 0 .3rem .65rem;line-height:1.25}
+        .gcc-event.financiero{border-color:var(--color-success)}
+        .gcc-event.compromiso{border-color:var(--color-warning)}
+        .gcc-event.aviso{border-color:var(--color-primary)}
+        .gcc-history .card-body{padding:.55rem .75rem}
+        @media (max-width:575.98px){.gcc-page .btn:not(.btn-close){white-space:normal}.gcc-actions{justify-content:flex-start}}

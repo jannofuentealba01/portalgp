@@ -15,7 +15,7 @@ if ($idArrendatario === false || $idArrendatario === null) {
     try {
         $ficha = (new Ficha360Service($conn))->obtener((int) $idArrendatario);
     } catch (Throwable $e) {
-        $error = $e->getMessage() ?: 'No fue posible cargar la Ficha 360°.';
+        $error = pgpPublicOrBusinessException($e, 'msp.arrendatarios.ficha', 'No fue posible cargar la Ficha 360°.');
     }
 }
 
@@ -66,37 +66,22 @@ $actividad = $ficha['actividad'] ?? ['pagos' => [], 'gestiones' => [], 'compromi
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Ficha 360° | MSP</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .f360-metric{border:1px solid #dce3ec;border-radius:.75rem;background:#fff;height:100%;padding:1rem}
-        .f360-contract{border:1px solid #b8c2cf;border-left:5px solid #164b7d}
-        .f360-local{display:inline-flex;align-items:center;padding:.3rem .65rem;border:1px solid #9eabb9;border-radius:999px;background:#f7f9fb;font-weight:600}
-        .f360-section-title{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:#5d6b7a;font-weight:700}
-        .f360-money{white-space:nowrap}
-        .f360-anchor{scroll-margin-top:1rem}
-    </style>
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
-<main class="gp-main container-fluid py-4 px-lg-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+<main class="gp-main container-fluid py-4 px-lg-4 f360-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3" data-gp-commandbar>
         <div>
-            <p class="text-muted mb-1">MSP / Arrendatarios</p>
             <h1 class="h2 mb-1">Ficha 360°</h1>
-            <p class="text-muted mb-0">Situación contractual, operacional y financiera consolidada.</p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-outline-dark btn-sm" href="<?php echo msp2Escape(msp2Url('arrendatarios/index.php')); ?>"><i class="bi bi-arrow-left me-1"></i>Volver</a>
+        <div class="f360-actions">
+            <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('arrendatarios/index.php')); ?>"><i class="bi bi-arrow-left me-1"></i>Volver</a>
             <?php if ($ficha !== null): ?>
                 <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('documentos_cobro/index.php?id_arrendatario=' . (int) $idArrendatario)); ?>"><i class="bi bi-receipt me-1"></i>Documentos</a>
                 <a class="btn btn-success btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/index.php?abrirNuevo=1&idArrendatario=' . (int) $idArrendatario)); ?>"><i class="bi bi-plus-circle me-1"></i>Nuevo contrato</a>
-                <form method="post" action="<?php echo msp2Escape(msp2Url('arrendatarios/eliminar.php')); ?>" class="d-inline" data-confirm-message="¿Eliminar el arrendatario &quot;<?php echo msp2Escape((string) ($arr['nombre_locatario'] ?? '')); ?>&quot;? Esta acción solo procederá si no tiene tiendas ni dependencias." data-confirm-title="Confirmar eliminación" data-confirm-variant="danger">
-                    <?php msp2CsrfField(); ?>
-                    <input type="hidden" name="id_arrendatario" value="<?php echo (int) $idArrendatario; ?>">
-                    <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i>Eliminar arrendatario</button>
-                </form>
             <?php endif; ?>
         </div>
     </div>
@@ -104,8 +89,7 @@ $actividad = $ficha['actividad'] ?? ['pagos' => [], 'gestiones' => [], 'compromi
     <?php if ($error !== null): ?>
         <div class="alert alert-danger"><?php echo msp2Escape($error); ?></div>
     <?php else: ?>
-        <div class="card shadow-sm mb-3">
-            <div class="card-body">
+        <section class="gp-functional-surface mb-3 f360-identity">
                 <div class="row g-3 align-items-start">
                     <div class="col-lg-5">
                         <div class="f360-section-title">Arrendatario</div>
@@ -122,60 +106,28 @@ $actividad = $ficha['actividad'] ?? ['pagos' => [], 'gestiones' => [], 'compromi
                     </div>
                     <div class="col-lg-3">
                         <div class="f360-section-title">Navegación rápida</div>
-                        <div class="d-grid gap-2 mt-1">
+                        <div class="f360-quick-nav mt-1">
                             <a class="btn btn-outline-primary btn-sm" href="#contratos">Contratos y locales</a>
                             <a class="btn btn-outline-primary btn-sm" href="#finanzas">Resumen financiero</a>
                             <a class="btn btn-outline-primary btn-sm" href="#operacion">Medidores y lecturas</a>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+        </section>
 
-        <section id="finanzas" class="f360-anchor mb-4">
-            <div class="row g-3">
-                <div class="col-6 col-xl-2"><div class="f360-metric"><div class="text-muted small">Contratos</div><div class="h4 mb-0"><?php echo (int) ($totales['contratos'] ?? 0); ?></div><div class="small text-muted"><?php echo (int) ($totales['vigentes'] ?? 0); ?> vigentes</div></div></div>
-                <div class="col-6 col-xl-2"><div class="f360-metric"><div class="text-muted small">Locales asociados</div><div class="h4 mb-0"><?php echo (int) ($totales['locales'] ?? 0); ?></div></div></div>
-                <div class="col-6 col-xl-2"><div class="f360-metric"><div class="text-muted small">Deuda total</div><div class="h4 mb-0 f360-money text-danger"><?php echo msp2Escape(f360Monto($totales['deuda_total'] ?? 0)); ?></div><div class="small text-muted"><?php echo (int) ($totales['documentos_pendientes'] ?? 0); ?> documentos</div></div></div>
-                <div class="col-6 col-xl-2"><div class="f360-metric"><div class="text-muted small">Deuda vencida</div><div class="h4 mb-0 f360-money"><?php echo msp2Escape(f360Monto($totales['deuda_vencida'] ?? 0)); ?></div></div></div>
-                <div class="col-6 col-xl-2"><div class="f360-metric"><div class="text-muted small">Garantía disponible</div><div class="h4 mb-0 f360-money text-success"><?php echo msp2Escape(f360Monto($totales['garantia_disponible'] ?? 0)); ?></div><div class="small text-muted">Recibida <?php echo msp2Escape(f360Monto($totales['garantia_recibida'] ?? 0)); ?></div></div></div>
-                <div class="col-6 col-xl-2"><div class="f360-metric"><div class="text-muted small">Saldo a favor</div><div class="h4 mb-0 f360-money text-primary"><?php echo msp2Escape(f360Monto($totales['saldo_favor'] ?? 0)); ?></div></div></div>
+        <section id="finanzas" class="f360-anchor mb-3">
+            <div class="gp-indicator-strip f360-financial-strip" aria-label="Resumen financiero del arrendatario">
+                <div class="gp-indicator"><span class="gp-indicator-label">Contratos</span><strong class="gp-indicator-value"><?php echo (int) ($totales['contratos'] ?? 0); ?></strong><span class="gp-indicator-note"><?php echo (int) ($totales['vigentes'] ?? 0); ?> vigentes</span></div>
+                <div class="gp-indicator"><span class="gp-indicator-label">Locales asociados</span><strong class="gp-indicator-value"><?php echo (int) ($totales['locales'] ?? 0); ?></strong></div>
+                <div class="gp-indicator"><span class="gp-indicator-label">Deuda total</span><strong class="gp-indicator-value f360-money text-danger"><?php echo msp2Escape(f360Monto($totales['deuda_total'] ?? 0)); ?></strong><span class="gp-indicator-note"><?php echo (int) ($totales['documentos_pendientes'] ?? 0); ?> documentos</span></div>
+                <div class="gp-indicator"><span class="gp-indicator-label">Deuda vencida</span><strong class="gp-indicator-value f360-money"><?php echo msp2Escape(f360Monto($totales['deuda_vencida'] ?? 0)); ?></strong></div>
+                <div class="gp-indicator"><span class="gp-indicator-label">Garantía disponible</span><strong class="gp-indicator-value f360-money text-success"><?php echo msp2Escape(f360Monto($totales['garantia_disponible'] ?? 0)); ?></strong><span class="gp-indicator-note">Recibida <?php echo msp2Escape(f360Monto($totales['garantia_recibida'] ?? 0)); ?></span></div>
+                <div class="gp-indicator"><span class="gp-indicator-label">Saldo a favor</span><strong class="gp-indicator-value f360-money text-primary"><?php echo msp2Escape(f360Monto($totales['saldo_favor'] ?? 0)); ?></strong></div>
             </div>
         </section>
 
-        <section id="actividad" class="f360-anchor mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-2"><h2 class="h4 mb-0">Actividad transversal</h2><span class="text-muted small">Últimos movimientos del arrendatario y sus contratos.</span></div>
-            <div class="row g-3">
-                <div class="col-xl-4"><div class="card shadow-sm h-100"><div class="card-header bg-white fw-semibold">Últimos pagos</div><div class="card-body p-0"><div class="list-group list-group-flush">
-                    <?php if (($actividad['pagos'] ?? []) === []): ?><div class="list-group-item text-muted">Sin pagos registrados.</div><?php endif; ?>
-                    <?php foreach (array_slice($actividad['pagos'] ?? [], 0, 6) as $pago): ?><div class="list-group-item"><div class="d-flex justify-content-between gap-2"><span><?php echo msp2Escape((string) ($pago['titulo'] ?? 'Pago')); ?></span><strong><?php echo msp2Escape(f360Monto($pago['monto'] ?? 0)); ?></strong></div><div class="small text-muted">Contrato #<?php echo (int) ($pago['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape(f360Fecha($pago['fecha_evento'] ?? null)); ?></div></div><?php endforeach; ?>
-                </div></div></div></div>
-                <div class="col-xl-4"><div class="card shadow-sm h-100"><div class="card-header bg-white fw-semibold">Cobranza y compromisos</div><div class="card-body p-0"><div class="list-group list-group-flush">
-                    <?php if (($actividad['compromisos'] ?? []) === [] && ($actividad['gestiones'] ?? []) === []): ?><div class="list-group-item text-muted">Sin gestiones ni compromisos registrados.</div><?php endif; ?>
-                    <?php foreach (array_slice($actividad['compromisos'] ?? [], 0, 4) as $compromiso): ?><div class="list-group-item"><div class="d-flex justify-content-between"><span>Compromiso #<?php echo (int) $compromiso['id_compromiso_pago']; ?></span><span class="badge text-bg-<?php echo ($compromiso['estado'] ?? '') === 'INCUMPLIDO' ? 'danger' : 'secondary'; ?>"><?php echo msp2Escape((string) $compromiso['estado']); ?></span></div><div class="small">$ <?php echo msp2Escape(number_format((float) ($compromiso['monto_comprometido'] ?? 0), 0, ',', '.')); ?> · vence <?php echo msp2Escape(f360Fecha($compromiso['fecha_comprometida'] ?? null)); ?></div><div class="small text-muted">Contrato #<?php echo (int) ($compromiso['id_contrato_arriendo'] ?? 0); ?></div></div><?php endforeach; ?>
-                    <?php foreach (array_slice($actividad['gestiones'] ?? [], 0, 3) as $gestion): ?><div class="list-group-item"><div class="fw-semibold"><?php echo msp2Escape((string) ($gestion['tipo_nombre'] ?? 'Gestión')); ?></div><div class="small text-muted">Contrato #<?php echo (int) ($gestion['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape(f360Fecha($gestion['fecha_gestion'] ?? null)); ?></div></div><?php endforeach; ?>
-                </div></div></div></div>
-                <div class="col-xl-4"><div class="card shadow-sm h-100"><div class="card-header bg-white fw-semibold">Correcciones e historial</div><div class="card-body p-0"><div class="list-group list-group-flush">
-                    <?php if (($actividad['correcciones'] ?? []) === [] && ($actividad['historial'] ?? []) === []): ?><div class="list-group-item text-muted">Sin correcciones ni eventos contractuales.</div><?php endif; ?>
-                    <?php foreach (array_slice($actividad['correcciones'] ?? [], 0, 4) as $correccion): ?><div class="list-group-item"><div class="d-flex justify-content-between"><span><?php echo msp2Escape((string) $correccion['tipo_correccion']); ?></span><span class="badge text-bg-warning text-dark"><?php echo msp2Escape((string) $correccion['estado_correccion']); ?></span></div><div class="small text-muted">Contrato #<?php echo (int) ($correccion['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape(f360Fecha($correccion['fecha_solicitud'] ?? null)); ?></div><a class="small" href="<?php echo msp2Escape(msp2Url('correcciones/index.php?id_contrato_arriendo=' . (int) ($correccion['id_contrato_arriendo'] ?? 0) . '&id_correccion=' . (int) $correccion['id_correccion'])); ?>">Abrir corrección</a></div><?php endforeach; ?>
-                    <?php foreach (array_slice($actividad['historial'] ?? [], 0, 4) as $evento): ?>
-                        <?php
-                        $tipoHistorial = strtoupper(trim((string) ($evento['tipo_evento'] ?? '')));
-                        $detalleHistorial = trim((string) ($evento['detalle'] ?? ''));
-                        if ($tipoHistorial === 'CREACION' || $tipoHistorial === 'CREACIÓN') {
-                            $tipoHistorial = 'CREACIÓN';
-                            // La ruta técnica de importación no aporta contexto al usuario final.
-                            $detalleHistorial = 'Contrato creado';
-                        }
-                        ?>
-                        <div class="list-group-item"><div class="fw-semibold"><?php echo msp2Escape($tipoHistorial !== '' ? $tipoHistorial : 'Evento'); ?></div><div class="small text-muted">Contrato #<?php echo (int) ($evento['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape(f360Fecha($evento['fecha_evento'] ?? null)); ?></div><?php if ($detalleHistorial !== ''): ?><div class="small"><?php echo msp2Escape($detalleHistorial); ?></div><?php endif; ?></div>
-                    <?php endforeach; ?>
-                </div></div></div></div>
-            </div>
-        </section>
-
-        <section id="contratos" class="f360-anchor">
-            <div class="d-flex justify-content-between align-items-center mb-2"><h2 class="h4 mb-0">Contratos</h2><span class="text-muted small">Cada tarjeta conserva el contexto de su contrato.</span></div>
+        <section id="contratos" class="f360-anchor mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2"><h2 class="h4 mb-0">Contratos</h2><span class="text-muted small">Abre solamente el contrato que necesites revisar.</span></div>
             <?php if ($contratos === []): ?><div class="alert alert-info">Este arrendatario todavía no tiene contratos.</div><?php endif; ?>
             <?php foreach ($contratos as $indiceContrato => $detalle):
                 $contrato = $detalle['contrato'] ?? [];
@@ -191,15 +143,20 @@ $actividad = $ficha['actividad'] ?? ['pagos' => [], 'gestiones' => [], 'compromi
                             <div class="d-flex flex-wrap align-items-center gap-2"><h3 class="h5 mb-0">Contrato #<?php echo $idContrato; ?></h3><span class="badge text-bg-<?php echo $estadoColor; ?>"><?php echo msp2Escape($estadoLabel); ?></span></div>
                             <div class="small text-muted"><?php echo msp2Escape((string) ($contrato['nombre_comercial'] ?? '-')); ?> · <?php echo msp2Escape(f360Fecha($contrato['fecha_inicio'] ?? null)); ?> a <?php echo msp2Escape(f360Fecha($contrato['fecha_termino_efectiva'] ?? $contrato['fecha_termino_pactada'] ?? null)); ?></div>
                         </div>
-                        <div class="d-flex flex-wrap gap-1">
+                        <div class="f360-actions">
                             <a class="btn btn-primary btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?id_contrato_arriendo=' . $idContrato)); ?>">Ver ficha contrato</a>
                             <a class="btn btn-outline-danger btn-sm" href="<?php echo msp2Escape(msp2Url('cobranza/gestionar.php?id_contrato=' . $idContrato)); ?>">Gestionar cobranza</a>
-                            <a class="btn btn-outline-success btn-sm" href="<?php echo msp2Escape(msp2Url('cobranza/registrar_pago_contrato.php?id_contrato_arriendo=' . $idContrato . '&id_arrendatario=' . (int) ($contrato['id_arrendatario'] ?? $idArrendatario) . '&contexto_contrato=1')); ?>">Registrar pago</a>
-                            <a class="btn btn-outline-warning btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/aplicaciones.php?id_contrato_arriendo=' . $idContrato)); ?>">Garantía</a>
-                            <a class="btn btn-outline-dark btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/liquidacion_final.php?id_contrato_arriendo=' . $idContrato)); ?>">Liquidación</a>
+                            <a class="btn btn-outline-success btn-sm" href="<?php echo msp2Escape(msp2Url('cobranza/registrar_pago_contrato.php?' . http_build_query(['id_contrato_arriendo' => $idContrato, 'id_arrendatario' => (int) ($contrato['id_arrendatario'] ?? $idArrendatario), 'contexto_contrato' => 1, 'return_to' => 'arrendatarios/ficha.php?id_arrendatario=' . $idArrendatario]))); ?>">Registrar pago</a>
+                            <a class="btn btn-outline-warning btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/aplicaciones.php?' . http_build_query(['id_contrato_arriendo' => $idContrato, 'return_to' => 'arrendatarios/ficha.php?id_arrendatario=' . $idArrendatario]))); ?>">Garantía</a>
+                            <a class="btn btn-outline-warning btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/liquidacion_final.php?id_contrato_arriendo=' . $idContrato)); ?>">Liquidación</a>
                             <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('correcciones/index.php?id_contrato_arriendo=' . $idContrato)); ?>">Correcciones</a>
                         </div>
                     </div>
+                    <details class="f360-contract-details" <?php echo $indiceContrato === 0 ? 'open' : ''; ?>>
+                        <summary>
+                            <span>Resumen operativo del contrato</span>
+                            <span class="text-muted fw-normal"><?php echo count($detalle['locales'] ?? []); ?> local(es) · Deuda <?php echo msp2Escape(f360Monto($resumen['deuda_total'] ?? 0)); ?> · Garantía <?php echo msp2Escape(f360Monto($garantia['disponible'] ?? 0)); ?></span>
+                        </summary>
                     <div class="card-body">
                         <?php if (!empty($detalle['error'])): ?><div class="alert alert-warning">No fue posible agregar todo el detalle: <?php echo msp2Escape((string) $detalle['error']); ?></div><?php endif; ?>
                         <div class="row g-3 mb-3">
@@ -225,11 +182,48 @@ $actividad = $ficha['actividad'] ?? ['pagos' => [], 'gestiones' => [], 'compromi
                             </div>
                         </div>
                     </div>
+                    </details>
                 </article>
             <?php endforeach; ?>
         </section>
+
+        <details id="actividad" class="f360-anchor gp-disclosure f360-activity-details">
+            <summary class="bg-white fw-semibold">
+                Actividad transversal
+                <span class="activity-help text-muted small">Últimos movimientos del arrendatario y sus contratos.</span>
+            </summary>
+            <div class="gp-disclosure__body p-0">
+            <div class="row g-3">
+                <div class="col-xl-4"><div class="f360-activity-column"><div class="f360-activity-heading">Últimos pagos</div><div class="p-0"><div class="list-group list-group-flush">
+                    <?php if (($actividad['pagos'] ?? []) === []): ?><div class="list-group-item text-muted">Sin pagos registrados.</div><?php endif; ?>
+                    <?php foreach (array_slice($actividad['pagos'] ?? [], 0, 6) as $pago): ?><div class="list-group-item"><div class="d-flex justify-content-between gap-2"><span><?php echo msp2Escape((string) ($pago['titulo'] ?? 'Pago')); ?></span><strong><?php echo msp2Escape(f360Monto($pago['monto'] ?? 0)); ?></strong></div><div class="small text-muted">Contrato #<?php echo (int) ($pago['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape(f360Fecha($pago['fecha_evento'] ?? null)); ?></div></div><?php endforeach; ?>
+                </div></div></div></div>
+                <div class="col-xl-4"><div class="f360-activity-column"><div class="f360-activity-heading">Cobranza y compromisos</div><div class="p-0"><div class="list-group list-group-flush">
+                    <?php if (($actividad['compromisos'] ?? []) === [] && ($actividad['gestiones'] ?? []) === []): ?><div class="list-group-item text-muted">Sin gestiones ni compromisos registrados.</div><?php endif; ?>
+                    <?php foreach (array_slice($actividad['compromisos'] ?? [], 0, 4) as $compromiso): ?><div class="list-group-item"><div class="d-flex justify-content-between"><span>Compromiso #<?php echo (int) $compromiso['id_compromiso_pago']; ?></span><span class="badge text-bg-<?php echo ($compromiso['estado'] ?? '') === 'INCUMPLIDO' ? 'danger' : 'secondary'; ?>"><?php echo msp2Escape((string) $compromiso['estado']); ?></span></div><div class="small">$ <?php echo msp2Escape(number_format((float) ($compromiso['monto_comprometido'] ?? 0), 0, ',', '.')); ?> · vence <?php echo msp2Escape(f360Fecha($compromiso['fecha_comprometida'] ?? null)); ?></div><div class="small text-muted">Contrato #<?php echo (int) ($compromiso['id_contrato_arriendo'] ?? 0); ?></div></div><?php endforeach; ?>
+                    <?php foreach (array_slice($actividad['gestiones'] ?? [], 0, 3) as $gestion): ?><div class="list-group-item"><div class="fw-semibold"><?php echo msp2Escape((string) ($gestion['tipo_nombre'] ?? 'Gestión')); ?></div><div class="small text-muted">Contrato #<?php echo (int) ($gestion['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape(f360Fecha($gestion['fecha_gestion'] ?? null)); ?></div></div><?php endforeach; ?>
+                </div></div></div></div>
+                <div class="col-xl-4"><div class="f360-activity-column"><div class="f360-activity-heading">Correcciones e historial</div><div class="p-0"><div class="list-group list-group-flush">
+                    <?php if (($actividad['correcciones'] ?? []) === [] && ($actividad['historial'] ?? []) === []): ?><div class="list-group-item text-muted">Sin correcciones ni eventos contractuales.</div><?php endif; ?>
+                    <?php foreach (array_slice($actividad['correcciones'] ?? [], 0, 4) as $correccion): ?><div class="list-group-item"><div class="d-flex justify-content-between"><span><?php echo msp2Escape((string) $correccion['tipo_correccion']); ?></span><span class="badge text-bg-warning text-dark"><?php echo msp2Escape((string) $correccion['estado_correccion']); ?></span></div><div class="small text-muted">Contrato #<?php echo (int) ($correccion['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape(f360Fecha($correccion['fecha_solicitud'] ?? null)); ?></div><a class="small" href="<?php echo msp2Escape(msp2Url('correcciones/index.php?id_contrato_arriendo=' . (int) ($correccion['id_contrato_arriendo'] ?? 0) . '&id_correccion=' . (int) $correccion['id_correccion'])); ?>">Abrir corrección</a></div><?php endforeach; ?>
+                    <?php foreach (array_slice($actividad['historial'] ?? [], 0, 4) as $evento): ?>
+                        <?php
+                        $tipoHistorial = strtoupper(trim((string) ($evento['tipo_evento'] ?? '')));
+                        $detalleHistorial = trim((string) ($evento['detalle'] ?? ''));
+                        if ($tipoHistorial === 'CREACION' || $tipoHistorial === 'CREACIÓN') {
+                            $tipoHistorial = 'CREACIÓN';
+                            // La ruta técnica de importación no aporta contexto al usuario final.
+                            $detalleHistorial = 'Contrato creado';
+                        }
+                        ?>
+                        <div class="list-group-item"><div class="fw-semibold"><?php echo msp2Escape($tipoHistorial !== '' ? $tipoHistorial : 'Evento'); ?></div><div class="small text-muted">Contrato #<?php echo (int) ($evento['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape(f360Fecha($evento['fecha_evento'] ?? null)); ?></div><?php if ($detalleHistorial !== ''): ?><div class="small"><?php echo msp2Escape($detalleHistorial); ?></div><?php endif; ?></div>
+                    <?php endforeach; ?>
+                </div></div></div></div>
+            </div>
+            </div>
+        </details>
     <?php endif; ?>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

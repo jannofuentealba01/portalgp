@@ -1,0 +1,263 @@
+/* Page-specific screen layout. Source: msp/msp_menu.php */
+
+/* ── Hero ── */
+        .mspv2-hero {
+            padding: 0 0 20px;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+
+        .mspv2-hero-back {
+            flex-shrink: 0;
+            z-index: 1;
+        }
+
+        .mspv2-hero-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--color-primary);
+            margin: 0;
+            line-height: 1.2;
+            position: absolute;
+            left: 0;
+            right: 0;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        /* ── Grid de secciones ── */
+        .mspv2-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            align-items: start;
+            gap: 14px;
+            width: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+        }
+
+        .mspv2-column {
+            display: contents;
+        }
+
+        .box-container-full.mspv2-shell {
+            width: 100% !important;
+            max-width: none !important;
+            padding: 16px !important;
+        }
+
+        /* ── Columna de sección ── */
+        .mspv2-section {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(var(--color-shadow-rgb), 0.06);
+            display: flex;
+            flex-direction: column;
+            height: auto;
+            align-self: stretch;
+            width: 100%;
+        }
+
+        .mspv2-section-body {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .mspv2-subsection {
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            background: var(--color-surface);
+            overflow: hidden;
+        }
+
+        .mspv2-subsection-head {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--color-surface-soft);
+        }
+
+        .mspv2-subsection-head i {
+            color: var(--color-primary);
+            font-size: 14px;
+        }
+
+        .mspv2-subsection-label {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--color-primary);
+        }
+
+        /* Cabecera de sección — paleta enterprise */
+        .mspv2-section-head {
+            padding: 10px 14px;
+            background: var(--color-primary-soft);
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .mspv2-section-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(var(--color-primary-rgb), 0.1);
+            color: var(--color-primary);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+
+        .mspv2-section-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .mspv2-section-label {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--color-primary);
+            margin: 0;
+        }
+
+        /* Lista de items dentro de la sección */
+        .mspv2-items {
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .mspv2-subsection .mspv2-items {
+            padding: 10px;
+        }
+
+        /* ── Card de módulo ── */
+        .mspv2-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 9px;
+            padding: 7px 9px;
+            border-radius: 9px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--color-text);
+            text-decoration: none;
+            transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+            cursor: pointer;
+        }
+
+        .mspv2-card:hover {
+            background: var(--color-primary-soft);
+            border-color: var(--color-border);
+            color: var(--color-text);
+            transform: translateX(3px);
+            box-shadow: 0 3px 10px rgba(var(--color-shadow-rgb), 0.07);
+        }
+
+        .mspv2-card:focus-visible {
+            outline: 3px solid var(--focus-ring);
+            outline-offset: 2px;
+        }
+
+        .mspv2-card-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            background: var(--color-surface-soft);
+            color: var(--color-primary);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            flex-shrink: 0;
+            transition: background 0.16s ease;
+        }
+
+        .mspv2-card:hover .mspv2-card-icon {
+            background: rgba(var(--color-primary-rgb), 0.12);
+        }
+
+        .mspv2-card-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .mspv2-card-label {
+            display: block;
+            font-size: 13.5px;
+            font-weight: 600;
+            margin: 0;
+            white-space: normal;
+            overflow: visible;
+            overflow-wrap: anywhere;
+            line-height: 1.3;
+        }
+
+        .mspv2-card-arrow {
+            font-size: 13px;
+            color: var(--color-text-muted);
+            flex-shrink: 0;
+            opacity: 0;
+            transform: translateX(-4px);
+            transition: opacity 0.16s ease, transform 0.16s ease;
+        }
+
+        .mspv2-card:hover .mspv2-card-arrow {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        /* Estado deshabilitado */
+        .mspv2-card.mspv2-card-disabled {
+            opacity: 0.5;
+            cursor: default;
+            pointer-events: none;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 1100px) {
+            .mspv2-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                width: 100%;
+            }
+            .box-container-full.mspv2-shell {
+                width: 100% !important;
+                max-width: none !important;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .mspv2-hero-title { font-size: 18px; }
+            .mspv2-grid { grid-template-columns: 1fr; gap: 12px; }
+            .mspv2-section[data-tour="menu-alta"] { order: 1; }
+            .mspv2-section[data-tour="menu-operacion"] { order: 2; }
+            .mspv2-section[data-tour="menu-cobranza"] { order: 3; }
+            .mspv2-section[data-tour="menu-cierre"] { order: 4; }
+            .mspv2-section[data-tour="menu-reportes"] { order: 5; }
+            .mspv2-section[data-tour="menu-configuracion"] { order: 6; }
+            .mspv2-hero { align-items: flex-start; padding-bottom: 14px; }
+            .mspv2-hero-title { position: static; flex: 1; text-align: right; }
+            .mspv2-hero-back { display: flex; flex-wrap: wrap; gap: 6px; }
+            .mspv2-hero-back .btn { margin-left: 0 !important; }
+            .box-container-full.mspv2-shell {
+                width: 100% !important;
+                max-width: none !important;
+                padding: 10px !important;
+            }
+        }

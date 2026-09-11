@@ -5,7 +5,7 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 require_once __DIR__ . '/pago_contrato_import_helper.php';
 require_once dirname(__DIR__) . '/pagos/saldo_favor_periodo_helper.php';
 
-msp2RequireAccess();
+msp2RequireAccess('MSP Cobranza', 'escritura');
 
 if (!rpcPagoContratoImportIsAdminUser($conn)) {
     rpcPagoContratoImportPreviewClear();

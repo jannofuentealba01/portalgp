@@ -209,8 +209,6 @@ try {
     http_response_code(422);
     echo json_encode([
         'ok' => false,
-        'message' => msp2NormalizeText($exception->getMessage()) !== ''
-            ? msp2NormalizeText($exception->getMessage())
-            : 'No se pudo validar el traspaso.',
+        'message' => pgpPublicOrBusinessException($exception, 'msp.contratos.precheck_traspaso', 'No se pudo validar el traspaso.'),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }

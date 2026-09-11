@@ -1,0 +1,30 @@
+/* Page-specific screen layout. Source: msp/cobranza/deudores_exarrendatarios.php */
+
+.dex-shell{max-width:1640px;width:100%;margin:0 auto;font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif}
+        .dex-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:1rem;margin-bottom:.85rem}
+        .dex-page-header h1{grid-column:2;grid-row:1;justify-self:center;margin:0;color:var(--color-primary);font-size:1.75rem;font-weight:600;line-height:1.2}
+        .dex-page-back{grid-column:1;grid-row:1;justify-self:start}
+        .dex-page-actions{grid-column:3;grid-row:1;justify-self:end;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.5rem}
+        .dex-page-header .btn{min-height:34px;padding:.35rem .65rem;font-size:.825rem;line-height:1.2}
+        .dex-filters{margin-bottom:.85rem}
+        .dex-filters .form-label{margin-bottom:.25rem;font-size:.88rem}
+        .dex-filters .form-control,.dex-filters .form-select,.dex-filters .btn{min-height:38px;padding-top:.38rem;padding-bottom:.38rem}
+        .dex-kpis{margin-bottom:.85rem}
+        .dex-kpi{height:100%;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);padding:.65rem .75rem}
+        .dex-kpi label{display:block;color:var(--color-text-muted);font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+        .dex-kpi strong{display:block;margin-top:.15rem;color:var(--color-primary);font-size:1.08rem;line-height:1.25}
+        .dex-sub{color:var(--color-text-muted);font-size:.75rem;line-height:1.2}
+        .dex-list-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.35rem .75rem;margin-bottom:.35rem}
+        .dex-list-head strong{font-size:1rem}
+        .dex-table-wrap{overflow-x:hidden;border-top:1px solid var(--color-border)}
+        .dex-table{width:100%;min-width:0;margin-bottom:0;border-collapse:collapse;table-layout:fixed}
+        .dex-table>:not(caption)>*>*{padding:.55rem .6rem;border:0;border-bottom:1px solid var(--color-border);background:var(--color-surface)}
+        .dex-table thead th{background:var(--color-surface-soft);color:var(--color-text);font-size:.82rem;font-weight:600;white-space:normal}
+        .dex-table tbody tr:hover>*{background:var(--color-surface-soft)}
+        .dex-table td{vertical-align:middle;font-size:.86rem}
+        .dex-table .tenant-name{font-weight:700}.dex-table .store{color:var(--color-text-muted);font-size:.76rem;line-height:1.25}
+        .dex-row-total{font-size:.95rem;font-weight:700;color:var(--color-danger)}.dex-amount{white-space:nowrap}
+        .dex-table .btn{min-height:28px;padding:.22rem .42rem;font-size:.76rem;white-space:nowrap}
+        .dex-table th:nth-child(1){width:21%}.dex-table th:nth-child(2){width:25%}.dex-table th:nth-child(3){width:20%}.dex-table th:nth-child(4){width:19%}.dex-table th:nth-child(5){width:15%}
+        .dex-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.25rem}.dex-actions .btn{flex:0 0 auto}
+        @media(max-width:700px){.dex-page-header{display:flex;flex-direction:column;align-items:stretch}.dex-page-header h1{order:1;align-self:center}.dex-page-back{order:2}.dex-page-actions{order:3;justify-content:flex-start}.dex-page-actions .btn{flex:1 1 auto}.dex-list-head{align-items:flex-start}}

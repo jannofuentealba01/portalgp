@@ -39,7 +39,7 @@ try {
     [$filename, $pdfOutput] = msp2BuildDocumentoCobroValePdf($conn, (int) $idDocumento);
 } catch (Throwable $e) {
     http_response_code(500);
-    echo msp2Escape($e->getMessage());
+    echo msp2Escape(pgpPublicException($e, 'msp.documentos_cobro.vale', 'No fue posible generar el vale.'));
     exit();
 }
 

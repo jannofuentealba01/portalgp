@@ -1,0 +1,91 @@
+/* Page-specific screen layout. Source: msp/contabilidad/aging.php */
+
+.ag-parent { background: var(--color-primary-soft); cursor: pointer; font-weight: 600; }
+        .ag-parent:hover { background: var(--color-primary-soft); }
+        .ag-child td { border-top: 0; }
+        .ag-hide { display: none; }
+        .ag-subtable th { font-size: .75rem; color: var(--color-text-muted); text-transform: uppercase; }
+        .ag-toggle {
+            display: inline-flex;
+            width: 28px;
+            height: 28px;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--color-border);
+            border-radius: 999px;
+            background: var(--color-surface);
+            margin-right: 8px;
+            font-size: 12px;
+        }
+        .ag-parent[aria-expanded="true"] .ag-toggle { transform: rotate(180deg); }
+        .ag-doc-link {
+            color: var(--color-info);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            font-weight: 600;
+        }
+        .ag-table-wrap,
+        .ag-subtable-wrap { overflow-x: hidden; }
+        .ag-table,
+        .ag-subtable {
+            width: 100% !important;
+            min-width: 0 !important;
+            table-layout: fixed;
+        }
+        .ag-table th,
+        .ag-table td,
+        .ag-subtable th,
+        .ag-subtable td {
+            min-width: 0 !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ag-col-main { width: 28%; min-width: 0; }
+        .ag-table th:nth-child(2) { width: 6%; }
+        .ag-table th:nth-child(3),
+        .ag-table th:nth-child(4),
+        .ag-table th:nth-child(5),
+        .ag-table th:nth-child(6) { width: 11%; }
+        .ag-table th:nth-child(7) { width: 13%; }
+        .ag-table th:nth-child(8) { width: 9%; }
+        .ag-subtable th:nth-child(1) { width: 13%; }
+        .ag-subtable th:nth-child(2) { width: 8%; }
+        .ag-subtable th:nth-child(3),
+        .ag-subtable th:nth-child(4) { width: 13%; }
+        .ag-subtable th:nth-child(5) { width: 14%; }
+        .ag-subtable th:nth-child(6) { width: 10%; }
+        .ag-subtable th:nth-child(7),
+        .ag-subtable th:nth-child(8) { width: 14.5%; }
+        .ag-arr-name {
+            display: inline-block;
+            max-width: 52%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: bottom;
+        }
+        .ag-locales {
+            display: inline-block;
+            max-width: 28%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: bottom;
+        }
+        .cxp-matrix-wrap { overflow-x: auto; }
+        .cxp-matrix { min-width: 760px; table-layout: fixed; }
+        .cxp-matrix th, .cxp-matrix td { white-space: nowrap; vertical-align: middle; }
+        .cxp-matrix .cxp-tenant { width: 290px; white-space: normal; }
+        .cxp-matrix .cxp-period { width: 125px; }
+        .cxp-matrix .cxp-total { width: 145px; }
+        .cxp-balance-link { color: var(--color-primary); font-weight: 600; text-decoration: none; }
+        .cxp-balance-link:hover { text-decoration: underline; }
+        .cxp-zero { color: var(--color-text-muted); }
+        .cxp-matrix tfoot td { background: var(--color-primary-soft); font-weight: 700; }
+        @media (max-width: 992px) {
+            .ag-table-wrap, .ag-subtable-wrap { overflow-x: auto; }
+            .ag-table, .ag-subtable { min-width: 850px !important; }
+            .ag-col-main { width: 40%; }
+            .ag-arr-name, .ag-locales { max-width: 220px; }
+        }

@@ -20,7 +20,7 @@ $anioActual = (int) date('Y');
 $anioFiltroRaw = trim((string) ($_GET['anio'] ?? ''));
 $anioFiltro = ctype_digit($anioFiltroRaw) ? (int) $anioFiltroRaw : $anioActual;
 $mostrarInactivos = isset($_GET['mostrar_inactivos']) && $_GET['mostrar_inactivos'] === '1';
-$filtroTexto = msp2NormalizeText($_GET['filtroTexto'] ?? null);
+$filtroTexto = msp2SearchQuery($_GET['filtroTexto'] ?? '');
 $editarFecha = trim((string) ($_GET['editar'] ?? ''));
 $editarFecha = preg_match('/^\d{4}-\d{2}-\d{2}$/', $editarFecha) ? $editarFecha : '';
 
@@ -355,8 +355,11 @@ if ($tablaExiste) {
             $conditions[] = 'activo = 1';
         }
         if ($filtroTexto !== '') {
-            $conditions[] = '(titulo LIKE :filtro OR tipo LIKE :filtro)';
-            $params[':filtro'] = '%' . $filtroTexto . '%';
+            $search = msp2BuildSearchCondition($filtroTexto, [
+                'titulo', 'tipo', 'fuente', 'CONVERT(CHAR(10),fecha,126)',
+            ], 'feriados_buscar');
+            $conditions[] = $search['sql'];
+            $params = array_merge($params, $search['params']);
         }
 
         $whereClause = $conditions === [] ? '1=1' : implode(' AND ', $conditions);
@@ -375,7 +378,7 @@ if ($tablaExiste) {
         $stmt->execute();
         $feriados = $stmt->fetchAll();
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar los feriados. Detalle técnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.catalogos.feriados', 'No fue posible cargar los feriados.');
     }
 }
 
@@ -396,8 +399,8 @@ if ($tablaExiste && $editarFecha !== '') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Feriados</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -479,23 +482,24 @@ if ($tablaExiste && $editarFecha !== '') {
                 </div>
             </div>
 
-            <form method="get" class="row g-2 mb-3 align-items-end">
+            <form method="get" class="row g-2 mb-3 align-items-end gp-filter-bar">
                 <div class="col-12 col-md-3">
                     <label class="form-label">Año</label>
                     <input type="number" class="form-control" name="anio" min="1900" max="2100" value="<?php echo (int) $anioFiltro; ?>">
                 </div>
                 <div class="col-12 col-md-5">
                     <label class="form-label">Buscar</label>
-                    <input type="text" class="form-control" name="filtroTexto" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Título o tipo">
+                    <input type="search" class="form-control" name="filtroTexto" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Título, tipo, fuente o fecha">
                 </div>
-                <div class="col-12 col-md-2 d-flex align-items-end">
+                <div class="col-12 col-md-2 d-flex align-items-end gp-secondary-filter-field">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="mostrar_inactivos" id="mostrar_inactivos" value="1" <?php echo $mostrarInactivos ? 'checked' : ''; ?>>
                         <label class="form-check-label" for="mostrar_inactivos">Mostrar inactivos</label>
                     </div>
                 </div>
-                <div class="col-12 col-md-2 d-grid">
-                    <button type="submit" class="btn btn-primary">Filtrar</button>
+                <div class="col-12 col-md-4 d-flex gap-2" data-gp-filter-actions>
+                    <button type="submit" class="btn btn-primary flex-grow-1">Buscar</button>
+                    <?php if ($filtroTexto !== '' || $mostrarInactivos): ?><a class="btn btn-outline-secondary" href="?anio=<?php echo (int) $anioFiltro; ?>" title="Limpiar filtros" aria-label="Limpiar filtros"><i class="bi bi-x-lg"></i></a><?php endif; ?>
                 </div>
             </form>
 
@@ -548,7 +552,7 @@ if ($tablaExiste && $editarFecha !== '') {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

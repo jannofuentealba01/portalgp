@@ -338,21 +338,40 @@ BEGIN
                 INNER JOIN dbo.msp_pagos p
                     ON p.id_documento_cobro = dc.id_documento_cobro
                 WHERE dc.periodo_facturacion = @periodo_facturacion
-                  AND p.estado_pago = 1
             )
             BEGIN
-                ;THROW 50054, 'No se puede regenerar el periodo porque existen pagos aplicados.', 1;
+                ;THROW 50054, 'No se puede regenerar el periodo porque existen pagos o anulaciones que deben conservarse.', 1;
             END;
 
-            DELETE dcd
-            FROM dbo.msp_documentos_cobro_detalle dcd
-            INNER JOIN dbo.msp_documentos_cobro dc
-                ON dc.id_documento_cobro = dcd.id_documento_cobro
-            WHERE dc.periodo_facturacion = @periodo_facturacion;
+            IF OBJECT_ID(N'dbo.msp_documento_preparar_regeneracion',N'P') IS NULL
+            BEGIN
+                ;THROW 53516, 'Falta instalar la regeneracion segura de documentos.', 1;
+            END;
 
-            DELETE dc
-            FROM dbo.msp_documentos_cobro dc
-            WHERE dc.periodo_facturacion = @periodo_facturacion;
+            DECLARE @documentos_reemplazar TABLE (
+                id_documento_cobro INT NOT NULL PRIMARY KEY
+            );
+            DECLARE @id_documento_reemplazar INT;
+
+            INSERT @documentos_reemplazar(id_documento_cobro)
+            SELECT dc.id_documento_cobro
+            FROM dbo.msp_documentos_cobro dc WITH(UPDLOCK,HOLDLOCK)
+            WHERE dc.periodo_facturacion=@periodo_facturacion;
+
+            WHILE EXISTS(SELECT 1 FROM @documentos_reemplazar)
+            BEGIN
+                SELECT TOP(1) @id_documento_reemplazar=id_documento_cobro
+                FROM @documentos_reemplazar
+                ORDER BY id_documento_cobro;
+
+                EXEC dbo.msp_documento_preparar_regeneracion
+                    @id_documento_cobro=@id_documento_reemplazar,
+                    @motivo=N'Regeneracion masiva controlada del periodo',
+                    @id_usuario=NULL;
+
+                DELETE FROM @documentos_reemplazar
+                WHERE id_documento_cobro=@id_documento_reemplazar;
+            END;
         END
         ELSE
         BEGIN

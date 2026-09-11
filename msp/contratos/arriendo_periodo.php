@@ -203,7 +203,7 @@ try {
     }
 } catch (Throwable $exception) {
     if ($exception instanceof RuntimeException) {
-        $loadError = $exception->getMessage();
+        $loadError = pgpPublicOrBusinessException($exception, 'msp.contratos.arriendo_periodo', 'No fue posible cargar el período de arriendo.');
     } else {
         $loadError = 'No fue posible cargar la configuración mensual de arriendo.';
     }
@@ -215,8 +215,8 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Arriendo dinámico mensual</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -264,7 +264,7 @@ try {
                             <button type="submit" class="btn btn-primary">Filtrar</button>
                         </div>
                         <div class="col-6 col-md-1 d-grid">
-                            <a href="?<?php echo msp2ArriendoPeriodoBuildQuery(['periodo' => $periodoYm]); ?>" class="btn btn-outline-secondary">Limpiar</a>
+                            <a href="?<?php echo msp2Escape(msp2ArriendoPeriodoBuildQuery(['periodo' => $periodoYm])); ?>" class="btn btn-outline-secondary">Limpiar</a>
                         </div>
                     </form>
                 </div>
@@ -395,7 +395,7 @@ try {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

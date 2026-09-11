@@ -395,7 +395,11 @@ try {
             }
         } catch (Throwable $exception) {
             throw new RuntimeException(
-                'Falló la recreación del pago ' . ($pagoUid !== '' ? $pagoUid : '#' . ($registrados + 1)) . ': ' . $exception->getMessage(),
+                'Falló la recreación del pago ' . ($pagoUid !== '' ? $pagoUid : '#' . ($registrados + 1)) . ': ' . pgpPublicOrBusinessException(
+                    $exception,
+                    'msp.pagos.confirmar_importacion_respaldo.recrear_pago',
+                    'No fue posible recrear este pago.'
+                ),
                 0,
                 $exception
             );

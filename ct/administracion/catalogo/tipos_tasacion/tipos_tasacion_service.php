@@ -66,7 +66,7 @@ function ctCatalogoTiposTasacionHandlePost(PDO $conn, array $post): never
 
         throw new RuntimeException('Acción no reconocida.');
     } catch (Throwable $e) {
-        ctSetFlash('danger', trim((string) $e->getMessage()) ?: 'No fue posible procesar la solicitud.');
+        ctSetFlash('danger', pgpPublicOrBusinessException($e, 'ct.catalogo.tipos_tasacion', 'No fue posible procesar la solicitud.'));
         ctCatalogoTiposTasacionRedirect();
     }
 }

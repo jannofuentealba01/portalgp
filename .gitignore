@@ -2,6 +2,7 @@
 /msp/config/mail.php
 /ct/config/mail.php
 /microsoft_auth_config.local.php
+/rrhh/fte/fte_config.local.php
 
 # Datos y artefactos locales: nunca versionar credenciales, respaldos ni logs.
 *.bak
@@ -25,3 +26,7 @@
 /_informe_base.docx
 /INFORME_SEMANAL_HABILITACION_PROFESIONAL_COMPLETADO.docx
 /msp/pagos/v18.zip
+/rrhh/fte.zip
+/GUIA_CODEX_HACER_FUNCIONAR_FTE_PORTALGP*.md
+/git
+/ql*

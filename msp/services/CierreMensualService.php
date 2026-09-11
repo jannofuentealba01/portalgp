@@ -72,4 +72,38 @@ final class CierreMensualService
             throw new RuntimeException($message !== '' ? $message : 'No fue posible cambiar el estado del período.', 0, $exception);
         }
     }
+
+    public function eliminarBorrador(int $idCierre, string $motivo, ?int $idUsuario): void
+    {
+        $motivo = trim($motivo);
+        if ($idCierre <= 0) {
+            throw new RuntimeException('El cierre indicado no es válido.');
+        }
+        if ($motivo === '') {
+            throw new RuntimeException('Debes indicar el motivo de la eliminación.');
+        }
+        if (!msp2ProcedureExists($this->conn, 'msp_cierre_mensual_eliminar_borrador')) {
+            throw new RuntimeException('Falta instalar la eliminación segura de cierres mensuales.');
+        }
+
+        try {
+            $stmt = $this->conn->prepare(
+                'EXEC dbo.msp_cierre_mensual_eliminar_borrador
+                    @id_cierre_mensual=:id,
+                    @motivo=:motivo,
+                    @id_usuario=:usuario'
+            );
+            $stmt->bindValue(':id', $idCierre, PDO::PARAM_INT);
+            $stmt->bindValue(':motivo', mb_substr($motivo, 0, 500, 'UTF-8'), PDO::PARAM_STR);
+            $stmt->bindValue(':usuario', $idUsuario, $idUsuario === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+            $stmt->execute();
+            $stmt->closeCursor();
+        } catch (PDOException $exception) {
+            $message = $exception->getMessage();
+            if (preg_match('/\[(?:Microsoft|ODBC).*?\]\s*(.+?)(?:\s*\(|$)/s', $message, $match) === 1) {
+                $message = trim($match[1]);
+            }
+            throw new RuntimeException($message !== '' ? $message : 'No fue posible eliminar el cierre mensual.', 0, $exception);
+        }
+    }
 }

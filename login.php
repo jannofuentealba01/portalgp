@@ -1,4 +1,9 @@
-<?php $loginError = isset($_GET['login_error']) ? trim((string)$_GET['login_error']) : ''; ?>
+<?php
+declare(strict_types=1);
+require_once __DIR__ . '/security.php';
+pgpApplySecurityHeaders();
+$loginError = isset($_GET['login_error']) ? trim((string) $_GET['login_error']) : '';
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>

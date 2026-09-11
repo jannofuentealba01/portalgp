@@ -416,19 +416,10 @@ final class EnvioDemoService
 
     private static function formatSendError(Throwable $error): string
     {
-        $msg = trim($error->getMessage());
-        if ($msg !== '') {
-            return $msg;
-        }
-
-        if (property_exists($error, 'errorInfo')) {
-            $raw = (string) ($error->errorInfo ?? '');
-            $raw = trim($raw);
-            if ($raw !== '') {
-                return $raw;
-            }
-        }
-
-        return 'Error de envio sin detalle (' . $error::class . ').';
+        return pgpPublicOrBusinessException(
+            $error,
+            'msp.cobros.envio_demo.destinatario',
+            'No fue posible enviar el correo a este destinatario.'
+        );
     }
 }

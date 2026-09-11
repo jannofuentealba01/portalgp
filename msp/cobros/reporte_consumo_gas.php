@@ -547,7 +547,7 @@ try {
         $sheet->getStyle('A1')->getAlignment()->setHorizontal('center');
 
         foreach ($headers as $idx => $header) {
-            $sheet->setCellValueByColumnAndRow($idx + 1, 3, $header);
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, $idx + 1, 3, $header);
         }
         $sheet->getStyle('A3:G3')->getFont()->setBold(true);
         $sheet->getStyle('A3:G3')->getFont()->getColor()->setRGB('000000');
@@ -564,44 +564,38 @@ try {
             }
             $previousGroupKey = $groupKey;
 
-            $sheet->setCellValueByColumnAndRow(1, $rowIndex, (string) ($row['cod_local'] ?? ''));
-            $sheet->setCellValueExplicitByColumnAndRow(
-                2,
-                $rowIndex,
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 1, $rowIndex, (string) ($row['cod_local'] ?? ''));
+            msp2SetSpreadsheetCellExplicitByColumnAndRow(
+                $sheet, 2, $rowIndex,
                 (float) ($row['lectura_anterior'] ?? 0),
                 DataType::TYPE_NUMERIC
             );
-            $sheet->setCellValueExplicitByColumnAndRow(
-                3,
-                $rowIndex,
+            msp2SetSpreadsheetCellExplicitByColumnAndRow(
+                $sheet, 3, $rowIndex,
                 (float) ($row['lectura_actual'] ?? 0),
                 DataType::TYPE_NUMERIC
             );
-            $sheet->setCellValueExplicitByColumnAndRow(
-                4,
-                $rowIndex,
+            msp2SetSpreadsheetCellExplicitByColumnAndRow(
+                $sheet, 4, $rowIndex,
                 (float) ($row['total_consumido'] ?? 0),
                 DataType::TYPE_NUMERIC
             );
-            $sheet->setCellValueExplicitByColumnAndRow(
-                5,
-                $rowIndex,
+            msp2SetSpreadsheetCellExplicitByColumnAndRow(
+                $sheet, 5, $rowIndex,
                 (float) ($row['factor'] ?? 0),
                 DataType::TYPE_NUMERIC
             );
-            $sheet->setCellValueExplicitByColumnAndRow(
-                6,
-                $rowIndex,
+            msp2SetSpreadsheetCellExplicitByColumnAndRow(
+                $sheet, 6, $rowIndex,
                 (float) ($row['valor_litro'] ?? 0),
                 DataType::TYPE_NUMERIC
             );
             $aPagarRow = (float) ($row['a_pagar'] ?? 0);
             if (abs($aPagarRow) < 0.000001) {
-                $sheet->setCellValueByColumnAndRow(7, $rowIndex, '-');
+                msp2SetSpreadsheetCellByColumnAndRow($sheet, 7, $rowIndex, '-');
             } else {
-                $sheet->setCellValueExplicitByColumnAndRow(
-                    7,
-                    $rowIndex,
+                msp2SetSpreadsheetCellExplicitByColumnAndRow(
+                    $sheet, 7, $rowIndex,
                     $aPagarRow,
                     DataType::TYPE_NUMERIC
                 );
@@ -645,7 +639,7 @@ try {
 
             $rowIndex++;
             foreach ($addendumHeaders as $idx => $header) {
-                $sheet->setCellValueByColumnAndRow($idx + 1, $rowIndex, $header);
+                msp2SetSpreadsheetCellByColumnAndRow($sheet, $idx + 1, $rowIndex, $header);
             }
             $sheet->getStyle('A' . $rowIndex . ':C' . $rowIndex)->getFont()->setBold(true);
             $sheet->getStyle('A' . $rowIndex . ':C' . $rowIndex)->getFont()->getColor()->setRGB('000000');
@@ -655,9 +649,9 @@ try {
             $rowIndex++;
             $addendumStartRow = $rowIndex;
             foreach ($addendumRows as $addRow) {
-                $sheet->setCellValueByColumnAndRow(1, $rowIndex, (string) ($addRow['cod_local'] ?? ''));
-                $sheet->setCellValueByColumnAndRow(2, $rowIndex, (float) ($addRow['lectura_anterior'] ?? 0));
-                $sheet->setCellValueByColumnAndRow(3, $rowIndex, '');
+                msp2SetSpreadsheetCellByColumnAndRow($sheet, 1, $rowIndex, (string) ($addRow['cod_local'] ?? ''));
+                msp2SetSpreadsheetCellByColumnAndRow($sheet, 2, $rowIndex, (float) ($addRow['lectura_anterior'] ?? 0));
+                msp2SetSpreadsheetCellByColumnAndRow($sheet, 3, $rowIndex, '');
                 $rowIndex++;
             }
             $addendumEndRow = $rowIndex - 1;
@@ -819,6 +813,6 @@ try {
     exit();
 } catch (Throwable $e) {
     http_response_code(422);
-    echo 'No fue posible generar el reporte: ' . $e->getMessage();
+    echo msp2Escape(pgpPublicException($e, 'msp.cobros.reporte_gas', 'No fue posible generar el reporte.'));
     exit();
 }

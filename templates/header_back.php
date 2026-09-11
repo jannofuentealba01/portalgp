@@ -1,11 +1,13 @@
-﻿<?php
-session_start();
+<?php
+declare(strict_types=1);
+require_once dirname(__DIR__) . '/db.php';
+require_once dirname(__DIR__) . '/security.php';
 
-if (!isset($_SESSION['usuario'])) {
-    header('Location: portalgp/login.php');
-    exit();
-}
+pgpRequireEnabledSession($conn);
 ?>
+
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>

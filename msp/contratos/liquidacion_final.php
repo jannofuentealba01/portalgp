@@ -30,11 +30,6 @@ function msp2LiquidacionFecha(?string $value): string
     }
 }
 
-function msp2LiquidacionBadge(bool $ok, string $okText = 'COMPLETO', string $badText = 'PENDIENTE'): array
-{
-    return $ok ? [$okText, 'text-bg-success'] : [$badText, 'text-bg-warning text-dark'];
-}
-
 $contrato = null;
 $locales = [];
 $garantias = [];
@@ -85,7 +80,7 @@ try {
         $locales = $stmtLocales->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    // Checklist operacional: última lectura disponible por medidor del contrato.
+    // Última lectura disponible por medidor del contrato.
     if (msp2TableExists($conn, 'msp_medidores') && msp2TableExists($conn, 'msp_lecturas_medidores')) {
         $stmtLecturasFinales = $conn->prepare(
             'SELECT m.id_medidor, m.codigo_medidor, l.cdo_local, ts.codigo_servicio,
@@ -231,7 +226,7 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Liquidación final | MSP</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -241,10 +236,9 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
         <div>
             <p class="text-muted mb-1">MSP / Contratos</p>
             <h1 class="h3 mb-1">Liquidación final de contrato</h1>
-            <p class="text-muted mb-0">Revisa deuda, garantía y bloqueos antes de cerrar definitivamente.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-outline-dark btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?' . $queryRetorno)); ?>"><i class="bi bi-arrow-left me-1"></i>Volver a ficha</a>
+            <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?' . $queryRetorno)); ?>"><i class="bi bi-arrow-left me-1"></i>Volver a ficha</a>
             <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('cierre/index.php')); ?>">Volver a término y cierre</a>
         </div>
     </div>
@@ -259,19 +253,66 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
         </div>
     </div>
 
-    <div class="row g-3 mb-3">
-        <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Deuda total</div><div class="h4 mb-0 text-danger"><?php echo msp2Escape(msp2LiquidacionMonto($deudaSaldo)); ?></div><div class="small text-muted"><?php echo (int) ($deuda['total_documentos'] ?? 0); ?> documentos</div></div></div></div>
-        <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Deuda vencida</div><div class="h4 mb-0 text-warning"><?php echo msp2Escape(msp2LiquidacionMonto($deudaVencida)); ?></div><div class="small text-muted">Hasta hoy</div></div></div></div>
-        <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Garantía disponible</div><div class="h4 mb-0 text-success"><?php echo msp2Escape(msp2LiquidacionMonto($saldoGarantia)); ?></div><div class="small text-muted"><?php echo count($garantias); ?> garantía(s)</div></div></div></div>
-        <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Resultado estimado</div><div class="h4 mb-0"><?php echo msp2Escape(msp2LiquidacionMonto(max(0.0, $deudaSaldo - $saldoGarantia))); ?></div><div class="small text-muted">Deuda restante estimada</div></div></div></div>
+    <?php if ($bloqueos !== []): ?>
+        <div class="alert alert-warning py-2 mb-3">
+            <strong>Bloqueos para cierre definitivo:</strong>
+            <ul class="mb-0 mt-1">
+                <?php foreach ($bloqueos as $bloqueo): ?>
+                    <li><?php echo msp2Escape($bloqueo); ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
+
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3"><div class="lf-kpi"><div class="lf-kpi-label">Deuda total</div><div class="lf-kpi-value text-danger"><?php echo msp2Escape(msp2LiquidacionMonto($deudaSaldo)); ?></div><div class="small text-muted"><?php echo (int) ($deuda['total_documentos'] ?? 0); ?> documentos</div></div></div>
+        <div class="col-6 col-md-3"><div class="lf-kpi"><div class="lf-kpi-label">Deuda vencida</div><div class="lf-kpi-value text-warning"><?php echo msp2Escape(msp2LiquidacionMonto($deudaVencida)); ?></div><div class="small text-muted">Hasta hoy</div></div></div>
+        <div class="col-6 col-md-3"><div class="lf-kpi"><div class="lf-kpi-label">Garantía disponible</div><div class="lf-kpi-value text-success"><?php echo msp2Escape(msp2LiquidacionMonto($saldoGarantia)); ?></div><div class="small text-muted"><?php echo count($garantias); ?> garantía(s)</div></div></div>
+        <div class="col-6 col-md-3"><div class="lf-kpi"><div class="lf-kpi-label">Resultado estimado</div><div class="lf-kpi-value"><?php echo msp2Escape(msp2LiquidacionMonto(max(0.0, $deudaSaldo - $saldoGarantia))); ?></div><div class="small text-muted">Deuda restante estimada</div></div></div>
     </div>
 
-    <div class="card shadow-sm mb-3">
+    <?php if ($deudaSaldo > 0.005): ?>
+        <div class="alert alert-info">
+            <strong>Saldo residual detectado: <?php echo msp2Escape(msp2LiquidacionMonto($deudaSaldo)); ?>.</strong>
+            <?php if ($deudaResidualAdmisible): ?>
+                La garantía ya no tiene reservas y no quedan cargos reservados. Puedes cerrar el contrato confirmando la derivación de este saldo a <strong>Deudores exarrendatarios</strong>. Los documentos y cargos se conservarán con su saldo real.
+            <?php else: ?>
+                El saldo se podrá derivar a <strong>Deudores exarrendatarios</strong> cuando se completen las lecturas finales, se resuelvan los cargos o reservas pendientes y la garantía disponible haya sido aplicada o devuelta.
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <section class="card shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Garantías</div>
+        <div class="card-body py-2">
+            <?php if ($garantias === []): ?>
+                <p class="text-muted mb-0">No hay garantías registradas para este contrato.</p>
+            <?php else: ?>
+                <div class="lf-guarantees">
+                    <?php foreach ($garantias as $garantia): ?>
+                        <div class="lf-guarantee">
+                            <div class="fw-semibold">Local <?php echo msp2Escape((string) ($garantia['cdo_local'] ?? '-')); ?></div>
+                            <div class="small text-muted mb-1">Garantía #<?php echo (int) ($garantia['id_garantia'] ?? 0); ?></div>
+                            <div class="fw-semibold lf-guarantee-money">Disponible: <?php echo msp2Escape(msp2LiquidacionMonto((float) ($garantia['monto_disponible'] ?? 0))); ?></div>
+                            <div class="small text-muted lf-guarantee-money">Reservado: <?php echo msp2Escape(msp2LiquidacionMonto((float) ($garantia['monto_reservado'] ?? 0))); ?></div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+                <?php if ($saldoGarantia > 0.005 && $deudaSaldo > 0.005): ?><a class="btn btn-warning btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/aplicaciones.php?' . http_build_query(['id_contrato_arriendo' => $idContratoArriendo, 'return_to' => 'contratos/liquidacion_final.php?id_contrato_arriendo=' . $idContratoArriendo]))); ?>">Aplicar garantía a deuda</a><?php endif; ?>
+                <?php if ($saldoGarantia > 0.005 && $deudaSaldo <= 0.005 && $reservasGarantia === 0): ?><a class="btn btn-outline-success btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/devoluciones.php?id_contrato_arriendo=' . $idContratoArriendo)); ?>">Gestionar devolución</a><?php endif; ?>
+                <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('deuda_garantia/index.php?filtroTienda=' . (int) ($contrato['id_tienda'] ?? 0))); ?>">Ver historial de garantías</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm mb-3">
         <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center gap-2">
             <span>Servicios finales y lecturas</span>
             <span class="badge <?php echo $lecturasFinalesOk ? 'text-bg-success' : 'text-bg-warning text-dark'; ?>"><?php echo $lecturasFinalesOk ? 'Revisado' : 'Pendiente'; ?></span>
         </div>
-        <div class="card-body">
+        <div class="card-body py-2">
             <?php if ($lecturasFinales === []): ?>
                 <p class="text-muted mb-0">No hay medidores asociados al contrato; no se requiere lectura final.</p>
             <?php else: ?>
@@ -291,112 +332,29 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
                     </tbody>
                 </table></div>
                 <?php if (!$lecturasFinalesOk): ?><div class="small text-warning-emphasis mt-2">Hay medidores sin lectura en el mes del término. Registra las lecturas en Operación mensual antes de cerrar.</div><?php endif; ?>
-                <?php if ($periodoCorteSugerido !== '-'): ?><a class="btn btn-outline-primary btn-sm mt-3" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php?periodo=' . urlencode($periodoCorteSugerido))); ?>">Ir a Operación mensual</a><?php else: ?><a class="btn btn-outline-primary btn-sm mt-3" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php')); ?>">Ir a Operación mensual</a><?php endif; ?>
+                <?php if ($periodoCorteSugerido !== '-'): ?><a class="btn btn-outline-primary btn-sm mt-2" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php?periodo=' . urlencode($periodoCorteSugerido))); ?>">Ir a Operación mensual</a><?php else: ?><a class="btn btn-outline-primary btn-sm mt-2" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php')); ?>">Ir a Operación mensual</a><?php endif; ?>
             <?php endif; ?>
         </div>
-    </div>
+    </section>
 
-    <?php if ($bloqueos !== []): ?>
-        <div class="alert alert-warning">
-            <strong>Bloqueos para cierre definitivo:</strong>
-            <ul class="mb-0 mt-2">
-                <?php foreach ($bloqueos as $bloqueo): ?>
-                    <li><?php echo msp2Escape($bloqueo); ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($deudaSaldo > 0.005): ?>
-        <div class="alert alert-info">
-            <strong>Saldo residual detectado: <?php echo msp2Escape(msp2LiquidacionMonto($deudaSaldo)); ?>.</strong>
-            <?php if ($deudaResidualAdmisible): ?>
-                La garantía ya no tiene reservas y no quedan cargos reservados. Puedes cerrar el contrato confirmando la derivación de este saldo a <strong>Deudores exarrendatarios</strong>. Los documentos y cargos se conservarán con su saldo real.
+    <details class="card shadow-sm mb-3 lf-details">
+        <summary class="card-header bg-white fw-semibold">Documentos pendientes (<?php echo count($documentosPendientes); ?>)</summary>
+        <div class="card-body py-2">
+            <?php if ($documentosPendientes === []): ?>
+                <p class="text-muted mb-0">No se detectan documentos pendientes para este contrato.</p>
             <?php else: ?>
-                El saldo se podrá derivar a <strong>Deudores exarrendatarios</strong> cuando se completen las lecturas finales, se resuelvan los cargos o reservas pendientes y la garantía disponible haya sido aplicada o devuelta.
-            <?php endif; ?>
-        </div>
-    <?php endif; ?>
-
-    <div class="row g-3 mb-3">
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white fw-semibold">Garantías</div>
-                <div class="card-body">
-                    <?php if ($garantias === []): ?>
-                        <p class="text-muted mb-0">No hay garantías registradas para este contrato.</p>
-                    <?php else: ?>
-                        <?php foreach ($garantias as $garantia): ?>
-                            <div class="border-bottom py-2 d-flex justify-content-between gap-2">
-                                <div>
-                                    <div class="fw-semibold">Local <?php echo msp2Escape((string) ($garantia['cdo_local'] ?? '-')); ?></div>
-                                    <div class="small text-muted">Garantía #<?php echo (int) ($garantia['id_garantia'] ?? 0); ?></div>
-                                </div>
-                                <div class="text-end">
-                                    <div class="fw-semibold">Disponible: <?php echo msp2Escape(msp2LiquidacionMonto((float) ($garantia['monto_disponible'] ?? 0))); ?></div>
-                                    <div class="small text-muted">Reservado: <?php echo msp2Escape(msp2LiquidacionMonto((float) ($garantia['monto_reservado'] ?? 0))); ?></div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                    <div class="d-flex flex-wrap gap-2 mt-3">
-                        <?php if ($saldoGarantia > 0.005 && $deudaSaldo > 0.005): ?><a class="btn btn-warning btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/aplicaciones.php?id_contrato_arriendo=' . $idContratoArriendo)); ?>">Aplicar garantía a deuda</a><?php endif; ?>
-                        <?php if ($saldoGarantia > 0.005 && $deudaSaldo <= 0.005 && $reservasGarantia === 0): ?><a class="btn btn-outline-success btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/devoluciones.php?id_contrato_arriendo=' . $idContratoArriendo)); ?>">Gestionar devolución</a><?php endif; ?>
-                        <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('deuda_garantia/index.php?filtroTienda=' . (int) ($contrato['id_tienda'] ?? 0))); ?>">Ver historial de garantías</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white fw-semibold">Documentos pendientes</div>
-                <div class="card-body">
-                    <?php if ($documentosPendientes === []): ?>
-                        <p class="text-muted mb-0">No se detectan documentos pendientes para este contrato.</p>
-                    <?php else: ?>
-                        <?php foreach ($documentosPendientes as $doc): ?>
-                            <div class="border-bottom py-2 d-flex justify-content-between gap-2">
-                                <div>
-                                    <div class="fw-semibold"><?php echo msp2Escape((string) ($doc['numero_documento'] ?? 'Sin número')); ?></div>
-                                    <div class="small text-muted">Periodo <?php echo msp2Escape(substr((string) ($doc['periodo_facturacion'] ?? ''), 0, 7)); ?> · Vence <?php echo msp2Escape(msp2LiquidacionFecha((string) ($doc['fecha_vencimiento'] ?? ''))); ?></div>
-                                </div>
-                                <div class="fw-semibold"><?php echo msp2Escape(msp2LiquidacionMonto((float) ($doc['saldo_pendiente'] ?? 0))); ?></div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card shadow-sm mb-3">
-        <div class="card-header bg-white fw-semibold">Checklist de liquidación</div>
-        <div class="card-body">
-            <div class="row g-3">
-                <?php
-                $checklist = [
-                    ['Salida registrada', true, 'El contrato ya está en proceso de cierre.'],
-                    ['Local liberado', true, 'La ocupación física ya no debe bloquear nuevos contratos.'],
-                    ['Deuda determinada', $deudaSaldo >= 0, 'La deuda se puede medir desde documentos vigentes.'],
-                    ['Garantía evaluada', true, 'Se conoce el saldo disponible y reservado.'],
-                    ['Lecturas finales', $lecturasFinalesOk, $lecturasFinalesOk ? 'Los medidores tienen lectura suficiente para el término.' : 'Faltan lecturas del mes de término.'],
-                    ['Sin cargos reservados', $cargosPendientes === 0, 'Los cargos pendientes sin reserva pueden formar parte de la deuda histórica; las reservas sí bloquean el cierre.'],
-                    ['Sin reservas en garantía', $reservasGarantia === 0, 'No hay reservas que bloqueen la devolución o cierre.'],
-                ];
-                foreach ($checklist as [$titulo, $ok, $detalle]): [$label, $class] = msp2LiquidacionBadge((bool) $ok); ?>
-                    <div class="col-md-4">
-                        <div class="border rounded p-3 h-100">
-                            <div class="d-flex justify-content-between align-items-start gap-2">
-                                <div class="fw-semibold"><?php echo msp2Escape($titulo); ?></div>
-                                <span class="badge <?php echo msp2Escape($class); ?>"><?php echo msp2Escape($label); ?></span>
-                            </div>
-                            <div class="small text-muted mt-2"><?php echo msp2Escape($detalle); ?></div>
+                <?php foreach ($documentosPendientes as $doc): ?>
+                    <div class="border-bottom py-1 d-flex justify-content-between gap-2">
+                        <div>
+                            <div class="fw-semibold"><?php echo msp2Escape((string) ($doc['numero_documento'] ?? 'Sin número')); ?></div>
+                            <div class="small text-muted">Periodo <?php echo msp2Escape(substr((string) ($doc['periodo_facturacion'] ?? ''), 0, 7)); ?> · Vence <?php echo msp2Escape(msp2LiquidacionFecha((string) ($doc['fecha_vencimiento'] ?? ''))); ?></div>
                         </div>
+                        <div class="fw-semibold text-nowrap"><?php echo msp2Escape(msp2LiquidacionMonto((float) ($doc['saldo_pendiente'] ?? 0))); ?></div>
                     </div>
                 <?php endforeach; ?>
-            </div>
+            <?php endif; ?>
         </div>
-    </div>
+    </details>
 
     <div class="card shadow-sm">
         <div class="card-body">
@@ -424,7 +382,7 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
                     </div>
                 <?php endif; ?>
                 <div class="col-lg-3 d-grid">
-                    <button type="submit" class="btn btn-dark" <?php echo $puedeCerrar ? '' : 'disabled'; ?>>Cerrar definitivamente</button>
+                    <button type="submit" class="btn btn-warning" <?php echo $puedeCerrar ? '' : 'disabled'; ?>>Cerrar definitivamente</button>
                 </div>
                 <div class="col-12">
                     <div class="small text-muted">Este paso usa el cierre financiero existente y conserva todo el historial.</div>

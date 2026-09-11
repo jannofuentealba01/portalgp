@@ -1,0 +1,34 @@
+/* Page-specific screen layout. Source: msp/cobranza/cargos_extra.php */
+
+.ce-subtle {
+            font-size: 12px;
+            color: var(--color-text-muted);
+        }
+
+        .ce-picker-btn {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding-right: 2rem;
+        }
+
+        .ce-date-range-hint {
+            font-size: 0.72rem;
+            line-height: 1.15;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Vista plana, consistente con las demás tablas de gestión MSP. */
+        .msp-extra-charges-section {
+            padding-right: 0;
+            padding-left: 0;
+            overflow: visible;
+            background: transparent;
+            border-radius: 0;
+            box-shadow: none;
+        }
+        .msp-extra-charges-section::before {
+            display: none;
+        }

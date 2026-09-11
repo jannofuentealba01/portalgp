@@ -24,7 +24,7 @@ if (!in_array($lineasPorPagina, $lineasPermitidas, true)) {
 }
 
 $paginaActual = isset($_GET['pagina']) && is_numeric($_GET['pagina']) ? max(1, (int) $_GET['pagina']) : 1;
-$filtroTexto = msp2NormalizeText($_GET['filtroTexto'] ?? null);
+$filtroTexto = msp2SearchQuery($_GET['filtroTexto'] ?? '');
 $filtroEstado = trim((string) ($_GET['filtroEstado'] ?? ''));
 
 $estadosCierre = CierreMensualService::estados();
@@ -50,8 +50,8 @@ if ($tablaExiste) {
         $params = [];
 
         if ($filtroTexto !== '') {
-            $conditions[] = "CONVERT(CHAR(7), c.periodo_facturacion, 126) LIKE :filtro";
-            $params[':filtro'] = '%' . $filtroTexto . '%';
+            $conditions[] = "CONVERT(CHAR(7), c.periodo_facturacion, 126) = :filtro";
+            $params[':filtro'] = preg_match('/^\d{4}-\d{2}$/D', $filtroTexto) === 1 ? $filtroTexto : '__periodo_invalido__';
         }
 
         if ($filtroEstado !== '' && ctype_digit($filtroEstado)) {
@@ -101,7 +101,7 @@ if ($tablaExiste) {
         $stmt->execute();
         $registros = $stmt->fetchAll();
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar los cierres mensuales. Detalle técnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.cierre_mensual.index', 'No fue posible cargar los cierres mensuales.');
     }
 }
 
@@ -179,36 +179,9 @@ function cierreEstadoBadge(?string $estado): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Cierre Mensual</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .cierre-shell { width:100%; min-width:0; }
-        .cierre-table-wrap { width:100%; overflow:visible; }
-        .cierre-table { width:100%; table-layout:fixed; margin-bottom:0; }
-        .cierre-table th,
-        .cierre-table td { padding:.42rem .45rem; font-size:clamp(.76rem,.82vw,.9rem); vertical-align:middle; }
-        .cierre-table th { white-space:nowrap; }
-        .cierre-table td:not(.cierre-actions) { overflow:hidden; }
-        .cierre-nowrap { white-space:nowrap; }
-        .cierre-observacion { display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; }
-        .cierre-actions .d-flex { flex-wrap:wrap; }
-        .cierre-actions .btn { white-space:nowrap; }
-        .cierre-observation-tooltip { --bs-tooltip-max-width:min(430px, calc(100vw - 24px)); }
-        .cierre-observation-tooltip .tooltip-inner { padding:.65rem .8rem; text-align:left; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.35; }
-        @media (max-width:767.98px) {
-            .cierre-table thead { display:none; }
-            .cierre-table,
-            .cierre-table tbody,
-            .cierre-table tr,
-            .cierre-table td { display:block; width:100%; }
-            .cierre-table tr { margin-bottom:.75rem; border:1px solid var(--color-border); border-radius:10px; overflow:hidden; background:var(--color-surface); }
-            .cierre-table td { display:grid; grid-template-columns:8.5rem minmax(0,1fr); gap:.65rem; padding:.42rem .65rem; border-width:0 0 1px; text-align:left !important; }
-            .cierre-table td:last-child { border-bottom:0; }
-            .cierre-table td::before { content:attr(data-label); font-weight:700; color:var(--color-text-muted); }
-            .cierre-actions .d-flex { justify-content:flex-start !important; }
-        }
-    </style>
 </head>
 <body class="gp-layout bg-light">
 
@@ -234,7 +207,7 @@ function cierreEstadoBadge(?string $estado): string
                 <?php echo msp2Escape($loadError); ?>
             </div>
         <?php else: ?>
-            <form class="row g-2 mb-3" method="get">
+            <form class="row g-2 mb-3 gp-filter-bar" method="get">
                 <div class="col-12 col-md-5">
                     <input type="text" class="form-control" name="filtroTexto" placeholder="Periodo (YYYY-MM)" value="<?php echo msp2Escape($filtroTexto); ?>">
                 </div>
@@ -248,8 +221,8 @@ function cierreEstadoBadge(?string $estado): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-6 col-md-2">
-                    <select class="form-select" name="lineas">
+                <div class="col-6 col-md-2 gp-secondary-filter-field">
+                    <select class="form-select" name="lineas" data-gp-default="25">
                         <?php foreach ($lineasPermitidas as $lineas): ?>
                             <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                 <?php echo $lineas; ?> filas
@@ -257,7 +230,7 @@ function cierreEstadoBadge(?string $estado): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-6 col-md-2 d-grid">
+                <div class="col-12 col-md-4 d-flex gap-2" data-gp-filter-actions>
                     <button type="submit" class="btn btn-primary">Filtrar</button>
                 </div>
             </form>
@@ -375,7 +348,7 @@ function cierreEstadoBadge(?string $estado): string
                                                 data-confirm-title="Confirmar eliminación"
                                                 data-confirm-variant="danger">
                                                 <input type="hidden" name="id_cierre_mensual" value="<?php echo (int) $row['id_cierre_mensual']; ?>">
-                                                <button class="btn btn-outline-danger btn-sm" type="submit">
+                                                <button class="btn btn-outline-danger btn-sm" type="submit" title="Eliminar cierre <?php echo msp2Escape(cierreFormatoPeriodo((string) $row['periodo_facturacion'])); ?>" aria-label="Eliminar cierre <?php echo msp2Escape(cierreFormatoPeriodo((string) $row['periodo_facturacion'])); ?>">
                                                     <i class="bi bi-trash" aria-hidden="true"></i>
                                                 </button>
                                             </form>
@@ -493,7 +466,7 @@ function cierreEstadoBadge(?string $estado): string
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((element) => {

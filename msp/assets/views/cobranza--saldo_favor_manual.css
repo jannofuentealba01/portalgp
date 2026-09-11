@@ -1,0 +1,8 @@
+/* Page-specific screen layout. Source: msp/cobranza/saldo_favor_manual.php */
+
+#saldo_favor_dropdown_btn {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding-right: 2rem;
+        }

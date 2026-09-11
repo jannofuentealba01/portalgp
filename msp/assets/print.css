@@ -1,0 +1,39 @@
+/* MSP print-only rules. Screen, PDF and email styles remain independent. */
+.gp-module-msp header,
+.gp-module-msp footer,
+.gp-module-msp .no-print,
+.gp-module-msp .msp-quick-access-hot-edge,
+.gp-module-msp .offcanvas {
+    display: none !important;
+}
+
+.gp-module-msp .gp-main {
+    padding: 0 !important;
+}
+
+.gp-page-msp-cobranza-aviso-php .aviso-paper {
+    border: 0;
+    padding: 1rem;
+}
+
+.gp-page-msp-cobranza-deudor-historico-php .box-container-full,
+.gp-page-msp-cobranza-gestionar-php .box-container-full {
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.gp-page-msp-cobranza-gestionar-php .collapse {
+    display: block !important;
+}
+
+.gp-page-msp-cobranza-deudores-exarrendatarios-php .dex-shell {
+    max-width: none !important;
+}
+
+.gp-page-msp-cobranza-deudores-exarrendatarios-php .dex-table {
+    min-width: 0 !important;
+}
+
+.gp-page-msp-documentos-tienda-simular-envio-php .card {
+    break-inside: avoid;
+}

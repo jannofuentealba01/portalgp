@@ -475,7 +475,7 @@ if ($tablaExiste) {
             }
         }
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar Registrar pago. Detalle: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.cobranza.registrar_pago', 'No fue posible cargar Registrar pago.');
     }
 }
 
@@ -491,53 +491,10 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Registrar Pago</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .msp-mail-sending-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(15, 23, 42, 0.45);
-            backdrop-filter: blur(1.5px);
-        }
-        .msp-mail-sending-box {
-            min-width: 250px;
-            max-width: 92vw;
-            border-radius: 0.85rem;
-            border: 1px solid #dbe4f0;
-            background: #fff;
-            box-shadow: 0 16px 42px rgba(15, 23, 42, 0.18);
-            padding: 1rem 1.15rem;
-            text-align: center;
-        }
-        .msp-mail-sending-plane {
-            display: inline-block;
-            font-size: 1.65rem;
-            color: #1d4ed8;
-            animation: msp-mail-plane-fly 1.2s ease-in-out infinite;
-            transform-origin: center;
-        }
-        .msp-mail-sending-text {
-            margin-top: 0.4rem;
-            color: #1f2937;
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-        @keyframes msp-mail-plane-fly {
-            0% { transform: translateX(-10px) translateY(2px) rotate(-16deg); opacity: .72; }
-            45% { transform: translateX(10px) translateY(-3px) rotate(12deg); opacity: 1; }
-            100% { transform: translateX(-10px) translateY(2px) rotate(-16deg); opacity: .72; }
-        }
-        body.msp-mail-sending-open {
-            overflow: hidden;
-        }
-    </style>
-    <?php msp2RenderSearchableSelectAssets(); ?>
+<?php msp2RenderSearchableSelectAssets(); ?>
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
@@ -726,7 +683,7 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                                         $arrendatarioOptions[] = [
                                             'value' => (string) $arrId,
                                             'label' => $arrLabel,
-                                            'label_html' => $arrLabelHtml,
+                                            'label_html' => msp2SearchableSelectTrustedHtml($arrLabelHtml),
                                             'search' => mb_strtolower($arrSearch, 'UTF-8'),
                                         ];
                                     }
@@ -768,20 +725,16 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                 <div class="card">
                     <div class="card-body">
                         <h2 class="h6 mb-3">Documentos del período</h2>
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-hover align-middle text-center mb-0">
+                        <div class="table-responsive gp-table-shell">
+                            <table class="table table-bordered table-hover align-middle mb-0 gp-table-compact gp-table-mobile-cards">
                                 <thead class="table-light">
                                     <tr>
-                                        <th style="width: 80px;">Doc</th>
-                                        <th class="text-start">Tienda</th>
-                                        <th style="width: 120px;">Número</th>
-                                        <th style="width: 120px;">Emisión</th>
-                                        <th style="width: 120px;">Venc.</th>
-                                        <th style="width: 130px;" class="text-end">Monto</th>
-                                        <th style="width: 130px;" class="text-end">Saldo</th>
-                                        <th style="width: 120px;">Estado</th>
-                                        <th style="width: 110px;">Pagos</th>
-                                        <th style="width: 150px;">Acción</th>
+                                        <th>Documento</th>
+                                        <th>Tienda</th>
+                                        <th>Emisión / vencimiento</th>
+                                        <th>Resumen financiero</th>
+                                        <th data-gp-column-kind="state">Estado / pagos</th>
+                                        <th data-gp-column-kind="actions">Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -810,18 +763,15 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                                                 . (string) ($doc['nombre_tienda'] ?? '');
                                         ?>
                                         <tr>
-                                            <td>#<?php echo $docId; ?></td>
-                                            <td class="text-start"><?php echo msp2Escape((string) ($doc['nombre_tienda'] ?? '-')); ?></td>
-                                            <td><?php echo msp2Escape((string) ($doc['numero_documento'] ?? '')); ?></td>
-                                            <td><?php echo msp2Escape(rpFmtFecha((string) ($doc['fecha_emision'] ?? ''))); ?></td>
-                                            <td><?php echo msp2Escape(rpFmtFecha((string) ($doc['fecha_vencimiento'] ?? ''))); ?></td>
-                                            <td class="text-end"><?php echo msp2Escape(rpFmtMonto($doc['monto_total'] ?? null)); ?></td>
-                                            <td class="text-end fw-semibold"><?php echo msp2Escape(rpFmtMonto($saldo)); ?></td>
-                                            <td>
+                                            <td data-gp-label="Documento"><strong>#<?php echo $docId; ?></strong><div class="small text-muted"><?php echo msp2Escape((string) ($doc['numero_documento'] ?? '')); ?></div></td>
+                                            <td data-gp-label="Tienda" class="gp-cell-description"><?php echo msp2Escape((string) ($doc['nombre_tienda'] ?? '-')); ?></td>
+                                            <td data-gp-label="Emisión / vencimiento"><span class="gp-data-pair"><span>Emisión</span><strong><?php echo msp2Escape(rpFmtFecha((string) ($doc['fecha_emision'] ?? ''))); ?></strong></span><span class="gp-data-pair"><span>Vence</span><strong><?php echo msp2Escape(rpFmtFecha((string) ($doc['fecha_vencimiento'] ?? ''))); ?></strong></span></td>
+                                            <td data-gp-label="Resumen financiero" class="gp-financial-cell"><span class="gp-data-pair"><span>Monto</span><strong><?php echo msp2Escape(rpFmtMonto($doc['monto_total'] ?? null)); ?></strong></span><span class="gp-data-pair gp-data-pair--total"><span>Saldo</span><strong><?php echo msp2Escape(rpFmtMonto($saldo)); ?></strong></span></td>
+                                            <td data-gp-label="Estado / pagos" class="gp-cell-state">
                                                 <span class="badge <?php echo msp2Escape((string) $estado['badge']); ?>"><?php echo msp2Escape((string) $estado['label']); ?></span>
+                                                <div class="small text-muted mt-1"><?php echo number_format((int) ($doc['cantidad_pagos'] ?? 0), 0, ',', '.'); ?> pago(s)</div>
                                             </td>
-                                            <td><?php echo number_format((int) ($doc['cantidad_pagos'] ?? 0), 0, ',', '.'); ?></td>
-                                            <td>
+                                            <td data-gp-label="Acción" class="gp-cell-actions">
                                                 <?php if ($puedePagar): ?>
                                                     <button
                                                         type="button"
@@ -870,7 +820,7 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
             <input type="hidden" name="volver_query"        value="<?php echo msp2Escape(http_build_query($queryBase)); ?>">
 
             <!-- Header -->
-            <div class="modal-header" style="background:var(--color-surface,#fff);border-bottom:1px solid var(--color-border,#e5e7eb);">
+            <div class="modal-header" style="background:var(--color-surface);border-bottom:1px solid var(--color-border);">
                 <div>
                     <h2 class="modal-title fs-5 mb-0 d-flex align-items-center gap-2">Registrar pago</h2>
                     <div class="small text-muted" id="v2_doc_label" style="margin-top:2px;"></div>
@@ -879,7 +829,7 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
             </div>
 
             <!-- Body -->
-            <div class="modal-body" style="background:var(--color-bg,#f9fafb);">
+            <div class="modal-body" style="background:var(--color-bg);">
 
                 <!-- Monto pagado (destacado) + Fecha / Medio / Referencia -->
                 <div class="row g-2 mb-3 align-items-end">
@@ -888,10 +838,10 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                             <i class="bi bi-cash-coin me-1" aria-hidden="true"></i>Monto pagado
                         </label>
                         <div class="input-group">
-                            <span class="input-group-text fw-bold" style="background:#f0fdf4;border-color:#16a34a;color:#15803d;">$</span>
+                            <span class="input-group-text fw-bold" style="background:var(--color-success-soft);border-color:var(--color-success);color:var(--color-success-text);">$</span>
                             <input type="text" inputmode="decimal" class="form-control fw-bold" id="v2_monto_pagado_view"
                                    placeholder="0,00" required autocomplete="off"
-                                   style="font-size:1.25rem;border-color:#16a34a;box-shadow:0 0 0 1px #bbf7d0;color:#15803d;">
+                                   style="font-size:1.25rem;border-color:var(--color-success);box-shadow:0 0 0 1px var(--color-success-border);color:var(--color-success-text);">
                         </div>
                     </div>
                     <div class="col-sm-3">
@@ -1005,22 +955,22 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                 </div>
 
                 <!-- Tabla de conceptos -->
-                <div style="border-radius:10px;overflow:hidden;border:1px solid var(--color-border,#e5e7eb);background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+                <div style="border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--color-border);background:var(--color-surface);box-shadow:0 1px 4px rgba(var(--color-shadow-rgb),.06);">
                     <table class="table align-middle mb-0" id="v2_tabla_conceptos" style="font-size:.92rem;">
                         <thead>
-                            <tr style="background:var(--color-surface,#f3f4f6);">
-                                <th class="text-start ps-3" style="font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">Concepto</th>
-                                <th class="text-end" style="width:115px;font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">Saldo</th>
-                                <th style="width:148px;font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">A pagar</th>
-                                <th style="width:110px;font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);" class="text-center pe-2">Pendiente</th>
+                            <tr style="background:var(--color-surface-soft);">
+                                <th class="text-start ps-3" style="font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">Concepto</th>
+                                <th class="text-end" style="width:115px;font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">Saldo</th>
+                                <th style="width:148px;font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">A pagar</th>
+                                <th style="width:110px;font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);" class="text-center pe-2">Pendiente</th>
                             </tr>
                         </thead>
                         <tbody id="v2_conceptos_body">
                             <!-- Generado por JS -->
                         </tbody>
                         <tfoot>
-                            <tr style="background:var(--color-surface,#f3f4f6);border-top:2px solid var(--color-border,#e5e7eb);">
-                                <th class="text-start ps-3" style="font-size:.85rem;color:#6b7280;">
+                            <tr style="background:var(--color-surface-soft);border-top:2px solid var(--color-border);">
+                                <th class="text-start ps-3" style="font-size:.85rem;color:var(--color-text-muted);">
                                     <button type="button" id="v2_pagar_todo_doc"
                                             class="btn btn-sm btn-outline-success py-0 px-2"
                                             title="Llenar todos los conceptos con su saldo completo">
@@ -1032,11 +982,11 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                                         <i class="bi bi-x-lg me-1" aria-hidden="true"></i>Limpiar
                                     </button>
                                 </th>
-                                <th class="text-end pe-2" style="font-size:.85rem;color:#6b7280;">Total aplicado</th>
+                                <th class="text-end pe-2" style="font-size:.85rem;color:var(--color-text-muted);">Total aplicado</th>
                                 <th class="text-end fw-bold fs-5" id="v2_total_label" colspan="2"
-                                    style="color:var(--color-primary,#16a34a);">$ 0</th>
+                                    style="color:var(--color-success);">$ 0</th>
                             </tr>
-                            <tr style="background:var(--color-surface,#f3f4f6);">
+                            <tr style="background:var(--color-surface-soft);">
                                 <th colspan="4" class="text-end pe-3 pt-1 pb-2">
                                     <button type="button" id="v2_set_monto_desde_total"
                                             class="btn btn-sm btn-outline-success py-0 px-2"
@@ -1063,7 +1013,7 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
             </div>
 
             <!-- Footer -->
-            <div class="modal-footer" style="background:var(--color-surface,#fff);border-top:1px solid var(--color-border,#e5e7eb);">
+            <div class="modal-footer" style="background:var(--color-surface);border-top:1px solid var(--color-border);">
                 <div class="me-auto small text-muted" id="v2_footer_info"></div>
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn btn-success" id="v2_submit_btn">Guardar pago</button>
@@ -1124,8 +1074,16 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
+    const escapeHtmlText = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    })[character]);
+
 (() => {
     const hiddenInput = document.getElementById('id_arrendatario');
     const hiddenPeriodoInput = document.getElementById('filtroPeriodo');
@@ -1651,10 +1609,10 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                     <td class="ps-3 py-2">
                         <div class="d-flex align-items-center gap-2">
                             <i class="bi ${icon}" style="color:${color};font-size:1.05em;flex-shrink:0;" aria-hidden="true"></i>
-                            <span class="fw-semibold" style="font-size:.92rem;">${nombre.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+                            <span class="fw-semibold" style="font-size:.92rem;">${escapeHtmlText(nombre)}</span>
                         </div>
                     </td>
-                    <td class="text-end py-2 pe-3" style="font-size:.85rem;color:#6b7280;white-space:nowrap;">${fmtMoney(saldo)}</td>
+                    <td class="text-end py-2 pe-3" style="font-size:.85rem;color:var(--color-text-muted);white-space:nowrap;">${fmtMoney(saldo)}</td>
                     <td class="py-2">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">$</span>

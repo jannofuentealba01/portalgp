@@ -917,7 +917,7 @@ $solicitudesFiltersConfig = [
         var tipoSelect = document.getElementById('ct-create-tipo-solicitud');
         var errorBox = document.getElementById('ct-create-modal-error');
         var toggles = form.querySelectorAll('[data-create-area-toggle]');
-        var tipoAreaConfig = <?php echo json_encode($tipoAreaUiConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        var tipoAreaConfig = <?php echo pgpJsonForHtml($tipoAreaUiConfig, '{}'); ?>;
 
         function inSet(value, list) {
             for (var i = 0; i < list.length; i++) {

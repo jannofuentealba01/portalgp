@@ -5,6 +5,7 @@ require_once dirname(__DIR__) . '/cobranza/mail_templates/vale_pago_pdf.php';
 require_once dirname(__DIR__) . '/cobranza/mail_templates/comprobante_gastos_pdf.php';
 require_once dirname(__DIR__) . '/cobros/mail_templates/vale_cobro_email.php';
 require_once dirname(__DIR__) . '/documentos_cobro/vale_lib.php';
+require_once dirname(__DIR__, 2) . '/security.php';
 
 function msp2ArchivosPdfConfig(): array
 {
@@ -440,9 +441,65 @@ function msp2ArchivosPdfRelativePath(array $item, string $filename): string
     return $year . '/' . $month . '/' . $filenameSafe;
 }
 
+function msp2ArchivosPdfNormalizeRelativePath(string $relativePath): string
+{
+    $relativePath = trim($relativePath);
+
+    if ($relativePath === '' || str_contains($relativePath, "\0")) {
+        throw new RuntimeException('La ruta relativa del respaldo no es válida.');
+    }
+
+    /*
+     * Trabajamos primero con "/" para validar de la misma manera
+     * rutas procedentes de Windows o de otros entornos.
+     */
+    $normalized = str_replace('\\', '/', $relativePath);
+
+    /*
+     * Una ruta almacenada aquí siempre debe ser relativa.
+     * Bloquea:
+     *   /ruta
+     *   \ruta
+     *   C:\ruta
+     *   \\servidor\recurso
+     */
+    if (
+        str_starts_with($normalized, '/')
+        || preg_match('/^[A-Za-z]:/', $normalized) === 1
+        || str_starts_with($normalized, '//')
+    ) {
+        throw new RuntimeException('La ruta del respaldo debe ser relativa al almacenamiento seguro.');
+    }
+
+    $segments = explode('/', $normalized);
+    $safeSegments = [];
+
+    foreach ($segments as $segment) {
+        if ($segment === '' || $segment === '.' || $segment === '..') {
+            throw new RuntimeException('La ruta relativa del respaldo contiene segmentos no permitidos.');
+        }
+
+        /*
+         * Evita caracteres de control y NTFS Alternate Data Streams (:).
+         */
+        if (
+            preg_match('/[\x00-\x1F\x7F]/', $segment) === 1
+            || str_contains($segment, ':')
+        ) {
+            throw new RuntimeException('La ruta relativa del respaldo contiene caracteres no permitidos.');
+        }
+
+        $safeSegments[] = $segment;
+    }
+
+    return implode(DIRECTORY_SEPARATOR, $safeSegments);
+}
+
 function msp2ArchivosPdfAbsolutePath(string $relativePath): string
 {
-    return msp2ArchivosPdfRootDir() . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($relativePath, "\\/"));
+    return rtrim(msp2ArchivosPdfRootDir(), "\\/")
+        . DIRECTORY_SEPARATOR
+        . msp2ArchivosPdfNormalizeRelativePath($relativePath);
 }
 
 function msp2ArchivosPdfWriteFile(string $absolutePath, string $bytes): void
@@ -591,7 +648,11 @@ function msp2ArchivosPdfArchiveMany(PDO $conn, array $items): array
         } catch (Throwable $exception) {
             $errors[] = [
                 'index' => $index,
-                'message' => $exception->getMessage(),
+                'message' => pgpPublicOrBusinessException(
+                    $exception,
+                    'msp.pagos.archivos_pdf.archivar',
+                    'No fue posible archivar uno de los documentos PDF.'
+                ),
             ];
         }
     }
@@ -727,7 +788,11 @@ function msp2ArchivosPdfRegisterMetadataMany(PDO $conn, array $items): array
         } catch (Throwable $exception) {
             $errors[] = [
                 'index' => $index,
-                'message' => $exception->getMessage(),
+                'message' => pgpPublicOrBusinessException(
+                    $exception,
+                    'msp.pagos.archivos_pdf.metadata',
+                    'No fue posible registrar uno de los documentos PDF.'
+                ),
             ];
         }
     }
@@ -1117,6 +1182,14 @@ function msp2ArchivosPdfValidateRegenerationOrigin(PDO $conn, array $row): array
 
 function msp2ArchivosPdfRefreshMaterialized(PDO $conn, array $row, bool $force = false): array
 {
+    $originValidation = msp2ArchivosPdfValidateRegenerationOrigin($conn, $row);
+
+    if (($originValidation['ok'] ?? false) !== true) {
+        throw new RuntimeException(
+            'El respaldo perdió su documento o pago de origen y no puede descargarse ni regenerarse.'
+        );
+    }
+
     $relativePath = trim((string) ($row['ruta_relativa'] ?? ''));
     if ($relativePath === '') {
         throw new RuntimeException('El respaldo no tiene una ruta válida.');

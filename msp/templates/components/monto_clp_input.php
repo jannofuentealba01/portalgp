@@ -47,34 +47,7 @@ if (!function_exists('msp2RenderMontoClpAssets')) {
         }
         $assetsRendered = true;
         ?>
-        <style>
-            .msp-monto-label {
-                margin-bottom: .25rem;
-                font-size: .78rem;
-                font-weight: 700;
-                color: #15803d;
-            }
-
-            .msp-monto-label i {
-                margin-right: .25rem;
-            }
-
-            .msp-monto-group .input-group-text {
-                background: #f0fdf4;
-                border-color: #16a34a;
-                color: #15803d;
-                font-weight: 700;
-            }
-
-            .msp-monto-input {
-                font-size: 1.25rem;
-                font-weight: 700;
-                border-color: #16a34a;
-                box-shadow: 0 0 0 1px #bbf7d0;
-                color: #15803d;
-            }
-        </style>
-        <script>
+<script>
         (() => {
             const bindMontoClpInputs = () => {
                 const montoInputs = Array.from(document.querySelectorAll('.js-monto-clp')).filter((el) => el instanceof HTMLInputElement);

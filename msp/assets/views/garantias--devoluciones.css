@@ -1,0 +1,13 @@
+/* Page-specific screen layout. Source: msp/garantias/devoluciones.php */
+
+.gd-return-card .card-header { padding: .55rem .8rem; }
+        .gd-return-card .card-body { padding: .7rem .8rem .75rem; }
+        #formDevolucion { --bs-gutter-y: .55rem; --bs-gutter-x: .75rem; }
+        #formDevolucion .form-label { margin-bottom: .2rem; font-size: .84rem; font-weight: 600; }
+        #formDevolucion .form-control,
+        #formDevolucion .form-select { min-height: 36px; padding-top: .34rem; padding-bottom: .34rem; font-size: .88rem; }
+        #formDevolucion .form-text { margin-top: .15rem; font-size: .75rem; line-height: 1.2; }
+        #formDevolucion textarea { min-height: 38px; resize: vertical; }
+        #gd_resumen .alert { padding: .45rem .6rem; }
+        #gd_resumen small { font-size: .76rem; }
+        #gd_resumen strong { font-size: .88rem; }

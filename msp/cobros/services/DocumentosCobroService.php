@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once dirname(__DIR__, 2) . '/services/DocumentoCobroTrazabilidadService.php';
+
 final class DocumentosCobroService
 {
     private const SERVICE_PROFILES = ['ALL', 'LUZ_ONLY', 'LUZ_GAS', 'LUZ_AGUA', 'LUZ_GAS_AGUA', 'LUZ_CON_AGUA'];
@@ -34,6 +36,11 @@ final class DocumentosCobroService
     $targetTiendaCsv = implode(',', array_map('strval', array_keys($targetTiendaIdsNorm)));
     $hasTargetTiendaFilter = $targetTiendaCsv !== '';
 
+    $ownsTransaction = !$conn->inTransaction();
+    if ($ownsTransaction) {
+        $conn->beginTransaction();
+    }
+    try {
     $periodoFacturacion = null;
     $periodoStmt = $conn->prepare(
         'SELECT c.periodo_facturacion
@@ -1125,11 +1132,29 @@ final class DocumentosCobroService
         $docsGenerados = (int) ($reconRes['docs_creados'] ?? 0);
     }
 
-    return [
+    DocumentoCobroTrazabilidadService::registrarGeneracion(
+        $conn,
+        (string) $periodoFacturacion,
+        $rep,
+        $serviceProfile,
+        $targetTiendaCsv
+    );
+
+    $result = [
         'documentos_generados' => $docsGenerados,
         'items_generados' => $itemsGenerados,
         'items_recompuestos' => $itemsRecompuestos,
     ];
+    if ($ownsTransaction) {
+        $conn->commit();
+    }
+    return $result;
+    } catch (Throwable $exception) {
+        if ($ownsTransaction && $conn->inTransaction()) {
+            $conn->rollBack();
+        }
+        throw $exception;
+    }
 }
 
     public static function pruneIncompleteDocumentsByCompletionStage(PDO $conn, string $periodoFacturacion, string $etapa): int
@@ -1254,12 +1279,25 @@ final class DocumentosCobroService
 
             SELECT @@ROWCOUNT AS docs_pruned;";
 
-        $stmt = $conn->prepare($sql);
-        $stmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
-        $stmt->execute();
-        $row = omFetchFirstRowsetRow($stmt);
-
-        return (int) ($row['docs_pruned'] ?? 0);
+        $ownsTransaction = !$conn->inTransaction();
+        if ($ownsTransaction) {
+            $conn->beginTransaction();
+        }
+        try {
+            $stmt = $conn->prepare($sql);
+            $stmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
+            $stmt->execute();
+            $row = omFetchFirstRowsetRow($stmt);
+            if ($ownsTransaction) {
+                $conn->commit();
+            }
+            return (int) ($row['docs_pruned'] ?? 0);
+        } catch (Throwable $exception) {
+            if ($ownsTransaction && $conn->inTransaction()) {
+                $conn->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     private static function generateArriendoSnapshotForCierre(
@@ -1682,14 +1720,30 @@ final class DocumentosCobroService
              LEFT JOIN @tiendas_objetivo tobj
                 ON tobj.id_tienda = dc.id_tienda
              WHERE dc.periodo_facturacion = @periodo
-               AND tobj.id_tienda IS NULL;
+               AND tobj.id_tienda IS NULL
+               AND NOT EXISTS (
+                    SELECT 1 FROM dbo.msp_pagos p
+                    WHERE p.id_documento_cobro = dc.id_documento_cobro
+               )
+               AND NOT EXISTS (
+                    SELECT 1 FROM dbo.msp_envio_lote_documentos eld
+                    WHERE eld.id_documento_cobro = dc.id_documento_cobro
+               );
 
              DELETE dc
              FROM dbo.msp_documentos_cobro dc
              LEFT JOIN @tiendas_objetivo tobj
                 ON tobj.id_tienda = dc.id_tienda
              WHERE dc.periodo_facturacion = @periodo
-               AND tobj.id_tienda IS NULL;
+               AND tobj.id_tienda IS NULL
+               AND NOT EXISTS (
+                    SELECT 1 FROM dbo.msp_pagos p
+                    WHERE p.id_documento_cobro = dc.id_documento_cobro
+               )
+               AND NOT EXISTS (
+                    SELECT 1 FROM dbo.msp_envio_lote_documentos eld
+                    WHERE eld.id_documento_cobro = dc.id_documento_cobro
+               );
 
              SELECT @@ROWCOUNT AS docs_pruned;"
         );

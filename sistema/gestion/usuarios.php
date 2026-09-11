@@ -223,6 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($password !== $passwordConfirm) {
                 throw new RuntimeException('Las contraseñas del nuevo usuario no coinciden.');
             }
+            pgpRequireStrongPassword($password, $username, $email);
 
             $duplicateStmt = $conn->prepare('SELECT COUNT(*) FROM cr_usuarios WHERE UserName = :username OR correo_electronico = :email');
             $duplicateStmt->execute([
@@ -258,6 +259,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $urlLogo = trim((string) ($_POST['url_logo'] ?? ''));
             $roleId = (int) ($_POST['rol_id'] ?? 0);
             $stateId = (int) ($_POST['estado_id'] ?? 0);
+            if ($userId === gpGestionUserId()) {
+                $ownAccess = pgpSecurityUser($conn, $userId);
+                if ($stateId !== 1 || $roleId !== (int)($ownAccess['rol_id'] ?? 0)) {
+                    throw new RuntimeException('Para conservar tu acceso, no puedes deshabilitarte ni cambiar tu propio rol desde esta sesión.');
+                }
+            }
             $password = trim((string) ($_POST['password'] ?? ''));
             $passwordConfirm = trim((string) ($_POST['password_confirm'] ?? ''));
 
@@ -271,6 +278,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($password !== '' && $password !== $passwordConfirm) {
                 throw new RuntimeException('La nueva contraseña y su confirmación no coinciden.');
+            }
+            if ($password !== '') {
+                $identityStmt = $conn->prepare('SELECT UserName FROM cr_usuarios WHERE id=:id');
+                $identityStmt->execute([':id' => $userId]);
+                $identityUsername = (string) ($identityStmt->fetchColumn() ?: '');
+                pgpRequireStrongPassword($password, $identityUsername, $email);
             }
 
             $duplicateStmt = $conn->prepare('SELECT COUNT(*) FROM cr_usuarios WHERE correo_electronico = :email AND id <> :id');
@@ -363,6 +376,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'toggle_user_status') {
             $userId = (int) ($_POST['id'] ?? 0);
+            if ($userId === gpGestionUserId()) {
+                throw new RuntimeException('No puedes deshabilitar tu propia cuenta.');
+            }
 
             if ($userId <= 0) {
                 throw new RuntimeException('Usuario inválido para cambiar estado.');
@@ -415,7 +431,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($conn->inTransaction()) {
             $conn->rollBack();
         }
-        gpGestionSetFlash('danger', $e->getMessage());
+        gpGestionSetFlash('danger', pgpPublicOrBusinessException($e, 'gestion.usuarios', 'No fue posible procesar la solicitud de usuarios.'));
         gpGestionRedirect('usuarios.php');
     }
 }
@@ -565,8 +581,8 @@ unset($user);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Usuarios</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
     <style>
         .gp-table-meta {
@@ -1107,6 +1123,7 @@ unset($user);
 <div class="modal fade" id="createUserModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <form method="POST" class="modal-content" id="createUserForm" style="border-radius: var(--radius-lg); overflow: hidden;">
+            <?php pgpCsrfField(); ?>
             <input type="hidden" name="action" value="create_user">
             <div class="modal-header">
                 <div>
@@ -1136,12 +1153,13 @@ unset($user);
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="create_password">Contraseña <span class="gp-required-mark">*</span></label>
-                        <input type="password" class="form-control" id="create_password" name="password" required minlength="8">
+                        <input type="password" class="form-control" id="create_password" name="password" required minlength="12" maxlength="128" autocomplete="new-password">
+                        <div class="form-text">Mínimo 12 caracteres; evita usar el nombre de usuario o el correo.</div>
                         <div class="form-text">Ingresa la contraseña inicial del usuario.</div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="create_password_confirm">Confirmar contraseña <span class="gp-required-mark">*</span></label>
-                        <input type="password" class="form-control" id="create_password_confirm" name="password_confirm" required minlength="8">
+                        <input type="password" class="form-control" id="create_password_confirm" name="password_confirm" required minlength="12" maxlength="128" autocomplete="new-password">
                         <div class="form-text">Debe coincidir exactamente con la contraseña anterior.</div>
                     </div>
                     <div class="col-md-6">
@@ -1198,6 +1216,7 @@ unset($user);
 <div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <form method="POST" class="modal-content" id="editUserForm" style="border-radius: var(--radius-lg); overflow: hidden;">
+            <?php pgpCsrfField(); ?>
             <input type="hidden" name="action" value="update_user">
             <input type="hidden" name="id" id="edit_id">
             <div class="modal-header">
@@ -1285,12 +1304,13 @@ unset($user);
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="edit_password">Nueva contraseña <span class="gp-optional-mark">(opcional)</span></label>
-                        <input type="password" class="form-control" id="edit_password" name="password" placeholder="Dejar vacío para mantener la actual" minlength="8">
+                        <input type="password" class="form-control" id="edit_password" name="password" placeholder="Dejar vacío para mantener la actual" minlength="12" maxlength="128" autocomplete="new-password">
+                        <div class="form-text">Solo se valida si defines una contraseña nueva. Mínimo 12 caracteres.</div>
                         <div class="form-text">Solo completa este campo si quieres reemplazar la contraseña actual.</div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="edit_password_confirm">Confirmar nueva contraseña <span class="gp-optional-mark">(opcional)</span></label>
-                        <input type="password" class="form-control" id="edit_password_confirm" name="password_confirm" placeholder="Repite la nueva contraseña" minlength="8">
+                        <input type="password" class="form-control" id="edit_password_confirm" name="password_confirm" placeholder="Repite la nueva contraseña" minlength="12" maxlength="128" autocomplete="new-password">
                         <div class="form-text">Si cambias contraseña, debes confirmarla aquí.</div>
                     </div>
                 </div>
@@ -1352,6 +1372,7 @@ unset($user);
 <div class="modal fade" id="assignDepartmentsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <form method="POST" class="modal-content" id="assignDepartmentsForm" style="border-radius: var(--radius-lg);">
+            <?php pgpCsrfField(); ?>
             <input type="hidden" name="action" value="assign_user_departments">
             <input type="hidden" name="id" id="assign_departments_user_id">
             <div class="modal-header">
@@ -1420,7 +1441,7 @@ gpRenderConfirmActionModal([
 ]);
 ?>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php gpRenderSearchableSelectAssets(); ?>
 <?php gpRenderSearchableMultiSelectAssets(); ?>
 <script>

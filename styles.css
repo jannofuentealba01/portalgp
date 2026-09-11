@@ -4,18 +4,42 @@
   --color-surface: #ffffff;
   --color-surface-soft: #eef2f7;
   --color-border: #d7dee8;
+  --color-border-hover: #aeb8c7;
   --color-border-strong: #08284b;
   --color-text: #1f2937;
+  --color-text-muted-rgb: 91, 103, 120;
   --color-text-muted: #5b6778;
   --color-text-on-primary: #ffffff;
   --color-primary: #0b3a6e;
+  --color-primary-rgb: 11, 58, 110;
   --color-primary-hover: #0a325f;
   --color-primary-soft: #e7eff8;
   --color-success: #0f766e;
+  --color-success-rgb: 15, 118, 110;
+  --color-success-hover: #0c625c;
+  --color-success-soft: #ecfdf5;
+  --color-success-border: #99d8cf;
+  --color-success-text: #075d57;
   --color-warning: #b45309;
+  --color-warning-rgb: 180, 83, 9;
+  --color-warning-hover: #92400e;
+  --color-warning-soft: #fff7ed;
+  --color-warning-border: #f3c98b;
+  --color-warning-text: #78350f;
   --color-danger: #b42318;
+  --color-danger-rgb: 180, 35, 24;
+  --color-danger-hover: #941b13;
+  --color-danger-soft: #fef2f2;
+  --color-danger-border: #f4b4ae;
+  --color-danger-text: #7f1d1d;
   --color-info: #1d4ed8;
+  --color-info-rgb: 29, 78, 216;
+  --color-info-soft: #eff6ff;
+  --color-info-border: #b7cff7;
   --shadow-sm: 0 2px 6px rgba(16, 24, 40, 0.06);
+  --color-surface-rgb: 255, 255, 255;
+  --color-text-rgb: 31, 41, 55;
+  --color-shadow-rgb: 16, 24, 40;
   --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08);
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -831,7 +855,7 @@ table.table-compact th {
 
 .msp-management-page-header h1 {
   margin: 0;
-  color: #003399;
+  color: var(--color-primary);
   font-size: clamp(1.6rem, 2.2vw, 2rem);
   font-weight: 600;
 }
@@ -1565,7 +1589,9 @@ table.table-compact th {
 }
 
 .msp-locals-table {
-  min-width: 1080px;
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
   font-family: inherit;
   font-size: .86rem;
 }
@@ -1579,13 +1605,13 @@ table.table-compact th {
   line-height: 1.2;
 }
 
-.msp-locals-table .local-number { width: 48px; }
-.msp-locals-table .local-code { min-width: 90px; }
-.msp-locals-table .local-area { min-width: 80px; }
-.msp-locals-table .local-rent { min-width: 150px; }
-.msp-locals-table .local-state { min-width: 95px; }
-.msp-locals-table .local-meters { min-width: 310px; }
-.msp-locals-table .local-actions { min-width: 105px; }
+.msp-locals-table .local-number { width: 5%; }
+.msp-locals-table .local-code { width: 11%; }
+.msp-locals-table .local-area { width: 8%; }
+.msp-locals-table .local-rent { width: 14%; }
+.msp-locals-table .local-state { width: 11%; }
+.msp-locals-table .local-meters { width: 40%; }
+.msp-locals-table .local-actions { width: 11%; }
 
 .msp-locals-table .local-number,
 .msp-locals-table .local-code,
@@ -2164,7 +2190,7 @@ table.table-compact th {
 
 /* Headings in Forms */
 h1.form-title {
-  color: #003399;
+  color: var(--color-primary);
   font-size: 26px;
   margin-bottom: 20px;
   font-weight: 600;
@@ -2403,8 +2429,7 @@ h2.form-subtitle {
     min-width: 90px;
   }
 }
-/* Navegación de regreso de página. El contenedor reserva el punto de montaje
-   para breadcrumbs sin mostrarlos todavía. */
+/* Navegación de regreso de página. */
 .gp-page-navigation {
   display: flex;
   flex-wrap: wrap;
@@ -2416,6 +2441,8 @@ h2.form-subtitle {
   order: -100;
 }
 
+.gp-page-return,
+a.gp-page-return,
 .gp-page-back,
 a.gp-page-back {
   display: inline-flex;
@@ -2423,23 +2450,28 @@ a.gp-page-back {
   justify-content: center;
   min-height: 32px;
   padding: 4px 10px;
-  border: 1px solid #6b7280;
-  border-radius: 7px;
+  max-width: min(100%, 15rem);
+  border: 1px solid var(--color-text-muted);
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: #4b5563;
+  color: var(--color-text-muted);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.25;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-decoration: none;
   box-shadow: none;
 }
 
+.gp-page-return:hover,
+.gp-page-return:focus-visible,
 .gp-page-back:hover,
 .gp-page-back:focus-visible {
-  border-color: #374151;
-  background: #f3f4f6;
-  color: #111827;
+  border-color: var(--color-border-hover);
+  background: var(--color-surface-soft);
+  color: var(--color-text);
   text-decoration: none;
 }
 
@@ -2447,20 +2479,20 @@ a.gp-page-back {
    del estado interactivo para que siempre sea reconocible. */
 .gp-page-msp-cobros-operacion-mensual-php .gp-page-back,
 .gp-page-msp-cobros-operacion-mensual-php a.gp-page-back {
-  border-color: #cbd5e1;
-  background: #f3f4f6;
-  color: #111827;
+  border-color: var(--color-border);
+  background: var(--color-surface-soft);
+  color: var(--color-text);
 }
 
 .gp-page-msp-cobros-operacion-mensual-php .gp-page-back:hover,
 .gp-page-msp-cobros-operacion-mensual-php .gp-page-back:focus-visible {
-  border-color: #fff;
-  background: #fff;
-  color: #0b3a6e;
+  border-color: var(--color-surface);
+  background: var(--color-surface);
+  color: var(--color-primary);
 }
 
 .gp-page-back:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.24);
+  outline: 3px solid rgba(var(--color-info-rgb), 0.24);
   outline-offset: 2px;
 }
 
@@ -2497,11 +2529,8 @@ a.gp-page-back {
 }
 
 .gp-module-msp .gp-page-commandbar > .gp-page-commandbar__title {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  white-space: nowrap;
+  display: block;
+  white-space: normal;
 }
 
 .gp-module-msp .gp-page-commandbar > .gp-page-commandbar__title h1,
@@ -2512,68 +2541,12 @@ a.gp-page-back {
   line-height: 1.15 !important;
 }
 
-.gp-module-msp .gp-breadcrumbs {
-  max-width: min(54vw, 720px);
-  margin: 0 0 2px;
-  overflow: hidden;
-  color: #64748b;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.15;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.gp-module-msp .gp-breadcrumbs ol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  list-style: none;
-}
-
-.gp-module-msp .gp-breadcrumbs li {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.gp-module-msp .gp-breadcrumbs li + li::before {
-  content: "›";
-  flex: 0 0 auto;
-  margin: 0 5px;
-  color: #94a3b8;
-}
-
-.gp-module-msp .gp-breadcrumbs a,
-.gp-module-msp .gp-breadcrumbs span {
-  display: block;
-  overflow: hidden;
-  color: inherit;
-  text-overflow: ellipsis;
-  text-decoration: none;
-}
-
-.gp-module-msp .gp-breadcrumbs a:hover,
-.gp-module-msp .gp-breadcrumbs a:focus-visible {
-  color: #0b3a6e;
-  text-decoration: underline;
-}
-
-.gp-module-msp .gp-breadcrumbs [aria-current="page"] {
-  color: #334155;
-  font-weight: 600;
-}
-
-.gp-module-msp .gp-breadcrumbs-replaced-kicker { display: none !important; }
-
-/* Estas pantallas ya expresan su contexto en el título y en el botón volver. */
-.gp-page-msp-control-diario-index-php .gp-breadcrumbs,
-.gp-page-msp-garantias-aplicaciones-php .gp-breadcrumbs {
+.gp-module-msp .gp-breadcrumbs,
+.gp-module-msp .breadcrumb,
+.gp-module-msp .section-kicker,
+.gp-module-msp .gp-section-hero__kicker,
+.gp-module-msp .cc-crumb,
+.gp-module-msp [data-gp-redundant-context] {
   display: none !important;
 }
 
@@ -2582,9 +2555,8 @@ a.gp-page-back {
   display: none !important;
 }
 
-/* Control integral de garantías: once columnas visibles sin desplazamiento
-   horizontal en escritorio. La información extensa queda disponible al posar
-   el cursor y las acciones conservan el patrón compacto de iconos. */
+/* Control integral de garantías: siete columnas compuestas, legibles y sin
+   desplazamiento horizontal en escritorio. */
 .gp-module-msp .msp-guarantees-report { overflow-x: hidden; }
 .gp-module-msp .msp-guarantees-table-wrap { width: 100%; overflow-x: hidden; }
 .gp-module-msp .msp-guarantees-table {
@@ -2596,23 +2568,29 @@ a.gp-page-back {
 .gp-module-msp .msp-guarantees-table th,
 .gp-module-msp .msp-guarantees-table td {
   min-width: 0 !important;
-  padding: .34rem .28rem;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  padding: .38rem .4rem;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
 }
-.gp-module-msp .msp-guarantees-table th { font-size: .7rem; }
-.gp-module-msp .msp-guarantees-table th:nth-child(1) { width: 17%; }
-.gp-module-msp .msp-guarantees-table th:nth-child(2) { width: 6%; }
-.gp-module-msp .msp-guarantees-table th:nth-child(n+3):nth-child(-n+9) { width: 7.3%; }
-.gp-module-msp .msp-guarantees-table th:nth-child(10) { width: 14%; }
-.gp-module-msp .msp-guarantees-table th:nth-child(11) { width: 11.9%; }
+.gp-module-msp .msp-guarantees-table th { font-size: .82rem; }
+.gp-module-msp .msp-guarantees-table th:nth-child(1) { width: 22%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(2) { width: 9%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(3) { width: 16%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(4) { width: 16%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(5) { width: 13%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(6) { width: 14%; }
+.gp-module-msp .msp-guarantees-table th:nth-child(7) { width: 10%; }
 .gp-module-msp .msp-guarantees-table .cell-ellipsis {
-  display: block;
+  display: -webkit-box;
   max-width: 100%;
   overflow: hidden;
-  white-space: nowrap;
+  white-space: normal;
   text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .gp-module-msp .msp-guarantees-table .money {
   font-variant-numeric: tabular-nums;
@@ -2631,28 +2609,8 @@ a.gp-page-back {
 }
 
 @media (max-width: 991.98px) {
-  .gp-module-msp .msp-guarantees-table-wrap { overflow-x: auto; }
-  .gp-module-msp .msp-guarantees-table { min-width: 1050px !important; }
-}
-
-/* En la barra compacta, los ancestros y el título forman una sola línea.
-   El último elemento permanece disponible para lectores de pantalla. */
-.gp-module-msp .gp-page-commandbar__title .gp-breadcrumbs {
-  flex: 0 1 auto;
-  max-width: 28vw;
-  margin: 0;
-}
-
-.gp-module-msp .gp-page-commandbar__title .gp-breadcrumbs [aria-current="page"] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  .gp-module-msp .msp-guarantees-table-wrap { overflow-x: visible; }
+  .gp-module-msp .msp-guarantees-table { min-width: 0 !important; }
 }
 
 .gp-module-msp .gp-page-commandbar > .gp-page-commandbar__actions {
@@ -2661,6 +2619,14 @@ a.gp-page-back {
   min-width: 0;
   margin: 0 !important;
   justify-self: end;
+}
+
+.gp-module-msp .gp-page-commandbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .gp-module-msp .gp-page-navigation-host { position: relative; }
@@ -2673,23 +2639,25 @@ a.gp-page-back {
   width: auto;
 }
 
-/* Densidad de datos: una fila visual por registro y desplazamiento horizontal. */
+/* Densidad base: las tablas comunes ocupan el ancho disponible. */
 .gp-module-msp {
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
 .gp-module-msp .table-responsive,
-.gp-module-msp .msp-management-table-responsive { overflow-x: auto; }
+.gp-module-msp .msp-management-table-responsive { overflow-x: visible; }
 
-.gp-module-msp main { overflow-x: auto; }
+.gp-module-msp main { overflow-x: clip; }
 
 .gp-module-msp main table {
-  min-width: max-content;
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
 }
 
 .gp-module-msp main table > :not(caption) > * > * {
   padding: .25rem .45rem;
-  white-space: nowrap;
+  white-space: normal;
   vertical-align: middle;
 }
 
@@ -2744,32 +2712,38 @@ a.gp-page-back {
 }
 
 .gp-module-msp .msp-stores-table .store-number { width: 4%; }
-.gp-module-msp .msp-stores-table .store-name { width: 18%; }
-.gp-module-msp .msp-stores-table .store-tenant { width: 20%; }
+.gp-module-msp .msp-stores-table .store-name { width: 24%; }
+.gp-module-msp .msp-stores-table .store-tenant { width: 24%; }
 .gp-module-msp .msp-stores-table .store-date { width: 9%; }
-.gp-module-msp .msp-stores-table .store-locals { width: 15%; }
-.gp-module-msp .msp-stores-table .store-actions { width: 24%; }
+.gp-module-msp .msp-stores-table .store-locals { width: 18%; }
+.gp-module-msp .msp-stores-table .store-actions { width: 11%; }
 .gp-module-msp .msp-stores-table .store-contract { width: 10%; }
-.gp-module-msp .msp-stores-table .store-locals > .d-flex { flex-wrap: nowrap !important; }
+.gp-module-msp .msp-stores-table .store-locals > .d-flex { flex-wrap: wrap !important; }
 
 .gp-module-msp .msp-contracts-table .contract-id { width: 4%; }
-.gp-module-msp .msp-contracts-table .contract-tenant { width: 24%; }
+.gp-module-msp .msp-contracts-table .contract-tenant { width: 32%; }
 .gp-module-msp .msp-contracts-table .contract-locals { width: 10%; }
 .gp-module-msp .msp-contracts-table .contract-date { width: 8%; }
-.gp-module-msp .msp-contracts-table .contract-rent { width: 16%; }
+.gp-module-msp .msp-contracts-table .contract-rent { width: 17%; }
 .gp-module-msp .msp-contracts-table .contract-state { width: 10%; }
-.gp-module-msp .msp-contracts-table .contract-actions { width: 20%; }
+.gp-module-msp .msp-contracts-table .contract-actions { width: 11%; }
+.gp-module-msp .msp-contracts-table .contract-tenant {
+  white-space: normal !important;
+  display: table-cell;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.gp-module-msp .msp-contracts-table .contract-actions .btn {
+  width: 30px;
+  min-width: 30px;
+  padding-inline: .3rem !important;
+}
 
-.gp-module-msp .msp-pdf-backups-table th:nth-child(1) { width: 8%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(2) { width: 7%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(3) { width: 18%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(4) { width: 8%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(5) { width: 11%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(6) { width: 10%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(7) { width: 10%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(8) { width: 7%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(9) { width: 7%; }
-.gp-module-msp .msp-pdf-backups-table th:nth-child(10) { width: 14%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(1) { width: 13%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(2) { width: 29%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(3) { width: 22%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(4) { width: 22%; }
+.gp-module-msp .msp-pdf-backups-table th:nth-child(5) { width: 14%; }
 .gp-module-msp .msp-pdf-backups-table td:last-child .d-flex { flex-wrap: nowrap !important; }
 
 .gp-module-msp .msp-extra-charges-table th:nth-child(1) { width: 9%; }
@@ -2801,7 +2775,7 @@ a.gp-page-back {
   .gp-module-msp .msp-pdf-backups-index .msp-management-table-responsive,
   .gp-module-msp .msp-extra-charges-index .msp-management-table-responsive,
   .gp-module-msp .msp-ledger-table-responsive {
-    overflow-x: auto;
+    overflow-x: visible;
   }
 
   .gp-module-msp main .msp-stores-table,
@@ -2809,7 +2783,7 @@ a.gp-page-back {
   .gp-module-msp main .msp-pdf-backups-table,
   .gp-module-msp main .msp-extra-charges-table,
   .gp-module-msp main .msp-ledger-table {
-    min-width: 900px !important;
+    min-width: 0 !important;
   }
 }
 
@@ -2843,5 +2817,2139 @@ a.gp-page-back {
     min-height: 32px;
     padding: 4px 9px;
     font-size: 14px;
+  }
+}
+
+/* ============================================
+   MSP: base visual y estructura general
+   Las tablas operativas se ajustan al ancho disponible. El desplazamiento
+   horizontal queda reservado a matrices marcadas de forma explícita.
+   ============================================ */
+
+.gp-module-msp {
+  --msp-page-gutter-x: 16px;
+  --msp-page-gutter-y: 12px;
+  --msp-section-gap: 12px;
+  --msp-card-padding: 14px;
+}
+
+.gp-module-msp main.gp-main {
+  display: block !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: var(--msp-page-gutter-y) var(--msp-page-gutter-x) !important;
+  overflow-x: clip !important;
+}
+
+/* Las vistas operativas terminan con el contenido; el pie legal se conserva en
+   el HTML para impresión e integraciones, pero no consume espacio en MSP. */
+.gp-module-msp > .gp-footer {
+  display: none;
+}
+
+/* Control diario administra su propio shell de pantalla completa. */
+.gp-page-msp-control-diario-index-php main.gp-main.cd-main {
+  padding: 0 !important;
+}
+
+.gp-module-msp main.gp-main > :is(
+  .container,
+  .container-fluid,
+  .box-container,
+  .box-container-narrow,
+  .box-container-wide,
+  .box-container-full,
+  .page-container,
+  .page-container-wide
+) {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0;
+  margin: 0 !important;
+}
+
+/* El contenedor exterior es el shell; no debe dibujar una segunda tarjeta. */
+.gp-module-msp main.gp-main > :is(
+  .box-container,
+  .box-container-narrow,
+  .box-container-wide,
+  .box-container-full
+),
+.gp-module-msp main.gp-main > .container > :is(
+  .box-container,
+  .box-container-narrow,
+  .box-container-wide,
+  .box-container-full
+) {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Neutraliza utilidades históricas demasiado amplias sólo en el nivel página. */
+.gp-module-msp main.gp-main.p-4,
+.gp-module-msp main.gp-main.py-4,
+.gp-module-msp main.gp-main.px-lg-4,
+.gp-module-msp main.gp-main.p-xl-4,
+.gp-module-msp main.gp-main.p-md-4 {
+  padding: var(--msp-page-gutter-y) var(--msp-page-gutter-x) !important;
+}
+
+.gp-module-msp main.gp-main > :is(header, section, .card, .alert, form, .table-responsive) {
+  margin-bottom: var(--msp-section-gap);
+}
+
+.gp-module-msp main.gp-main > :last-child {
+  margin-bottom: 0;
+}
+
+/* Una tabla corriente nunca define el ancho de toda la página. */
+.gp-module-msp main .table-responsive,
+.gp-module-msp main .msp-management-table-responsive,
+.gp-module-msp main .cierre-table-wrap,
+.gp-module-msp main .dex-table-wrap,
+.gp-module-msp main .msp-guarantees-table-wrap,
+.gp-module-msp main .trazabilidad-table-wrap,
+.gp-module-msp main .ag-table-wrap,
+.gp-module-msp main .ag-subtable-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: visible !important;
+}
+
+.gp-module-msp main table:not(.gp-table-matrix) {
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.gp-module-msp main table:not(.gp-table-matrix) > :not(caption) > * > * {
+  min-width: 0 !important;
+  padding: .34rem .45rem;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  white-space: normal !important;
+  vertical-align: middle;
+}
+
+/* Identificadores descriptivos pueden ocupar dos líneas sin invadir columnas. */
+.gp-module-msp main table:not(.gp-table-matrix) :is(
+  .contract-tenant,
+  .store-name,
+  .store-tenant,
+  .local-meters,
+  [data-gp-allow-wrap="true"]
+) {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+.gp-module-msp main table:not(.gp-table-matrix) .cell-ellipsis {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: normal !important;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Importes, estados y controles breves conservan una sola unidad visual. */
+.gp-module-msp main table:not(.gp-table-matrix) :is(
+  .money,
+  .text-end,
+  .badge,
+  .btn,
+  time
+) {
+  overflow-wrap: normal;
+  white-space: nowrap !important;
+}
+
+.gp-module-msp main table:not(.gp-table-matrix) :is(form, .d-flex) {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.gp-module-msp main table:not(.gp-table-matrix) :is(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Única excepción: matrices multidimensionales declaradas explícitamente. */
+.gp-module-msp main .gp-table-matrix-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overscroll-behavior-inline: contain;
+}
+
+.gp-module-msp main table.gp-table-matrix {
+  table-layout: fixed;
+}
+
+.gp-module-msp main table.gp-table-matrix > :not(caption) > * > * {
+  white-space: nowrap;
+}
+
+/* Cabecera única y compacta: volver | contexto/título | acciones. */
+.gp-module-msp .gp-page-commandbar {
+  min-height: 36px;
+  margin-bottom: var(--msp-section-gap) !important;
+}
+
+.gp-module-msp .gp-page-commandbar > .gp-page-commandbar__title {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.gp-module-msp .gp-page-commandbar > .gp-page-commandbar__title h1,
+.gp-module-msp .gp-page-commandbar > h1.gp-page-commandbar__title {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767.98px) {
+  .gp-module-msp {
+    --msp-page-gutter-x: 10px;
+    --msp-page-gutter-y: 10px;
+    --msp-section-gap: 10px;
+  }
+
+  .gp-module-msp .gp-page-commandbar {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+  }
+
+  .gp-module-msp main table:not(.gp-table-matrix) > :not(caption) > * > * {
+    padding: .3rem .36rem;
+  }
+}
+
+@media print {
+  .gp-module-msp main.gp-main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+}
+
+/* ============================================
+   MSP: sistema común de tablas
+   ============================================ */
+
+.gp-module-msp .gp-table-shell {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: visible;
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-bottom: 0;
+  table-layout: fixed;
+  color: var(--color-text);
+}
+
+.gp-module-msp table.gp-table-compact {
+  font-size: .875rem;
+}
+
+.gp-module-msp table.gp-table-dense {
+  font-size: .8rem;
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) > :not(caption) > * > * {
+  min-width: 0 !important;
+  padding: .34rem .45rem;
+  border-color: var(--color-border);
+  line-height: 1.22;
+}
+
+.gp-module-msp table.gp-table-dense > :not(caption) > * > * {
+  padding: .3rem .34rem;
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) thead th {
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+  font-size: .78rem;
+  font-weight: 650;
+  vertical-align: middle;
+}
+
+.gp-module-msp table.gp-table-sticky thead th {
+  position: sticky;
+  top: 38px;
+  z-index: 4;
+  box-shadow: inset 0 -1px 0 var(--color-border);
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) [data-gp-column-kind="short"] {
+  width: clamp(44px, 6vw, 72px);
+  text-align: center;
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) [data-gp-column-kind="date"] {
+  width: clamp(78px, 9vw, 112px);
+  text-align: center;
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) [data-gp-column-kind="number"] {
+  width: clamp(80px, 9vw, 118px);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) [data-gp-column-kind="state"] {
+  width: clamp(78px, 9vw, 112px);
+  text-align: center;
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) [data-gp-column-kind="actions"] {
+  width: clamp(92px, 11vw, 148px);
+  text-align: center;
+}
+
+.gp-module-msp .gp-cell-description {
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal !important;
+}
+
+.gp-module-msp .gp-cell-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap !important;
+}
+
+.gp-module-msp .gp-cell-state,
+.gp-module-msp .gp-cell-actions {
+  text-align: center;
+}
+
+.gp-module-msp .gp-cell-actions {
+  overflow: visible !important;
+}
+
+.gp-module-msp .gp-cell-actions .btn {
+  min-height: 28px !important;
+  padding: .2rem .42rem !important;
+  font-size: .78rem !important;
+  line-height: 1.15;
+}
+
+.gp-module-msp .gp-table-empty-cell {
+  padding: 1rem .75rem !important;
+  color: var(--color-text-muted) !important;
+  text-align: center !important;
+  font-size: .875rem;
+  font-weight: 500;
+}
+
+.gp-module-msp .gp-row-actions {
+  position: relative;
+  display: inline-block;
+}
+
+.gp-module-msp .gp-row-actions > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 76px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.gp-module-msp .gp-row-actions > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gp-module-msp .gp-row-actions > summary::after {
+  content: "▾";
+  margin-left: .3rem;
+  font-size: .7rem;
+}
+
+.gp-module-msp .gp-row-actions[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.gp-module-msp .gp-row-actions__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  min-width: 160px;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.gp-module-msp .gp-row-actions__menu .btn {
+  width: 100%;
+  justify-content: flex-start;
+  white-space: normal !important;
+}
+
+.gp-module-msp .gp-inline-upload {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.gp-module-msp .gp-inline-upload > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.gp-module-msp .gp-inline-upload > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gp-module-msp .gp-inline-upload__form {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  min-width: min(320px, 70vw) !important;
+  gap: 4px !important;
+  margin-top: 4px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+}
+
+@media (max-width: 767.98px) {
+  .gp-module-msp .gp-table-shell {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix),
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody,
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tfoot {
+    display: block;
+    width: 100% !important;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > thead {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+    overflow: visible;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tfoot > tr {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-soft);
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr > td,
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tfoot > tr > :is(td, th) {
+    display: grid;
+    grid-template-columns: minmax(96px, 34%) minmax(0, 1fr);
+    width: 100% !important;
+    min-height: 32px;
+    gap: 8px;
+    padding: .35rem .5rem !important;
+    border-width: 0 0 1px;
+    text-align: left !important;
+    white-space: normal !important;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr > td:last-child {
+    border-bottom: 0;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr > td::before,
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tfoot > tr > :is(td, th)::before {
+    content: attr(data-gp-label);
+    color: var(--color-text-muted);
+    font-size: .72rem;
+    font-weight: 650;
+    line-height: 1.25;
+    text-transform: none;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr.gp-table-empty-row > td {
+    display: block;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr.gp-table-empty-row > td::before {
+    content: none;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tfoot .gp-table-total-label::before {
+    content: none;
+  }
+
+  .gp-module-msp .gp-cell-number,
+  .gp-module-msp .gp-cell-state,
+  .gp-module-msp .gp-cell-actions {
+    justify-items: start;
+  }
+
+  .gp-module-msp .gp-row-actions__menu {
+    right: auto;
+    left: 0;
+  }
+}
+
+@media print {
+  .gp-module-msp .gp-table-shell {
+    border: 0;
+    overflow: visible !important;
+  }
+
+  .gp-module-msp .gp-row-actions {
+    display: none !important;
+  }
+}
+
+/* ============================================
+   MSP: rediseño prioritario de tablas 29–40
+   ============================================ */
+
+.gp-module-msp .gp-data-pair {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem;
+  min-width: 0;
+  padding: .08rem 0;
+  font-size: .875rem;
+  line-height: 1.2;
+}
+
+.gp-module-msp .gp-data-pair > span:first-child {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.gp-module-msp .gp-data-pair > strong {
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.gp-module-msp .gp-data-pair--total {
+  margin-top: .12rem;
+  padding-top: .2rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.gp-module-msp .gp-data-pair--total > strong {
+  color: var(--color-primary);
+  font-size: .82rem;
+}
+
+.gp-module-msp .gp-financial-cell,
+.gp-module-msp .gp-aging-buckets {
+  font-variant-numeric: tabular-nums;
+}
+
+.gp-module-msp .gp-row-detail > summary {
+  color: var(--color-primary);
+  font-size: .74rem;
+  font-weight: 650;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.gp-module-msp .gp-row-detail__content {
+  margin-top: .25rem;
+  padding: .35rem .45rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+  font-size: .74rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.gp-module-msp .gp-import-preview-table th:first-child { width: 6%; }
+.gp-module-msp .gp-import-preview-table th:last-child { width: 16%; }
+.gp-module-msp .gp-import-preview-table td { text-align: left; }
+.gp-module-msp .gp-import-preview-table td:first-child,
+.gp-module-msp .gp-import-preview-table td:last-child { text-align: center; }
+
+.gp-module-msp .gcc-documents-table th:nth-child(1) { width: 5%; }
+.gp-module-msp .gcc-documents-table th:nth-child(2) { width: 20%; }
+.gp-module-msp .gcc-documents-table th:nth-child(3) { width: 19%; }
+.gp-module-msp .gcc-documents-table th:nth-child(4) { width: 26%; }
+.gp-module-msp .gcc-documents-table th:nth-child(5) { width: 12%; }
+.gp-module-msp .gcc-documents-table th:nth-child(6) { width: 18%; }
+
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table {
+  font-size: .875rem;
+}
+
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table th:nth-child(1) { width: 22%; }
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table th:nth-child(2) { width: 9%; }
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table th:nth-child(3) { width: 16%; }
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table th:nth-child(4) { width: 16%; }
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table th:nth-child(5) { width: 13%; }
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table th:nth-child(6) { width: 14%; }
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table th:nth-child(7) { width: 10%; }
+
+.gp-module-msp .msp-meters-table th:nth-child(1) { width: 6%; }
+.gp-module-msp .msp-meters-table th:nth-child(2) { width: 28%; }
+.gp-module-msp .msp-meters-table th:nth-child(3) { width: 28%; }
+.gp-module-msp .msp-meters-table th:nth-child(4) { width: 14%; }
+.gp-module-msp .msp-meters-table th:nth-child(5) { width: 12%; }
+.gp-module-msp .msp-meters-table th:nth-child(6) { width: 12%; }
+
+.gp-module-msp .omw-step-pane > h2 {
+  margin-bottom: .65rem !important;
+}
+
+/* ============================================
+   MSP: Garantías 51–59
+   ============================================ */
+
+.gp-module-msp :is(
+  .msp-guarantees-hub-table,
+  .msp-guarantee-receipts-table,
+  .msp-guarantee-returns-table,
+  .msp-guarantee-reversible-table,
+  .msp-guarantee-reversals-history-table,
+  .msp-guarantee-history-table,
+  .ga-unified-table
+) {
+  width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+  font-size: .86rem;
+}
+
+.gp-module-msp :is(
+  .msp-guarantees-hub-table,
+  .msp-guarantee-receipts-table,
+  .msp-guarantee-returns-table,
+  .msp-guarantee-reversible-table,
+  .msp-guarantee-reversals-history-table,
+  .msp-guarantee-history-table,
+  .ga-unified-table
+) > :not(caption) > * > * {
+  min-width: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  vertical-align: middle;
+}
+
+.gp-module-msp :is(
+  .msp-guarantees-hub-table,
+  .msp-guarantee-receipts-table,
+  .msp-guarantee-returns-table,
+  .msp-guarantee-reversible-table,
+  .msp-guarantee-reversals-history-table,
+  .msp-guarantee-history-table,
+  .ga-unified-table
+) .small {
+  font-size: .78rem !important;
+  line-height: 1.25;
+}
+
+.gp-module-msp .msp-guarantees-hub-table .garantia-disponible,
+.gp-module-msp .garantia-importe-principal {
+  color: var(--color-primary);
+  font-size: .94rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.gp-module-msp .msp-guarantees-hub-table .garantia-acciones > div {
+  align-items: stretch;
+}
+
+.gp-module-msp .msp-guarantees-hub-table .garantia-acciones :is(.btn, .badge) {
+  flex: 1 1 72px;
+  padding-inline: .35rem !important;
+}
+
+.gp-module-msp .msp-guarantee-receipts-table th:nth-child(1) { width: 9%; }
+.gp-module-msp .msp-guarantee-receipts-table th:nth-child(2) { width: 27%; }
+.gp-module-msp .msp-guarantee-receipts-table th:nth-child(3) { width: 18%; }
+.gp-module-msp .msp-guarantee-receipts-table th:nth-child(4) { width: 14%; }
+.gp-module-msp .msp-guarantee-receipts-table th:nth-child(5) { width: 14%; }
+.gp-module-msp .msp-guarantee-receipts-table th:nth-child(6) { width: 18%; }
+
+.gp-module-msp .msp-guarantee-returns-table th:nth-child(1) { width: 10%; }
+.gp-module-msp .msp-guarantee-returns-table th:nth-child(2) { width: 28%; }
+.gp-module-msp .msp-guarantee-returns-table th:nth-child(3) { width: 20%; }
+.gp-module-msp .msp-guarantee-returns-table th:nth-child(4) { width: 27%; }
+.gp-module-msp .msp-guarantee-returns-table th:nth-child(5) { width: 15%; }
+
+.gp-module-msp .msp-guarantee-reversible-table th:nth-child(1) { width: 9%; }
+.gp-module-msp .msp-guarantee-reversible-table th:nth-child(2) { width: 23%; }
+.gp-module-msp .msp-guarantee-reversible-table th:nth-child(3) { width: 16%; }
+.gp-module-msp .msp-guarantee-reversible-table th:nth-child(4) { width: 12%; }
+.gp-module-msp .msp-guarantee-reversible-table th:nth-child(5) { width: 40%; }
+
+.gp-module-msp .garantia-reversa-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .35rem;
+  min-width: 0;
+}
+
+.gp-module-msp .garantia-reversa-form .form-control {
+  width: 100%;
+  min-width: 0;
+}
+
+.gp-module-msp .msp-guarantee-reversals-history-table th:nth-child(1) { width: 10%; }
+.gp-module-msp .msp-guarantee-reversals-history-table th:nth-child(2) { width: 28%; }
+.gp-module-msp .msp-guarantee-reversals-history-table th:nth-child(3) { width: 47%; }
+.gp-module-msp .msp-guarantee-reversals-history-table th:nth-child(4) { width: 15%; }
+
+.gp-module-msp .msp-guarantees-report .msp-guarantees-table .small {
+  font-size: .78rem !important;
+  line-height: 1.25;
+}
+
+@media (max-width: 767.98px) {
+  .gp-module-msp :is(
+    .msp-guarantees-hub-table,
+    .msp-guarantee-receipts-table,
+    .msp-guarantee-returns-table,
+    .msp-guarantee-reversible-table,
+    .msp-guarantee-reversals-history-table
+  ) th {
+    width: auto !important;
+  }
+
+  .gp-module-msp .garantia-reversa-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gp-module-msp .omw-step-pane > :is(.card, .border.rounded) {
+  margin-bottom: .75rem !important;
+}
+
+.gp-module-msp .omw-step-pane .card-body,
+.gp-module-msp .omw-step-pane .accordion-body {
+  padding: .75rem !important;
+}
+
+.gp-module-msp .omw-lotes-table th:nth-child(1) { width: 15%; }
+.gp-module-msp .omw-lotes-table th:nth-child(2) { width: 24%; }
+.gp-module-msp .omw-lotes-table th:nth-child(3) { width: 18%; }
+.gp-module-msp .omw-lotes-table th:nth-child(4) { width: 25%; }
+.gp-module-msp .omw-lotes-table th:nth-child(5) { width: 18%; }
+
+.gp-module-msp .control-column-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.gp-module-msp .control-column-groups__label {
+  margin-right: 2px;
+  color: var(--color-text-muted);
+  font-size: .75rem;
+  font-weight: 650;
+}
+
+.gp-module-msp .control-column-groups .btn {
+  min-height: 28px !important;
+  padding: .2rem .5rem !important;
+  font-size: .75rem !important;
+}
+
+.gp-module-msp .control-grid[data-control-column-group] {
+  width: 100%;
+  min-width: 760px !important;
+}
+
+.gp-module-msp .control-grid[data-control-column-group="summary"] {
+  min-width: 680px !important;
+}
+
+.gp-module-msp .msp-locals-index > .msp-management-table-responsive {
+  overflow-x: visible !important;
+}
+
+@media (max-width: 767.98px) {
+  .gp-module-msp .gp-data-pair {
+    max-width: 280px;
+  }
+
+  .gp-module-msp .gp-import-preview-table th:first-child,
+  .gp-module-msp .gp-import-preview-table th:last-child,
+  .gp-module-msp .gcc-documents-table th,
+  .gp-module-msp .msp-guarantees-report .msp-guarantees-table th,
+  .gp-module-msp .msp-meters-table th,
+  .gp-module-msp .omw-lotes-table th,
+  .gp-module-msp .msp-locals-table th {
+    width: auto !important;
+  }
+
+  .gp-module-msp .control-column-groups {
+    width: 100%;
+  }
+
+  .gp-module-msp .control-column-groups__label {
+    width: 100%;
+  }
+}
+
+/* ============================================
+   MSP: rediseño prioritario de tablas 41–50
+   ============================================ */
+
+.gp-module-msp .msp-rent-discounts-table th:nth-child(1) { width: 25%; }
+.gp-module-msp .msp-rent-discounts-table th:nth-child(2) { width: 17%; }
+.gp-module-msp .msp-rent-discounts-table th:nth-child(3) { width: 21%; }
+.gp-module-msp .msp-rent-discounts-table th:nth-child(4) { width: 24%; }
+.gp-module-msp .msp-rent-discounts-table th:nth-child(5) { width: 13%; }
+
+.gp-module-msp .msp-rent-discount-catalog-table th:nth-child(1) { width: 24%; }
+.gp-module-msp .msp-rent-discount-catalog-table th:nth-child(2) { width: 16%; }
+.gp-module-msp .msp-rent-discount-catalog-table th:nth-child(3) { width: 18%; }
+.gp-module-msp .msp-rent-discount-catalog-table th:nth-child(4) { width: 19%; }
+.gp-module-msp .msp-rent-discount-catalog-table th:nth-child(5) { width: 23%; }
+.gp-module-msp .msp-rent-discount-edit-form {
+  min-width: 235px;
+  padding: .45rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+}
+
+.gp-module-msp .msp-guarantee-subledger-table th:nth-child(1) { width: 27%; }
+.gp-module-msp .msp-guarantee-subledger-table th:nth-child(2) { width: 9%; }
+.gp-module-msp .msp-guarantee-subledger-table th:nth-child(3) { width: 14%; }
+.gp-module-msp .msp-guarantee-subledger-table th:nth-child(4) { width: 18%; }
+.gp-module-msp .msp-guarantee-subledger-table th:nth-child(5) { width: 19%; }
+.gp-module-msp .msp-guarantee-subledger-table th:nth-child(6) { width: 13%; }
+
+.gp-module-msp .msp-debt-guarantee-table th:nth-child(1) { width: 10%; }
+.gp-module-msp .msp-debt-guarantee-table th:nth-child(2) { width: 29%; }
+.gp-module-msp .msp-debt-guarantee-table th:nth-child(3) { width: 21%; }
+.gp-module-msp .msp-debt-guarantee-table th:nth-child(4) { width: 27%; }
+.gp-module-msp .msp-debt-guarantee-table th:nth-child(5) { width: 13%; }
+
+.gp-module-msp .msp-guarantee-history-table th:nth-child(1) { width: 10%; }
+.gp-module-msp .msp-guarantee-history-table th:nth-child(2) { width: 31%; }
+.gp-module-msp .msp-guarantee-history-table th:nth-child(3) { width: 18%; }
+.gp-module-msp .msp-guarantee-history-table th:nth-child(4) { width: 22%; }
+.gp-module-msp .msp-guarantee-history-table th:nth-child(5) { width: 19%; }
+
+.gp-module-msp .msp-pdf-backups-table td,
+.gp-module-msp .msp-stores-table :is(.store-name, .store-tenant, .store-locals),
+.gp-module-msp .msp-contracts-table .contract-tenant {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+.gp-module-msp .msp-pdf-backups-table td:last-child .d-flex,
+.gp-module-msp .msp-stores-table .table-actions {
+  flex-wrap: wrap !important;
+}
+
+@media (max-width: 767.98px) {
+  .gp-module-msp .msp-rent-discounts-table th,
+  .gp-module-msp .msp-rent-discount-catalog-table th,
+  .gp-module-msp .msp-guarantee-subledger-table th,
+  .gp-module-msp .msp-debt-guarantee-table th,
+  .gp-module-msp .msp-guarantee-history-table th {
+    width: auto !important;
+  }
+
+  .gp-module-msp .msp-rent-discount-edit-form {
+    min-width: 0;
+  }
+}
+
+/* ============================================
+   MSP: cobranza, pagos y documentos 60–70
+   ============================================ */
+
+.gp-module-msp :is(
+  .msp-import-results-table,
+  .msp-contract-debt-table,
+  .msp-extra-charges-compact,
+  .msp-extra-charges-applied-table,
+  .msp-convenios-table,
+  .msp-cuotas-table,
+  .msp-historical-charges-table,
+  .msp-notice-documents-table,
+  .msp-bulk-payment-table,
+  .msp-document-detail-table
+) {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.gp-module-msp :is(
+  .msp-import-results-table,
+  .msp-contract-debt-table,
+  .msp-extra-charges-compact,
+  .msp-extra-charges-applied-table,
+  .msp-convenios-table,
+  .msp-cuotas-table,
+  .msp-historical-charges-table,
+  .msp-notice-documents-table,
+  .msp-bulk-payment-table,
+  .msp-document-detail-table
+) :is(th, td) {
+  min-width: 0;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+.gp-module-msp .msp-contract-debt-table th:nth-child(1) { width: 24%; }
+.gp-module-msp .msp-contract-debt-table th:nth-child(2) { width: 25%; }
+.gp-module-msp .msp-contract-debt-table th:nth-child(3) { width: 23%; }
+.gp-module-msp .msp-contract-debt-table th:nth-child(4) { width: 28%; }
+
+.gp-module-msp .msp-extra-charges-compact th:nth-child(1) { width: 15%; }
+.gp-module-msp .msp-extra-charges-compact th:nth-child(2) { width: 27%; }
+.gp-module-msp .msp-extra-charges-compact th:nth-child(3) { width: 25%; }
+.gp-module-msp .msp-extra-charges-compact th:nth-child(4) { width: 13%; }
+.gp-module-msp .msp-extra-charges-compact th:nth-child(5) { width: 20%; }
+
+.gp-module-msp .msp-extra-charges-applied-table th:nth-child(1) { width: 19%; }
+.gp-module-msp .msp-extra-charges-applied-table th:nth-child(2) { width: 22%; }
+.gp-module-msp .msp-extra-charges-applied-table th:nth-child(3) { width: 16%; }
+.gp-module-msp .msp-extra-charges-applied-table th:nth-child(4) { width: 30%; }
+.gp-module-msp .msp-extra-charges-applied-table th:nth-child(5) { width: 13%; }
+
+.gp-module-msp .msp-convenios-table th:nth-child(1) { width: 13%; }
+.gp-module-msp .msp-convenios-table th:nth-child(2) { width: 47%; }
+.gp-module-msp .msp-convenios-table th:nth-child(3) { width: 20%; }
+.gp-module-msp .msp-convenios-table th:nth-child(4) { width: 20%; }
+.gp-module-msp .msp-cuotas-table th:nth-child(1) { width: 25%; }
+.gp-module-msp .msp-cuotas-table th:nth-child(2) { width: 32%; }
+.gp-module-msp .msp-cuotas-table th:nth-child(3) { width: 43%; }
+
+.gp-module-msp .msp-historical-charges-table th:nth-child(1) { width: 20%; }
+.gp-module-msp .msp-historical-charges-table th:nth-child(2) { width: 42%; }
+.gp-module-msp .msp-historical-charges-table th:nth-child(3) { width: 38%; }
+.gp-module-msp .msp-notice-documents-table th:nth-child(1) { width: 36%; }
+.gp-module-msp .msp-notice-documents-table th:nth-child(2) { width: 38%; }
+.gp-module-msp .msp-notice-documents-table th:nth-child(3) { width: 26%; }
+
+.gp-module-msp .msp-bulk-payment-table th:nth-child(1) { width: 7%; }
+.gp-module-msp .msp-bulk-payment-table th:nth-child(2) { width: 17%; }
+.gp-module-msp .msp-bulk-payment-table th:nth-child(3) { width: 38%; }
+.gp-module-msp .msp-bulk-payment-table th:nth-child(4) { width: 38%; }
+.gp-module-msp .msp-bulk-payment-table .js-ajuste-input {
+  width: min(120px, 48%);
+  min-height: 28px !important;
+  padding-block: .2rem !important;
+}
+
+.gp-module-msp .gp-import-result-group {
+  margin-top: .65rem;
+  padding: .55rem .65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.gp-module-msp .gp-import-result-group > summary,
+.gp-module-msp .dhd-documento > summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.gp-module-msp .gp-import-result-group--error {
+  border-color: #fecaca;
+  background: #fffafa;
+}
+
+.gp-module-msp .dhd-documento > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+}
+
+.gp-module-msp .doc-section-tabs {
+  gap: .35rem;
+  margin-bottom: .75rem;
+}
+
+.gp-module-msp [data-doc-section="resumen"] .doc-kpi {
+  min-height: 0;
+  padding: .65rem .75rem;
+}
+
+.gp-module-msp .convenio-page .card-header,
+.gp-module-msp .dhd-card .card-header {
+  padding: .65rem .85rem;
+}
+
+@media (max-width: 767.98px) {
+  .gp-module-msp :is(
+    .msp-contract-debt-table,
+    .msp-extra-charges-compact,
+    .msp-extra-charges-applied-table,
+    .msp-convenios-table,
+    .msp-cuotas-table,
+    .msp-historical-charges-table,
+    .msp-notice-documents-table,
+    .msp-bulk-payment-table
+  ) th {
+    width: auto !important;
+  }
+
+  .gp-module-msp .msp-bulk-payment-table .js-ajuste-input {
+    width: min(150px, 100%);
+  }
+}
+
+/* ============================================
+   MSP: formularios y filtros 71–79
+   ============================================ */
+
+.gp-module-msp .gp-filter-bar {
+  margin-bottom: .75rem !important;
+  padding: .65rem .75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  align-items: end !important;
+  row-gap: .5rem !important;
+}
+
+.gp-module-msp .gp-filter-bar > :is(h2, h3) {
+  margin-bottom: .25rem !important;
+  font-size: .9rem;
+}
+
+.gp-module-msp .gp-filter-bar .form-label,
+.gp-module-msp form .form-label {
+  margin-bottom: .2rem;
+  font-size: .84rem;
+  line-height: 1.2;
+}
+
+.gp-module-msp :is(
+  input.form-control:not([type="file"]),
+  select.form-select:not([multiple]),
+  .msp-searchable-select-toggle
+) {
+  min-height: 36px;
+  height: 36px;
+  padding-top: .3rem;
+  padding-bottom: .3rem;
+  font-size: .88rem;
+}
+
+.gp-module-msp textarea.form-control {
+  min-height: 54px;
+  padding: .4rem .55rem;
+  font-size: .88rem;
+}
+
+.gp-module-msp .form-text {
+  margin-top: .18rem;
+  font-size: .75rem;
+  line-height: 1.25;
+}
+
+.gp-module-msp [data-gp-filter-actions],
+.gp-module-msp .gp-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .4rem;
+}
+
+.gp-module-msp .gp-filter-bar [data-gp-filter-actions] :is(.btn, button),
+.gp-module-msp .gp-filter-bar .gp-form-actions :is(.btn, button),
+.gp-module-msp .gp-more-filters-toggle {
+  min-height: 36px !important;
+  padding: .3rem .65rem !important;
+  font-size: .82rem !important;
+  white-space: nowrap;
+}
+
+.gp-module-msp .gp-more-filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+}
+
+.gp-module-msp .gp-secondary-filter-field {
+  animation: gp-filter-reveal .14s ease-out;
+}
+
+@keyframes gp-filter-reveal {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.gp-module-msp .gp-context-help {
+  margin: .4rem 0 .65rem;
+  padding: .45rem .65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  font-size: .8rem;
+}
+
+.gp-module-msp .gp-context-help > summary {
+  cursor: pointer;
+  color: var(--color-primary);
+  font-weight: 650;
+}
+
+.gp-module-msp .gp-context-help > :not(summary) {
+  margin-top: .35rem;
+  margin-bottom: 0;
+}
+
+.gp-module-msp .gp-operation-summary {
+  width: 100%;
+  margin-bottom: .25rem;
+  padding: .55rem .7rem;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  background: #eff6ff;
+}
+
+.gp-module-msp .alert {
+  padding: .6rem .75rem;
+  border-width: 1px 1px 1px 4px;
+  border-radius: var(--radius-sm);
+  font-size: .875rem;
+  line-height: 1.35;
+}
+
+.gp-module-msp .alert-success { border-left-color: var(--color-success); }
+.gp-module-msp .alert-danger { border-left-color: var(--color-danger); }
+.gp-module-msp .alert-warning { border-left-color: var(--color-warning); }
+.gp-module-msp .alert-info { border-left-color: var(--color-primary); }
+
+@media (max-width: 767.98px) {
+  .gp-module-msp .gp-filter-bar {
+    padding: .6rem;
+  }
+
+  .gp-module-msp [data-gp-filter-actions],
+  .gp-module-msp .gp-form-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .gp-module-msp [data-gp-filter-actions] > *,
+  .gp-module-msp .gp-form-actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+/* ============================================
+   MSP: botones y semántica visual 80–90
+   ============================================ */
+
+.gp-module-msp .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .3rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.gp-module-msp .btn-primary {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.gp-module-msp .btn-primary:hover,
+.gp-module-msp .btn-primary:focus-visible {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+}
+
+.gp-module-msp .btn-success {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-success) !important;
+  border-color: var(--color-success) !important;
+}
+
+.gp-module-msp .btn-success:hover,
+.gp-module-msp .btn-success:focus-visible {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-success-hover) !important;
+  border-color: var(--color-success-hover) !important;
+}
+
+.gp-module-msp .btn-warning {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-warning) !important;
+  border-color: var(--color-warning) !important;
+}
+
+.gp-module-msp .btn-warning:hover,
+.gp-module-msp .btn-warning:focus-visible {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-warning-hover) !important;
+  border-color: var(--color-warning-hover) !important;
+}
+
+.gp-module-msp .btn-danger {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-danger) !important;
+  border-color: var(--color-danger) !important;
+}
+
+.gp-module-msp .btn-danger:hover,
+.gp-module-msp .btn-danger:focus-visible {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-danger-hover) !important;
+  border-color: var(--color-danger-hover) !important;
+}
+
+.gp-module-msp .btn-outline-primary {
+  color: var(--color-primary) !important;
+  background-color: transparent !important;
+  border-color: var(--color-primary) !important;
+}
+
+.gp-module-msp .btn-outline-primary:hover,
+.gp-module-msp .btn-outline-primary:focus-visible {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.gp-module-msp .btn-outline-success {
+  color: var(--color-success) !important;
+  background-color: transparent !important;
+  border-color: var(--color-success) !important;
+}
+
+.gp-module-msp .btn-outline-success:hover,
+.gp-module-msp .btn-outline-success:focus-visible {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-success) !important;
+  border-color: var(--color-success) !important;
+}
+
+.gp-module-msp .btn-outline-warning {
+  color: var(--color-warning-hover) !important;
+  background-color: transparent !important;
+  border-color: var(--color-warning) !important;
+}
+
+.gp-module-msp .btn-outline-warning:hover,
+.gp-module-msp .btn-outline-warning:focus-visible {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-warning) !important;
+  border-color: var(--color-warning) !important;
+}
+
+.gp-module-msp .btn-outline-danger {
+  color: var(--color-danger) !important;
+  background-color: transparent !important;
+  border-color: var(--color-danger) !important;
+}
+
+.gp-module-msp .btn-outline-danger:hover,
+.gp-module-msp .btn-outline-danger:focus-visible {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-danger) !important;
+  border-color: var(--color-danger) !important;
+}
+
+.gp-module-msp :is(.btn-secondary, .btn-outline-secondary) {
+  color: var(--color-text) !important;
+  background-color: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+}
+
+.gp-module-msp :is(.btn-secondary, .btn-outline-secondary):hover,
+.gp-module-msp :is(.btn-secondary, .btn-outline-secondary):focus-visible {
+  color: var(--color-text) !important;
+  background-color: var(--color-surface-soft) !important;
+  border-color: var(--color-border-hover) !important;
+}
+
+.gp-module-msp :is(table, .gp-row-actions__menu) .btn-sm,
+.gp-module-msp .gp-table-action-button {
+  min-height: 30px !important;
+  height: auto;
+  padding: .22rem .48rem !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: .78rem !important;
+  line-height: 1.2 !important;
+}
+
+.gp-module-msp .gp-icon-button {
+  display: inline-flex !important;
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  align-items: center;
+  justify-content: center;
+  background-position: center;
+}
+
+.gp-module-msp :is(.btn, .btn-close):focus-visible {
+  outline: 3px solid var(--focus-ring) !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+
+.gp-module-msp .btn:disabled,
+.gp-module-msp .btn.disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   MSP: colores e identidad visual 91–99
+   ============================================ */
+
+.gp-module-msp main :is(h1, .h1, .form-title, .msp-management-page-header h1) {
+  color: var(--color-primary) !important;
+}
+
+.gp-module-msp main :is(.card, .box-container, .box-container-full) {
+  border-color: var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
+  background-color: var(--color-surface);
+}
+
+.gp-module-msp main :is(.card, .box-container, .box-container-full).shadow,
+.gp-module-msp main :is(.card, .box-container, .box-container-full).shadow-sm,
+.gp-module-msp main :is(.card, .box-container, .box-container-full).shadow-lg {
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.gp-module-msp main :is(
+  .agua-report-kpi,
+  .agua-report-panel,
+  .cc-kpi,
+  .cd-focusbar-panel,
+  .control-grid-card,
+  .control-loading-panel,
+  .corr-form-card,
+  .corr-summary-card,
+  .dash-chart-card,
+  .dash-consumption-kpi,
+  .dash-filter-card,
+  .dash-kpi,
+  .dash-kpi-card,
+  .dash-overview-card,
+  .dash-summary-kpi,
+  .dex-kpi,
+  .dhd-card,
+  .dhd-kpi,
+  .doc-card,
+  .doc-kpi,
+  .f360-metric,
+  .garantia-option-card,
+  .gas-report-kpi,
+  .gas-report-panel,
+  .gcc-action,
+  .gcc-context,
+  .gcc-kpi,
+  .gd-return-card,
+  .lf-kpi,
+  .msp-hub-card,
+  .msp-summary-panel,
+  .msp-timeline-card,
+  .msp2-kpi,
+  .mspv2-card,
+  .omw-confirm-kpi,
+  .omw-readings-lock-card,
+  .omw-readings-panel,
+  .omw-select-card,
+  .pending-kpi,
+  .pm-card,
+  .pm-metric,
+  .recepcion-card,
+  .td-day-metric,
+  .td-deposit-card
+) {
+  border-color: var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
+  background-color: var(--color-surface) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.gp-module-msp main .pending-card {
+  border-top-color: var(--color-border) !important;
+  border-right-color: var(--color-border) !important;
+  border-bottom-color: var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
+  background-color: var(--color-surface) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.gp-module-msp :is(.text-muted, .form-text) {
+  color: var(--color-text-muted) !important;
+}
+
+.gp-module-msp :is(.text-success, .link-success) {
+  color: var(--color-success) !important;
+}
+
+.gp-module-msp :is(.text-warning, .link-warning) {
+  color: var(--color-warning-hover) !important;
+}
+
+.gp-module-msp :is(.text-danger, .link-danger) {
+  color: var(--color-danger) !important;
+}
+
+.gp-module-msp :is(.text-info, .link-info) {
+  color: var(--color-info) !important;
+}
+
+.gp-module-msp :is(.badge, [class*="status-badge"], [class*="estado-badge"]) {
+  border-radius: 999px;
+  font-weight: 650;
+}
+
+.gp-module-msp :is(.badge.bg-success, .text-bg-success) {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-success) !important;
+}
+
+.gp-module-msp :is(.badge.bg-warning, .text-bg-warning) {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-warning) !important;
+}
+
+.gp-module-msp :is(.badge.bg-danger, .text-bg-danger) {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-danger) !important;
+}
+
+.gp-module-msp :is(.badge.bg-info, .text-bg-info) {
+  color: var(--color-text-on-primary) !important;
+  background-color: var(--color-info) !important;
+}
+
+.gp-module-msp .alert-success {
+  color: var(--color-success-text);
+  background-color: var(--color-success-soft);
+  border-color: var(--color-success-border);
+  border-left-color: var(--color-success) !important;
+}
+
+.gp-module-msp .alert-warning {
+  color: var(--color-warning-text);
+  background-color: var(--color-warning-soft);
+  border-color: var(--color-warning-border);
+  border-left-color: var(--color-warning) !important;
+}
+
+.gp-module-msp .alert-danger {
+  color: var(--color-danger-text);
+  background-color: var(--color-danger-soft);
+  border-color: var(--color-danger-border);
+  border-left-color: var(--color-danger) !important;
+}
+
+.gp-module-msp .alert-info {
+  color: var(--color-primary);
+  background-color: var(--color-info-soft);
+  border-color: var(--color-info-border);
+  border-left-color: var(--color-info) !important;
+}
+
+/* ============================================
+   MSP: encabezados, navegación y títulos 100–107
+   ============================================ */
+
+.gp-module-msp main :is(
+  .gp-breadcrumbs,
+  .breadcrumb,
+  .section-kicker,
+  .gp-section-hero__kicker,
+  .cc-crumb,
+  [data-gp-redundant-context]
+) {
+  display: none !important;
+}
+
+.gp-module-msp main .gp-page-commandbar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 2fr) minmax(0, 1fr) !important;
+  grid-auto-flow: row;
+  align-items: center !important;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  margin: 0 0 var(--msp-section-gap) !important;
+  padding: 0 !important;
+  gap: 6px 10px !important;
+}
+
+.gp-module-msp main .gp-page-commandbar > .gp-page-navigation--inline {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  justify-self: start;
+  width: min(100%, 15rem);
+  min-width: 0;
+}
+
+.gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__title {
+  display: block !important;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: center;
+  white-space: normal !important;
+}
+
+.gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__title :is(h1, .h1, .form-title),
+.gp-module-msp main .gp-page-commandbar > h1.gp-page-commandbar__title {
+  display: -webkit-box;
+  max-width: 100%;
+  margin: 0 !important;
+  overflow: hidden;
+  color: var(--color-primary) !important;
+  font-size: clamp(1.22rem, 2vw, 1.5rem) !important;
+  font-weight: 700;
+  line-height: 1.15 !important;
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-align: center !important;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__title :is(
+  p,
+  .gp-section-hero__desc
+) {
+  max-width: 46rem;
+  margin: 2px auto 0 !important;
+  color: var(--color-text-muted) !important;
+  font-size: .78rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__actions {
+  display: flex !important;
+  grid-column: 3;
+  grid-row: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 !important;
+  gap: 6px;
+}
+
+.gp-module-msp main .gp-page-commandbar .gp-page-return,
+.gp-module-msp main .gp-page-commandbar a.gp-page-return {
+  min-width: 0 !important;
+  min-height: 32px !important;
+  margin: 0 !important;
+  padding: 4px 9px !important;
+  border-color: var(--color-border) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text) !important;
+  font-size: .82rem !important;
+  font-weight: 500;
+  line-height: 1.2 !important;
+  box-shadow: none !important;
+}
+
+.gp-module-msp main .gp-page-commandbar .gp-page-return:hover,
+.gp-module-msp main .gp-page-commandbar .gp-page-return:focus-visible {
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-surface-soft) !important;
+  color: var(--color-primary) !important;
+}
+
+.gp-module-msp main .gp-page-commandbar .gp-page-return--secondary {
+  max-width: 13rem;
+}
+
+/* El componente hero compartido adopta el mismo encabezado compacto en MSP. */
+.gp-module-msp main .gp-section-hero.gp-page-commandbar {
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.gp-module-msp main .gp-section-hero.gp-page-commandbar::after {
+  display: none !important;
+}
+
+.gp-module-msp main .gp-section-hero.gp-page-commandbar .gp-section-hero__inner {
+  display: block !important;
+  width: 100%;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.gp-module-msp main .gp-section-hero.gp-page-commandbar .gp-section-hero__copy,
+.gp-module-msp main .gp-section-hero.gp-page-commandbar .gp-section-hero__title-row {
+  width: 100%;
+  margin: 0 !important;
+}
+
+.gp-module-msp main .gp-section-hero.gp-page-commandbar .gp-section-hero__back {
+  position: static !important;
+}
+
+/* Las vistas operativas terminan al finalizar su contenido; no usan pie visible. */
+.gp-module-msp > .gp-footer,
+.gp-module-msp main + .gp-footer {
+  display: none !important;
+}
+
+@media (max-width: 991.98px) {
+  .gp-module-msp main .gp-page-commandbar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) !important;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-navigation--inline {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__actions {
+    grid-column: 2;
+    grid-row: 1;
+    max-width: 68vw;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__title {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .gp-module-msp main .gp-page-commandbar {
+    align-items: start !important;
+    gap: 6px !important;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-navigation--inline {
+    width: min(48vw, 13rem);
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__actions {
+    max-width: 48vw;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__title :is(h1, .h1, .form-title),
+  .gp-module-msp main .gp-page-commandbar > h1.gp-page-commandbar__title {
+    font-size: 1.2rem !important;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__title :is(
+    p,
+    .gp-section-hero__desc
+  ) {
+    font-size: .75rem;
+  }
+}
+
+@media print {
+  .gp-module-msp .gp-page-navigation,
+  .gp-module-msp .gp-page-commandbar__actions {
+    display: none !important;
+  }
+}
+
+/* ============================================
+   MSP: tarjetas y distribución 108–117
+   ============================================ */
+
+.gp-module-msp main .gp-functional-surface {
+  min-width: 0;
+  padding: .72rem .8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.gp-module-msp main .gp-indicator-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.gp-module-msp main .gp-indicator-strip > .gp-indicator {
+  min-width: 0;
+  padding: .58rem .68rem;
+  border-inline-start: 1px solid var(--color-border-subtle, var(--color-border));
+  background: transparent;
+}
+
+.gp-module-msp main .gp-indicator-strip > .gp-indicator:first-child {
+  border-inline-start: 0;
+}
+
+.gp-module-msp main .gp-indicator-label {
+  display: block;
+  margin-bottom: .12rem;
+  color: var(--color-text-muted);
+  font-size: .68rem;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.gp-module-msp main .gp-indicator-value {
+  display: block;
+  min-width: 0;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.gp-module-msp main .gp-indicator-note {
+  display: block;
+  margin-top: .1rem;
+  color: var(--color-text-muted);
+  font-size: .7rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.gp-module-msp main .gp-disclosure {
+  min-width: 0;
+  overflow: clip;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.gp-module-msp main .gp-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-height: 36px;
+  padding: .5rem .7rem;
+  color: var(--color-text);
+  font-size: .86rem;
+  font-weight: 650;
+  line-height: 1.2;
+  list-style: none;
+  cursor: pointer;
+}
+
+.gp-module-msp main .gp-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gp-module-msp main .gp-disclosure > summary::after {
+  content: "Mostrar";
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  font-size: .72rem;
+  font-weight: 600;
+}
+
+.gp-module-msp main .gp-disclosure[open] > summary {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-soft);
+}
+
+.gp-module-msp main .gp-disclosure[open] > summary::after {
+  content: "Ocultar";
+}
+
+.gp-module-msp main .gp-disclosure__body {
+  padding: .7rem;
+}
+
+.gp-module-msp main .gp-section-flow {
+  display: grid;
+  min-width: 0;
+  gap: var(--msp-section-gap, .75rem);
+}
+
+@media (max-width: 991.98px) {
+  .gp-module-msp main .gp-indicator-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gp-module-msp main .gp-indicator-strip > .gp-indicator {
+    border-top: 1px solid var(--color-border-subtle, var(--color-border));
+  }
+
+  .gp-module-msp main .gp-indicator-strip > .gp-indicator:nth-child(-n + 2) {
+    border-top: 0;
+  }
+
+  .gp-module-msp main .gp-indicator-strip > .gp-indicator:nth-child(odd) {
+    border-inline-start: 0;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .gp-module-msp main .gp-functional-surface,
+  .gp-module-msp main .gp-disclosure__body {
+    padding: .6rem;
+  }
+
+  .gp-module-msp main .gp-indicator-strip > .gp-indicator {
+    padding: .5rem .55rem;
+  }
+
+  .gp-module-msp main .gp-disclosure > summary {
+    align-items: flex-start;
+  }
+}
+
+/* ============================================
+   MSP: responsive y dispositivos pequeños 118–125
+   ============================================ */
+
+/* La versión de escritorio conserva una tipografía legible; la densidad se
+   consigue con espaciado y agrupación, no reduciendo excesivamente el texto. */
+.gp-module-msp table.gp-table-compact {
+  font-size: .875rem;
+}
+
+.gp-module-msp table.gp-table-dense {
+  font-size: .84rem;
+}
+
+.gp-module-msp table:is(.gp-table-compact, .gp-table-dense) thead th {
+  font-size: .8rem;
+}
+
+.gp-module-msp .gp-tablet-details,
+.gp-module-msp .gp-matrix-scroll-hint {
+  display: none;
+}
+
+/* Las tablas densas conservan las columnas prioritarias en tablet y trasladan
+   las secundarias a un detalle accesible por registro. */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .gp-module-msp table.gp-table-has-tablet-details :is(th, td).gp-tablet-secondary {
+    display: none !important;
+  }
+
+  .gp-module-msp .gp-tablet-details {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    margin: .22rem 0 0 .22rem;
+    text-align: left;
+  }
+
+  .gp-module-msp .gp-tablet-details > summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: .2rem .42rem;
+    font-size: .78rem;
+    line-height: 1.15;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .gp-module-msp .gp-tablet-details > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .gp-module-msp .gp-tablet-details > summary::after {
+    content: "▾";
+    margin-left: .3rem;
+    font-size: .68rem;
+  }
+
+  .gp-module-msp .gp-tablet-details[open] > summary::after {
+    transform: rotate(180deg);
+  }
+
+  .gp-module-msp .gp-tablet-details__list {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 24;
+    display: grid;
+    width: min(320px, calc(100vw - 40px));
+    margin: 0;
+    padding: .45rem .55rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-md);
+  }
+
+  .gp-module-msp .gp-tablet-details__list > div {
+    display: grid;
+    grid-template-columns: minmax(88px, 38%) minmax(0, 1fr);
+    gap: .45rem;
+    padding: .3rem 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .gp-module-msp .gp-tablet-details__list > div:last-child {
+    border-bottom: 0;
+  }
+
+  .gp-module-msp .gp-tablet-details__list :is(dt, dd) {
+    min-width: 0;
+    margin: 0;
+    color: var(--color-text);
+    font-size: .8rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    white-space: normal !important;
+  }
+
+  .gp-module-msp .gp-tablet-details__list dt {
+    color: var(--color-text-muted);
+    font-weight: 650;
+  }
+}
+
+/* Las matrices son la única excepción con desplazamiento horizontal. El aviso
+   visible y la región enfocables hacen explícita esa navegación. */
+@media (max-width: 1024px) {
+  .gp-module-msp .gp-table-matrix-wrap > .gp-matrix-scroll-hint {
+    position: sticky;
+    left: 0;
+    display: block;
+    width: fit-content;
+    max-width: calc(100vw - 32px);
+    margin: 0;
+    padding: .28rem .5rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface-soft);
+    font-size: .78rem;
+    line-height: 1.25;
+  }
+
+  .gp-module-msp .gp-table-matrix-wrap:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -3px;
+  }
+}
+
+/* Barra de página: el título puede ocupar dos líneas sin competir con Volver
+   ni con las acciones. */
+@media (max-width: 767.98px) {
+  .gp-module-msp main .gp-page-commandbar {
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) !important;
+    align-items: start !important;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-navigation--inline {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto;
+    max-width: 42vw;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__title {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+    justify-self: stretch;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__title :is(h1, .h1, .form-title),
+  .gp-module-msp main .gp-page-commandbar > h1.gp-page-commandbar__title {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 1.18rem !important;
+    line-height: 1.18 !important;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .gp-module-msp main .gp-page-commandbar > .gp-page-commandbar__actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
+  .gp-module-msp main .gp-page-commandbar .gp-page-return {
+    max-width: 42vw;
+  }
+
+  .gp-module-msp main .gp-page-commandbar .gp-page-back__label {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gp-module-msp main table.gp-table-mobile-cards:not(.gp-table-matrix) {
+    font-size: .875rem;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr > td,
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tfoot > tr > :is(td, th) {
+    grid-template-columns: minmax(82px, 36%) minmax(0, 1fr);
+  }
+
+  .gp-module-msp main :is(.row, .d-flex, .btn-group) {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .gp-header {
+    padding: 3px 8px;
+  }
+
+  .gp-header-inner nav {
+    width: 100%;
+  }
+
+  .gp-nav-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .gp-nav-list > li,
+  .gp-nav-link,
+  .gp-nav-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .gp-nav-link,
+  .gp-nav-button {
+    min-height: 30px;
+    padding: 3px 6px;
+    font-size: .78rem;
+    text-align: center;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 320px) {
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr > td,
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tfoot > tr > :is(td, th) {
+    display: block;
+  }
+
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tbody > tr > td::before,
+  .gp-module-msp table.gp-table-mobile-cards:not(.gp-table-matrix) > tfoot > tr > :is(td, th)::before {
+    display: block;
+    margin-bottom: .2rem;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .gp-page-msp-cierre-index-php main form.row {
+    width: 100%;
+    max-width: 100%;
+    margin-right: 0;
+    margin-left: 0;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .gp-page-msp-cierre-index-php .cc-table .actions {
+    white-space: normal;
+  }
+
+  .gp-page-msp-cierre-index-php .cc-table .actions .btn {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    margin: .12rem 0;
+    white-space: normal !important;
   }
 }

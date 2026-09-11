@@ -207,7 +207,7 @@ try {
         ini_set('display_errors', $previousDisplayErrors);
     }
 } catch (Throwable $exception) {
-    error_log('[MSP][Plantilla pagos contrato] ' . $exception->getMessage());
+    pgpLogException($exception, 'msp.plantilla_pagos_contrato');
     msp2SetFlash('danger', 'No fue posible descargar la plantilla de pagos por contrato.');
     msp2Redirect('cobranza/registrar_pago_contrato.php');
 }

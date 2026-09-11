@@ -280,7 +280,18 @@ function msp2TiendaImportFetchLocales(PDO $conn): array
 
 function msp2TiendaImportFetchLookupByDesc(PDO $conn, string $table, string $idColumn, string $descColumn): array
 {
-    $stmt = $conn->query('SELECT ' . $idColumn . ', ' . $descColumn . ' FROM ' . $table);
+    $allowedLookups = [
+        'dbo.msp_rubros|id_rubro|nombre_rubro',
+        'dbo.msp_estado_tiendas|id_estado_tienda|desc_estado',
+    ];
+    if (!in_array($table . '|' . $idColumn . '|' . $descColumn, $allowedLookups, true)) {
+        throw new InvalidArgumentException('El catálogo solicitado no está permitido.');
+    }
+
+    $stmt = $conn->query(
+        'SELECT ' . msp2SqlIdentifier($idColumn) . ', ' . msp2SqlIdentifier($descColumn)
+        . ' FROM ' . msp2SqlIdentifier($table)
+    );
     $rows = $stmt->fetchAll();
 
     $map = [];
@@ -991,8 +1002,8 @@ if ($summary['errors'] === 0 && ($summary['creates'] + $summary['updates'] + $su
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | <?php echo msp2Escape($vistaTitulo); ?></title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -1056,60 +1067,52 @@ if ($summary['errors'] === 0 && ($summary['creates'] + $summary['updates'] + $su
             <?php endif; ?>
         </div>
 
-        <div class="table-responsive mt-3">
-            <table class="table table-bordered table-hover align-middle text-center">
+        <div class="table-responsive gp-table-shell mt-3">
+            <table class="table table-bordered table-hover align-middle gp-table-compact gp-table-mobile-cards gp-import-preview-table mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 90px;">Fila</th>
-                        <th>RUT arrendatario</th>
-                        <th>Nombre comercial</th>
-                        <th>Cod. locales</th>
-                        <th>Rubro</th>
-                        <th>Estado</th>
-                        <th>F. inicio tienda</th>
-                        <th>F. inicio ocup.</th>
-                        <th>F. término ocup.</th>
+                        <th data-gp-column-kind="short">Fila</th>
+                        <th>Arrendatario</th>
+                        <th>Locales / clasificación</th>
+                        <th>Vigencia</th>
                         <?php if ($modoContratoImport): ?>
-                            <th>Garantía CLP</th>
-                            <th>Modalidad arriendo</th>
-                            <th>Arriendo UF</th>
-                            <th>Arriendo CLP</th>
-                            <th>Descuento CLP</th>
+                            <th>Condiciones pactadas</th>
                         <?php endif; ?>
-                        <th style="width: 130px;">Acción</th>
-                        <th>Comparación</th>
+                        <th data-gp-column-kind="state">Resultado</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($previewRows as $row): ?>
                         <tr>
-                            <td><?php echo (int) $row['row_number']; ?></td>
-                            <td><?php echo msp2Escape((string) $row['rut_arrendatario']); ?></td>
-                            <td class="text-start"><?php echo msp2Escape((string) $row['nombre_comercial']); ?></td>
-                            <td class="text-start"><?php echo msp2Escape((string) $row['cod_locales_display']); ?></td>
-                            <td class="text-start">
-                                <?php echo msp2Escape((string) $row['rubro']); ?>
+                            <td data-gp-label="Fila" class="text-center"><?php echo (int) $row['row_number']; ?></td>
+                            <td data-gp-label="Arrendatario" class="gp-cell-description">
+                                <strong><?php echo msp2Escape((string) $row['nombre_comercial']); ?></strong>
+                                <div class="small text-muted"><?php echo msp2Escape((string) $row['rut_arrendatario']); ?></div>
+                            </td>
+                            <td data-gp-label="Locales / clasificación" class="gp-cell-description">
+                                <strong><?php echo msp2Escape((string) $row['cod_locales_display']); ?></strong>
+                                <div class="small text-muted"><?php echo msp2Escape((string) $row['rubro']); ?> · <?php echo msp2Escape((string) $row['estado_tienda']); ?></div>
                                 <?php if ((bool) ($row['rubro_pending_create'] ?? false)): ?>
-                                    <span class="badge bg-warning text-dark ms-1">Nuevo</span>
+                                    <span class="badge bg-warning text-dark">Rubro nuevo</span>
                                 <?php endif; ?>
-                            </td>
-                            <td class="text-start">
-                                <?php echo msp2Escape((string) $row['estado_tienda']); ?>
                                 <?php if ((bool) ($row['estado_pending_create'] ?? false)): ?>
-                                    <span class="badge bg-warning text-dark ms-1">Nuevo</span>
+                                    <span class="badge bg-warning text-dark">Estado nuevo</span>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo msp2Escape((string) ($row['fecha_inicio_tienda'] ?? '-')); ?></td>
-                            <td><?php echo msp2Escape((string) ($row['fecha_inicio_ocupacion'] ?? '-')); ?></td>
-                            <td><?php echo msp2Escape((string) ($row['fecha_termino_ocupacion'] ?? '-')); ?></td>
+                            <td data-gp-label="Vigencia" class="gp-cell-description">
+                                <span class="gp-data-pair"><span>Tienda</span><strong><?php echo msp2Escape((string) ($row['fecha_inicio_tienda'] ?? '-')); ?></strong></span>
+                                <span class="gp-data-pair"><span>Ocupación</span><strong><?php echo msp2Escape((string) ($row['fecha_inicio_ocupacion'] ?? '-')); ?></strong></span>
+                                <span class="gp-data-pair"><span>Término</span><strong><?php echo msp2Escape((string) ($row['fecha_termino_ocupacion'] ?? '-')); ?></strong></span>
+                            </td>
                             <?php if ($modoContratoImport): ?>
-                                <td><?php echo msp2Escape((string) ($row['garantia_clp_display'] ?? '-')); ?></td>
-                                <td><?php echo msp2Escape((string) ($row['arriendo_modalidad_label'] ?? '-')); ?></td>
-                                <td><?php echo msp2Escape((string) ($row['arriendo_valor_uf_display'] ?? '-')); ?></td>
-                                <td><?php echo msp2Escape((string) ($row['arriendo_valor_clp_display'] ?? '-')); ?></td>
-                                <td><?php echo msp2Escape((string) ($row['arriendo_descuento_clp_display'] ?? '-')); ?></td>
+                                <td data-gp-label="Condiciones pactadas" class="gp-cell-description">
+                                    <strong><?php echo msp2Escape((string) ($row['arriendo_modalidad_label'] ?? '-')); ?></strong>
+                                    <span class="gp-data-pair"><span>Garantía</span><strong><?php echo msp2Escape((string) ($row['garantia_clp_display'] ?? '-')); ?></strong></span>
+                                    <span class="gp-data-pair"><span>Arriendo</span><strong>UF <?php echo msp2Escape((string) ($row['arriendo_valor_uf_display'] ?? '-')); ?> / CLP <?php echo msp2Escape((string) ($row['arriendo_valor_clp_display'] ?? '-')); ?></strong></span>
+                                    <span class="gp-data-pair"><span>Descuento</span><strong><?php echo msp2Escape((string) ($row['arriendo_descuento_clp_display'] ?? '-')); ?></strong></span>
+                                </td>
                             <?php endif; ?>
-                            <td>
+                            <td data-gp-label="Resultado" class="gp-cell-state">
                                 <?php
                                     $badge = 'bg-secondary';
                                     if ($row['action'] === 'CREAR') {
@@ -1119,13 +1122,9 @@ if ($summary['errors'] === 0 && ($summary['creates'] + $summary['updates'] + $su
                                     }
                                 ?>
                                 <span class="badge <?php echo $badge; ?>"><?php echo msp2Escape((string) $row['action']); ?></span>
-                            </td>
-                            <td class="text-start">
-                                <?php if ($row['status'] === 'OK'): ?>
-                                    <?php echo msp2Escape(implode(' | ', (array) $row['change_details'])); ?>
-                                <?php else: ?>
-                                    <span class="text-danger"><?php echo msp2Escape(implode(' ', (array) $row['errors'])); ?></span>
-                                <?php endif; ?>
+                                <details class="gp-row-detail mt-1"><summary>Ver detalle</summary><div class="gp-row-detail__content">
+                                    <?php if ($row['status'] === 'OK'): ?><?php echo msp2Escape(implode(' | ', (array) $row['change_details'])); ?><?php else: ?><span class="text-danger"><?php echo msp2Escape(implode(' ', (array) $row['errors'])); ?></span><?php endif; ?>
+                                </div></details>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -1135,7 +1134,7 @@ if ($summary['errors'] === 0 && ($summary['creates'] + $summary['updates'] + $su
     </div>
 </main>
 <?php msp2RenderCsrfAutoFieldScript(); ?>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

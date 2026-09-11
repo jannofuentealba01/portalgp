@@ -1,5 +1,56 @@
 # MSP-016: endpoints administrativos legacy no se exponen por HTTP.
 # La administración vigente se realiza desde los módulos protegidos de MSP.
-<FilesMatch "^(desactivar_usuario|procesar_crear_usuario|procesar_editar_usuario|procesar_eliminar_usuario)\.php$">
+# Ningún artefacto de desarrollo, respaldo o historial debe descargarse por HTTP.
+RewriteEngine On
+Options -Indexes
+RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L,NC]
+RewriteRule ^(?:tests|scripts|config|del)(?:/|$) - [F,L,NC]
+
+<FilesMatch "(?i)(?:^|\.)(?:bak|backup|old|orig|save|sql|md|log|ini|env|lock|toml|ya?ml|dist)$">
     Require all denied
 </FilesMatch>
+
+<FilesMatch "(?i)^(?:composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit\.xml(?:\.dist)?|PORTALGP\.bak)$">
+    Require all denied
+</FilesMatch>
+
+# Las pantallas administrativas vigentes están exclusivamente en /sistema/gestion/.
+<FilesMatch "^(?:crear_usuario|editar_usuario|eliminar_usuario|desactivar_usuario|gestion_usuarios_permisos|crear_permiso|listar_permisos|editar_eliminar_permisos|asignar_permisos_roles|procesar_asignar_permisos|procesar_crear_usuario|procesar_editar_usuario|procesar_eliminar_usuario)\.php$">
+    Require all denied
+</FilesMatch>
+
+<IfModule php_module>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag log_errors On
+    php_flag expose_php Off
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header unset X-Powered-By
+    Header always unset X-Powered-By
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Permitted-Cross-Domain-Policies "none"
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Resource-Policy "same-origin"
+    Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+
+    <FilesMatch "\.php$">
+        Header always set Cache-Control "no-store, private, max-age=0"
+        Header always set Pragma "no-cache"
+        Header always set Expires "0"
+    </FilesMatch>
+
+    <FilesMatch "\.(?:css|js|woff2?|png|jpe?g|gif|webp|svg)$">
+        Header set Cache-Control "public, max-age=604800, immutable"
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_headers.c>
+    <If "%{HTTPS} == 'on'">
+        Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    </If>
+</IfModule>

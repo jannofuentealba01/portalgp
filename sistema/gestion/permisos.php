@@ -144,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($conn->inTransaction()) {
             $conn->rollBack();
         }
-        gpGestionSetFlash('danger', $e->getMessage());
+        gpGestionSetFlash('danger', pgpPublicOrBusinessException($e, 'gestion.permisos', 'No fue posible procesar la solicitud de permisos.'));
         gpGestionRedirect('permisos.php');
     }
 }
@@ -196,8 +196,8 @@ $paginationItems = gpGestionPermisosBuildPaginationItems($currentPage, $totalPag
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Permisos</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
     <style>
         .gp-table-meta {
@@ -347,6 +347,7 @@ $paginationItems = gpGestionPermisosBuildPaginationItems($currentPage, $totalPag
 <div class="modal fade" id="createPermissionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <form method="POST" class="modal-content">
+            <?php pgpCsrfField(); ?>
             <input type="hidden" name="action" value="create_permission">
             <div class="modal-header">
                 <h5 class="modal-title">Nuevo permiso</h5>
@@ -373,6 +374,7 @@ $paginationItems = gpGestionPermisosBuildPaginationItems($currentPage, $totalPag
 <div class="modal fade" id="editPermissionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <form method="POST" class="modal-content">
+            <?php pgpCsrfField(); ?>
             <input type="hidden" name="action" value="update_permission">
             <input type="hidden" name="id" id="edit_permission_id">
             <div class="modal-header">
@@ -397,7 +399,7 @@ $paginationItems = gpGestionPermisosBuildPaginationItems($currentPage, $totalPag
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 document.getElementById('editPermissionModal').addEventListener('show.bs.modal', function (event) {
     var button = event.relatedTarget;

@@ -60,6 +60,13 @@ function ctTercerosRepoCount(PDO $conn, array $filtros): int
 
 function ctTercerosRepoList(PDO $conn, array $filtros, string $orderSql, int $offset, int $limit): array
 {
+    $allowedOrder = ['id_tercero', 'tipo_persona', 'rut', 'nombre_razon_social'];
+    if (preg_match('/^(.+)\s+(ASC|DESC)$/D', trim($orderSql), $match) !== 1
+        || !in_array($match[1], $allowedOrder, true)) {
+        throw new InvalidArgumentException('El orden de terceros solicitado no está permitido.');
+    }
+    $orderSql = $match[1] . ' ' . $match[2];
+
     $query = ctTercerosRepoBuildWhere($filtros);
     $stmt = $conn->prepare(
         "SELECT id_tercero, tipo_persona, rut, nombre_razon_social

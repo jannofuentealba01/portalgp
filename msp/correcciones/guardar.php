@@ -225,7 +225,7 @@ try {
     msp2SetFlash('success', 'Solicitud de corrección registrada.');
     msp2Redirect('correcciones/index.php?id_correccion=' . $idCorreccion);
 } catch (Throwable $e) {
-    error_log('[MSP][Correcciones][guardar] '.$e->getMessage());
+    pgpLogException($e, 'msp.correcciones.guardar');
     msp2SetFlash($e instanceof RuntimeException ? 'warning' : 'danger', $e instanceof RuntimeException ? $e->getMessage() : 'No fue posible procesar la corrección. Intenta nuevamente o revisa el registro seleccionado.');
     $idContratoRetorno = (int) ($_POST['id_contrato_arriendo'] ?? 0);
     msp2Redirect('correcciones/index.php' . ($idContratoRetorno > 0 ? '?id_contrato_arriendo=' . $idContratoRetorno : ''));

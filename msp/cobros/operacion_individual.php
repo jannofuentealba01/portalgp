@@ -283,10 +283,9 @@ function oiGenerarServicioTienda(
                     SELECT 1
                     FROM dbo.msp_pagos p
                     WHERE p.id_documento_cobro = @id_doc
-                      AND p.estado_pago = 1
                 )
                 BEGIN
-                    ;THROW 50092, 'El documento ya tiene pagos aplicados. No se puede regenerar desde operación individual.', 1;
+                    ;THROW 50092, 'El documento tiene historial de pagos. No se puede regenerar; utiliza una anulación o ajuste financiero.', 1;
                 END;
             END;
 
@@ -320,13 +319,20 @@ function oiGenerarServicioTienda(
 
             SET @monto_total = ROUND((@subtotal_arriendo * (1 + @tasa_iva)) + @subtotal_servicios, 2);
 
+            IF @id_doc IS NOT NULL
+            BEGIN
+                IF OBJECT_ID(N'dbo.msp_documento_preparar_regeneracion',N'P') IS NULL
+                    ;THROW 53516, 'Falta instalar la regeneración segura de documentos.', 1;
+
+                EXEC dbo.msp_documento_preparar_regeneracion
+                    @id_documento_cobro=@id_doc,
+                    @motivo=N'Regeneración controlada desde operación individual',
+                    @id_usuario=NULL;
+                SET @id_doc=NULL;
+            END;
+
             IF @monto_total <= 0
             BEGIN
-                IF @id_doc IS NOT NULL
-                BEGIN
-                    DELETE FROM dbo.msp_documentos_cobro_detalle WHERE id_documento_cobro = @id_doc;
-                    DELETE FROM dbo.msp_documentos_cobro WHERE id_documento_cobro = @id_doc;
-                END;
                 COMMIT TRANSACTION;
                 SELECT @cobros_afectados AS cobros_afectados, 0 AS documento_generado, 0 AS items_generados;
                 RETURN;
@@ -815,7 +821,7 @@ if ($tablaExiste) {
             }
         }
     } catch (Throwable $e) {
-        $loadError = $e->getMessage() !== '' ? $e->getMessage() : 'No fue posible cargar datos de la operación individual.';
+        $loadError = pgpPublicOrBusinessException($e, 'msp.cobros.operacion_individual', 'No fue posible cargar datos de la operación individual.');
     }
 }
 
@@ -826,8 +832,8 @@ if ($tablaExiste) {
     <meta charset="utf-8">
     <title>MSP - Operación individual</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
     <?php msp2RenderSearchableSelectAssets(); ?>
 </head>
@@ -1052,7 +1058,7 @@ if ($tablaExiste) {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const formCarga = document.getElementById('form_carga_individual');

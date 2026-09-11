@@ -1,5 +1,5 @@
 <?php
-declare(strict_types=1);require_once dirname(__DIR__).'/bootstrap.php';msp2RequireAccess();
+declare(strict_types=1);require_once dirname(__DIR__).'/bootstrap.php';msp2RequireAccess('MSP Cobranza','eliminacion');
 if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')msp2Redirect('garantias/index.php');
 $tipo=strtoupper(trim((string)($_POST['tipo_origen']??'')));$id=filter_input(INPUT_POST,'id_origen',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);$idGarantia=filter_input(INPUT_POST,'id_garantia',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);$motivo=msp2NormalizeText((string)($_POST['motivo']??''));$fecha=date('Y-m-d');$redirect=$idGarantia?'garantias/ficha.php?id='.(int)$idGarantia:'garantias/index.php';
 if(!$id||!in_array($tipo,['RECEPCION','DEVOLUCION','APLICACION'],true)||$motivo===''||mb_strlen($motivo)>500){msp2SetFlash('warning','Indica una operación y un motivo válido para la reversa.');msp2Redirect($redirect);}

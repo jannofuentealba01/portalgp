@@ -78,6 +78,54 @@ function omParseSpreadsheetDate(mixed $value, string $fallback): array
     return [false, null];
 }
 
+
+function omPreviewTempDirectory(): string
+{
+    $directory = rtrim(sys_get_temp_dir(), "\\/")
+        . DIRECTORY_SEPARATOR
+        . 'portalgp_msp_preview';
+
+    if (
+        !is_dir($directory)
+        && !@mkdir($directory, 0700, true)
+        && !is_dir($directory)
+    ) {
+        throw new RuntimeException(
+            'No fue posible preparar el almacenamiento temporal de previsualización.'
+        );
+    }
+
+    return $directory;
+}
+
+function omPreviewSafeExistingPath(string $path): ?string
+{
+    $path = trim($path);
+
+    if ($path === '' || str_contains($path, "\0")) {
+        return null;
+    }
+
+    $realPath = realpath($path);
+    $realRoot = realpath(omPreviewTempDirectory());
+
+    if (
+        $realPath === false
+        || $realRoot === false
+        || !is_file($realPath)
+    ) {
+        return null;
+    }
+
+    $parent = dirname($realPath);
+
+    $insideRoot = DIRECTORY_SEPARATOR === '\\'
+        ? strcasecmp($parent, $realRoot) === 0
+        : $parent === $realRoot;
+
+    return $insideRoot ? $realPath : null;
+}
+
 function omPreviewSessionKey(string $periodoYm, string $codigoServicio): string
 {
     return $periodoYm . '|' . strtoupper($codigoServicio);
@@ -96,15 +144,15 @@ function omPreviewSessionRead(string $periodoYm, string $codigoServicio): ?array
         return null;
     }
 
-    $path = (string) ($entry['path'] ?? '');
-    if ($path === '' || !is_file($path)) {
+    $path = omPreviewSafeExistingPath(
+        (string) ($entry['path'] ?? '')
+    );
+
+    if ($path === null) {
         return null;
     }
 
     $json = @file_get_contents($path);
-    if ($json === false || $json === '') {
-        return null;
-    }
 
     $payload = json_decode($json, true);
     return is_array($payload) ? $payload : null;
@@ -120,8 +168,11 @@ function omPreviewSessionClear(string $periodoYm, string $codigoServicio): void
     $key = omPreviewSessionKey($periodoYm, $codigoServicio);
     $entry = $store[$key] ?? null;
     if (is_array($entry)) {
-        $path = (string) ($entry['path'] ?? '');
-        if ($path !== '' && is_file($path)) {
+        $path = omPreviewSafeExistingPath(
+            (string) ($entry['path'] ?? '')
+        );
+
+        if ($path !== null) {
             @unlink($path);
         }
     }
@@ -134,7 +185,10 @@ function omPreviewSessionWrite(string $periodoYm, string $codigoServicio, array 
 {
     omPreviewSessionClear($periodoYm, $codigoServicio);
 
-    $tmpFile = tempnam(sys_get_temp_dir(), 'msp2_preview_');
+    $tmpFile = tempnam(
+        omPreviewTempDirectory(),
+        'preview_'
+    );
     if ($tmpFile === false) {
         throw new RuntimeException('No fue posible crear almacenamiento temporal de previsualización.');
     }

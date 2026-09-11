@@ -1,0 +1,11 @@
+/* Page-specific screen layout. Source: msp/contratos/liquidacion_final.php */
+
+.lf-kpi{border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface);padding:.62rem .72rem;height:100%;min-height:76px;box-shadow:0 1px 3px rgba(var(--color-shadow-rgb), .06)}
+        .lf-kpi-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);line-height:1.2}
+        .lf-kpi-value{font-size:1.08rem;font-weight:700;line-height:1.2;margin-top:.18rem}
+        .lf-guarantees{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
+        .lf-guarantee{border:1px solid var(--color-border);border-radius:9px;padding:.55rem .65rem;background:var(--color-surface-soft)}
+        .lf-guarantee-money{white-space:nowrap}
+        .lf-details>summary{cursor:pointer;list-style-position:inside}
+        .lf-details>summary::marker{color:var(--color-text)}
+        @media(max-width:767.98px){.lf-guarantees{grid-template-columns:1fr}}

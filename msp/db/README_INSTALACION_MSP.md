@@ -133,3 +133,70 @@ Para habilitar ejecución automática de lotes programados, ejecutar manualmente
 ```
 
 Antes de ejecutar, edita variables `@PhpExePath` y `@WorkerScriptPath` dentro de `patch_sql_agent_envio_lotes_job.sql`.
+
+## 6) Registro y verificación permanente de parches
+
+El migrador incremental incluye `patch_schema_migrations.sql`, que crea el
+registro `dbo.msp_schema_migrations`. Después de una migración exitosa, registra
+la huella SHA-256 exacta de cada parche y ejecuta la auditoría completa:
+
+```bash
+php msp/db/verificar_instalacion.php --registrar
+```
+
+Para comprobaciones posteriores usa el modo de solo lectura:
+
+```bash
+php msp/db/verificar_instalacion.php
+```
+
+La verificación falla si detecta un parche operativo fuera del migrador, un
+archivo modificado después de aplicarse, objetos o columnas ausentes, o permisos
+MSP sin instalar. También revisa los índices declarados por los parches.
+
+`--registrar` debe utilizarse únicamente después de que `core_msp_migrate.sql`
+haya terminado sin errores. El Job de SQL Server Agent se mantiene como parche
+opcional porque sus rutas dependen del servidor donde se despliegue MSP.
+
+## 7) Cuenta técnica de ejecución local
+
+La aplicación web debe operar con la cuenta restringida `portalgp_runtime`, no
+con la identidad Windows que administra SQL Server. Para crear o rotar esta
+cuenta y generar la configuración en el almacén externo de secretos, ejecuta desde
+una sesión Windows autorizada:
+
+```bash
+php scripts/provision_runtime_database.php
+```
+
+La cuenta técnica recibe permisos específicos sobre los objetos actuales de la
+aplicación; no recibe permisos globales sobre el esquema. Puede consultar y
+modificar datos y ejecutar los procedimientos autorizados,
+pero no es `sysadmin`, no pertenece a `db_owner`, no puede crear objetos ni
+alterar el registro de migraciones. Las migraciones siguen siendo una tarea
+administrativa explícita. En PowerShell, una ejecución administrativa puntual
+puede usar la conexión integrada así:
+
+```powershell
+$env:PORTALGP_DB_INTEGRATED='1'
+php msp/db/verificar_instalacion.php --registrar
+Remove-Item Env:PORTALGP_DB_INTEGRATED
+```
+
+## 8) Integridad financiera: etapa 4, puntos 1 a 3
+
+El migrador también ejecuta
+`patch_seguridad_financiera_etapa4_puntos1_3.sql`. Este parche protege pagos,
+garantías y saldos a favor mediante restricciones, índices y triggers de
+integridad. Además, corrige la reversa de garantías para conservar el movimiento
+original y registrar una única contrapartida compensatoria, sin duplicar el
+saldo recuperado.
+
+Después de migrar, la comprobación específica puede ejecutarse con:
+
+```bash
+php tests/security_financial_stage4_points1_3.php
+```
+
+La auditoría y las decisiones de conservación histórica se documentan en
+`msp/SEGURIDAD_ETAPA4_PUNTOS1_3.md`.

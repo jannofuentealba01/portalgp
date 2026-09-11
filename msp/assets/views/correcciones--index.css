@@ -1,0 +1,13 @@
+/* Page-specific screen layout. Source: msp/correcciones/index.php */
+
+.corr-contract-strip .gp-indicator { display: flex; flex-direction: column; justify-content: center; }
+        .corr-contract-strip .small { line-height: 1.25; }
+        .corr-form-card .card-body { padding: .9rem; }
+        .corr-form-card .form-label { font-weight: 600; margin-bottom: .3rem; }
+        .corr-impact-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr); gap: .7rem; }
+        .corr-preserved-list { columns: 2; column-gap: 1.5rem; }
+        @media (max-width: 767.98px) {
+            .corr-form-card .card-body { padding: .75rem; }
+            .corr-impact-grid { grid-template-columns: 1fr; }
+            .corr-preserved-list { columns: 1; }
+        }

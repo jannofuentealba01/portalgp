@@ -2,8 +2,9 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/DocumentoCobroTrazabilidadService.php';
 
-msp2RequireAccess();
+msp2RequireAccess('MSP Cobranza', 'escritura');
 
 $redirectQueryRaw = trim((string) ($_POST['volver_query'] ?? ''));
 $redirectTarget = 'documentos_cobro/index.php';
@@ -52,6 +53,7 @@ try {
     if (!msp2TableExists($conn, 'msp_cargos_salida') || !msp2TableExists($conn, 'msp_tipos_cargo_salida')) {
         throw new RuntimeException('No existe configuración de cargos extra para aplicar condonación.');
     }
+    $conn->beginTransaction();
 
     $stmtDoc = $conn->prepare(
         'SELECT TOP 1 id_documento_cobro, estado_documento
@@ -94,7 +96,7 @@ try {
             cs.descripcion_cargo,
             tc.codigo_tipo_cargo,
             loc.cdo_local
-         FROM dbo.msp_cargos_salida cs
+         FROM dbo.msp_cargos_salida cs WITH (UPDLOCK, ROWLOCK)
          INNER JOIN dbo.msp_tipos_cargo_salida tc
             ON tc.id_tipo_cargo_salida = cs.id_tipo_cargo_salida
          LEFT JOIN dbo.msp_locales loc
@@ -115,8 +117,9 @@ try {
     if ($cargos === []) {
         throw new RuntimeException('Este documento no tiene cargos extra condonables.');
     }
-
-    $conn->beginTransaction();
+    if (count($cargos) !== count($idsCargos)) {
+        throw new RuntimeException('Uno o más cargos cambiaron o ya no están disponibles; no se aplicó ninguna condonación.');
+    }
 
     $stmtZeroDetalle = $conn->prepare(
         "UPDATE TOP (1) dbo.msp_documentos_cobro_detalle
@@ -176,7 +179,13 @@ try {
             $stmtZeroDetalle->bindValue(':descripcion_item', $descripcionItem, PDO::PARAM_STR);
             $stmtZeroDetalle->bindValue(':monto_cargo', (string) round((float) ($cargo['monto_cargo'] ?? 0), 2), PDO::PARAM_STR);
             $stmtZeroDetalle->execute();
-            $detallesAjustados += max(0, (int) $stmtZeroDetalle->rowCount());
+            $filasDetalle = max(0, (int) $stmtZeroDetalle->rowCount());
+            if ($filasDetalle !== 1) {
+                throw new RuntimeException('No se encontró una coincidencia documental única para el cargo #' . (int) ($cargo['id_cargo_salida'] ?? 0) . '; no se aplicó ninguna condonación.');
+            }
+            $detallesAjustados += $filasDetalle;
+        } else {
+            throw new RuntimeException('Falta la configuración contable necesaria para condonar el cargo.');
         }
 
         $motivoUsuario = 'Condonado [' . (new DateTimeImmutable('now'))->format('Y-m-d H:i:s') . '] por usuario #' . $usuarioId . ': ' . $motivoCondonacion;
@@ -188,8 +197,8 @@ try {
         $cargosCondonados += max(0, (int) $stmtCancelarCargo->rowCount());
     }
 
-    if ($cargosCondonados <= 0) {
-        throw new RuntimeException('No fue posible condonar cargos del documento (ya fueron modificados por otro usuario).');
+    if ($cargosCondonados !== count($cargos) || $detallesAjustados !== count($cargos)) {
+        throw new RuntimeException('No fue posible condonar todos los cargos de forma íntegra; no se aplicó ningún cambio.');
     }
 
     $stmtRecalc = $conn->prepare(
@@ -245,6 +254,15 @@ try {
     $stmtRecalc->bindValue(':id_documento_pagos', (int) $idDocumento, PDO::PARAM_INT);
     $stmtRecalc->bindValue(':id_documento_update', (int) $idDocumento, PDO::PARAM_INT);
     $stmtRecalc->execute();
+
+    DocumentoCobroTrazabilidadService::registrar(
+        $conn,
+        (int) $idDocumento,
+        'CONDONACION_CARGO',
+        'CARGO',
+        $usuarioId > 0 ? $usuarioId : null,
+        ['ids_cargo_salida' => $idsCargos, 'motivo' => $motivoCondonacion]
+    );
 
     $conn->commit();
 

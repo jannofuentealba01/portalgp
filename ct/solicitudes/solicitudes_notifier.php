@@ -224,7 +224,7 @@ function ctSolicitudesNotifDispatchByUserIds(
 
             ctSolicitudesRepoMarkNotificacionEnviada($conn, $idNotificacion);
         } catch (Throwable $exception) {
-            ctSolicitudesRepoMarkNotificacionError($conn, $idNotificacion, $exception->getMessage());
+            ctSolicitudesRepoMarkNotificacionError($conn, $idNotificacion, pgpRedactLogMessage($exception->getMessage()));
         }
     }
 }

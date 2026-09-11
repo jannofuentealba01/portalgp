@@ -63,7 +63,7 @@ function ctCatalogoEntidadesFinancierasHandlePost(PDO $conn, array $post): never
 
         throw new RuntimeException('Acción no reconocida.');
     } catch (Throwable $e) {
-        ctSetFlash('danger', trim((string) $e->getMessage()) ?: 'No fue posible procesar la solicitud.');
+        ctSetFlash('danger', pgpPublicOrBusinessException($e, 'ct.catalogo.entidades_financieras', 'No fue posible procesar la solicitud.'));
         ctCatalogoEntidadesFinancierasRedirect();
     }
 }

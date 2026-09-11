@@ -237,7 +237,7 @@ if (!function_exists('gpRenderSearchableSelectField')) {
      *   list_max_height?: string,
      *   required?: bool,
      *   value?: string,
-     *   options?: array<int, array{value:string, label:string, label_html?:string, search?:string, attrs?:array<string, scalar|null>}>
+     *   options?: array<int, array{value:string, label:string, search?:string, attrs?:array<string, scalar|null>}>
      * } $options
      */
     function gpRenderSearchableSelectField(array $options = []): void
@@ -297,7 +297,6 @@ if (!function_exists('gpRenderSearchableSelectField')) {
                                 <?php
                                 $itemValue = (string) ($item['value'] ?? '');
                                 $itemLabel = (string) ($item['label'] ?? $itemValue);
-                                $itemLabelHtml = isset($item['label_html']) ? (string) $item['label_html'] : '';
                                 $itemSearch = (string) ($item['search'] ?? mb_strtolower($itemLabel, 'UTF-8'));
                                 $itemAttrs = is_array($item['attrs'] ?? null) ? $item['attrs'] : [];
                                 ?>
@@ -316,7 +315,7 @@ if (!function_exists('gpRenderSearchableSelectField')) {
                                         ?>
                                         data-<?php echo gpComponentEscape($attrKeyNorm); ?>="<?php echo gpComponentEscape((string) ($attrValue ?? '')); ?>"
                                     <?php endforeach; ?>
-                                ><?php echo $itemLabelHtml !== '' ? $itemLabelHtml : gpComponentEscape($itemLabel); ?></button>
+                                ><?php echo gpComponentEscape($itemLabel); ?></button>
                             <?php endforeach; ?>
                         <?php endif; ?>
                     </div>

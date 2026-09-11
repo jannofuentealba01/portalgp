@@ -10,7 +10,7 @@ function msp2ContratosMovimientoGarantiaRedirectFromPost(): never
     $redirectTo = trim((string) ($_POST['redirect_to'] ?? ''));
     $allowed = ['contratos/index.php', 'tiendas/index.php', 'arrendatarios/index.php', 'garantias/aplicaciones.php'];
     $allowContratoEditar = preg_match('/^contratos\/editar\.php\?id_contrato_arriendo=[1-9][0-9]*$/', $redirectTo) === 1;
-    $allowGarantiaFiltro = preg_match('/^garantias\/aplicaciones\.php\?id_contrato_arriendo=[1-9][0-9]*$/', $redirectTo) === 1;
+    $allowGarantiaFiltro = preg_match('/^garantias\/aplicaciones\.php\?id_contrato_arriendo=[1-9][0-9]*(?:&return_to=[A-Za-z0-9_%\.\-]+)?$/', $redirectTo) === 1;
 
     if (!in_array($redirectTo, $allowed, true) && !$allowContratoEditar && !$allowGarantiaFiltro) {
         $redirectTo = 'contratos/index.php';
@@ -70,6 +70,7 @@ try {
         && msp2ProcedureExists($conn, 'msp_garantia_liberar_reserva')
         && msp2ProcedureExists($conn, 'msp_garantia_aplicar')
     ) {
+        $conn->beginTransaction();
         $idGarantiaParam = ($idGarantia !== false && $idGarantia !== null && (int) $idGarantia > 0)
             ? (int) $idGarantia
             : null;
@@ -144,7 +145,9 @@ try {
         $stmtSpMovimiento->bindValue(':observaciones', $observaciones !== '' ? $observaciones : null, $observaciones !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmtSpMovimiento->execute();
         $movimientoCreado=$stmtSpMovimiento->fetch()?:[];$idMovimientoCreado=(int)($movimientoCreado['id_movimiento_garantia']??0);
-        if($idMovimientoCreado>0){$usuario=(int)$_SESSION['usuario']['id'];$up=$conn->prepare("UPDATE dbo.msp_movimientos_garantia SET categoria_aplicacion=N'CARGO_ADICIONAL',motivo_autorizacion=:motivo,id_usuario_solicita=:usuario,id_usuario_autoriza=:usuario WHERE id_movimiento_garantia=:id");$up->execute([':motivo'=>$observaciones!==''?$observaciones:null,':usuario'=>$usuario,':id'=>$idMovimientoCreado]);}
+        if($idMovimientoCreado<=0){throw new RuntimeException('La operación no entregó un movimiento de garantía válido.');}
+        $usuario=(int)$_SESSION['usuario']['id'];$up=$conn->prepare("UPDATE dbo.msp_movimientos_garantia SET categoria_aplicacion=N'CARGO_ADICIONAL',motivo_autorizacion=:motivo,id_usuario_solicita=:usuario,id_usuario_autoriza=:usuario WHERE id_movimiento_garantia=:id");$up->execute([':motivo'=>$observaciones!==''?$observaciones:null,':usuario'=>$usuario,':id'=>$idMovimientoCreado]);
+        $conn->commit();
 
         msp2SetFlash('success', 'El movimiento de garantía fue registrado correctamente.');
         msp2ContratosMovimientoGarantiaRedirectFromPost();
@@ -152,6 +155,9 @@ try {
 
     throw new RuntimeException('No están disponibles los procedimientos de garantía. Ejecuta la fase 4 de DB.');
 } catch (Throwable $exception) {
+    if ($conn->inTransaction()) {
+        $conn->rollBack();
+    }
     if ($exception instanceof RuntimeException) {
         msp2SetFlash('warning', $exception->getMessage());
         msp2ContratosMovimientoGarantiaRedirectFromPost();

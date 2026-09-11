@@ -331,8 +331,8 @@ unset($queryBase['pagina']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Respaldo PDFs</title>
     <?php msp2RenderSearchableSelectAssets(); ?>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -376,7 +376,7 @@ unset($queryBase['pagina']);
         <?php if ($loadError !== null): ?>
             <div class="alert alert-danger"><?php echo msp2Escape($loadError); ?></div>
         <?php else: ?>
-            <form method="get" class="row g-2 align-items-end msp-management-filters msp-pdf-backups-filters">
+            <form method="get" class="row g-2 align-items-end msp-management-filters msp-pdf-backups-filters gp-filter-bar">
                         <div class="col-12 col-md-6 col-xl-3">
                             <label for="filtroPeriodo" class="form-label">Periodo</label>
                             <input type="month" class="form-control" id="filtroPeriodo" name="filtroPeriodo" value="<?php echo msp2Escape($filtroPeriodo); ?>">
@@ -394,7 +394,7 @@ unset($queryBase['pagina']);
                             'options' => $arrendatarioOptions,
                         ]);
                         msp2RenderSearchableSelectField([
-                            'wrapper_class' => 'col-12 col-xl-5',
+                            'wrapper_class' => 'col-12 col-xl-5 gp-secondary-filter-field',
                             'label' => 'Locales',
                             'input_name' => 'filtroLocales',
                             'input_id' => 'filtroLocales',
@@ -405,7 +405,7 @@ unset($queryBase['pagina']);
                             'options' => $localesOptions,
                         ]);
                         ?>
-                        <div class="col-12 col-md-6 col-xl-3">
+                        <div class="col-12 col-md-6 col-xl-3 gp-secondary-filter-field">
                             <label for="filtroTipo" class="form-label">Tipo PDF</label>
                             <select class="form-select" id="filtroTipo" name="filtroTipo">
                                 <option value="">Todos</option>
@@ -416,7 +416,7 @@ unset($queryBase['pagina']);
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-12 col-md-3 col-xl-2">
+                        <div class="col-12 col-md-3 col-xl-2 gp-secondary-filter-field">
                             <label for="filtroEstado" class="form-label">Estado</label>
                             <select class="form-select" id="filtroEstado" name="filtroEstado">
                                 <option value="">Todos</option>
@@ -427,9 +427,9 @@ unset($queryBase['pagina']);
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-12 col-md-3 col-xl-2">
+                        <div class="col-12 col-md-3 col-xl-2 gp-secondary-filter-field">
                             <label for="lineas" class="form-label">Líneas</label>
-                            <select class="form-select" id="lineas" name="lineas">
+                            <select class="form-select" id="lineas" name="lineas" data-gp-default="25">
                                 <?php foreach ($lineasPermitidas as $lineas): ?>
                                     <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                         <?php echo $lineas; ?>
@@ -437,7 +437,7 @@ unset($queryBase['pagina']);
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-12 col-md-12 col-xl-5 d-flex gap-2 msp-pdf-backups-filter-actions">
+                        <div class="col-12 col-md-12 col-xl-5 d-flex gap-2 msp-pdf-backups-filter-actions" data-gp-filter-actions>
                             <button type="submit" class="btn btn-primary">
                                 <i class="bi bi-search me-1" aria-hidden="true"></i>Filtrar
                             </button>
@@ -449,22 +449,17 @@ unset($queryBase['pagina']);
                         <table class="table table-sm table-hover align-middle mb-0 msp-management-table msp-pdf-backups-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Fecha ref.</th>
-                                    <th>Periodo</th>
-                                    <th>Arrendatario</th>
-                                    <th>Locales</th>
-                                    <th>Documento</th>
-                                    <th>Referencia</th>
-                                    <th>Tipo</th>
-                                    <th>Tamaño</th>
-                                    <th>Estado</th>
+                                    <th>Fecha / período</th>
+                                    <th>Arrendatario / locales</th>
+                                    <th>Documento / referencia</th>
+                                    <th>Archivo / estado</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if ($rows === []): ?>
                                     <tr>
-                                        <td colspan="10" class="text-center text-muted py-4">No hay respaldos PDF para los filtros seleccionados.</td>
+                                        <td colspan="5" class="text-center text-muted py-4">No hay respaldos PDF para los filtros seleccionados.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($rows as $row): ?>
@@ -503,27 +498,54 @@ unset($queryBase['pagina']);
                                         }
                                         ?>
                                         <tr>
-                                            <td><?php echo msp2Escape(substr((string) ($row['fecha_pago'] ?? ''), 0, 10)); ?></td>
-                                            <td><?php echo msp2Escape((string) ($row['periodo_ym'] ?? '-')); ?></td>
-                                            <td><?php echo msp2Escape((string) ($row['arrendatario_nombre'] ?? '-')); ?></td>
-                                            <td><?php echo msp2Escape((string) ($row['locales'] ?? '-')); ?></td>
+                                            <td><div><?php echo msp2Escape(substr((string) ($row['fecha_pago'] ?? ''), 0, 10)); ?></div><div class="small text-muted"><?php echo msp2Escape((string) ($row['periodo_ym'] ?? '-')); ?></div></td>
+                                            <td><div class="fw-semibold"><?php echo msp2Escape((string) ($row['arrendatario_nombre'] ?? '-')); ?></div><div class="small text-muted">Locales: <?php echo msp2Escape((string) ($row['locales'] ?? '-')); ?></div></td>
                                             <td>
                                                 <a href="<?php echo msp2Escape($urlDocumento); ?>" class="link-primary text-decoration-none fw-semibold">
                                                     <?php echo msp2Escape($documentoTexto); ?>
                                                 </a>
+                                                <div class="small text-muted"><?php echo msp2Escape($referencia); ?></div>
                                             </td>
-                                            <td><?php echo msp2Escape($referencia); ?></td>
-                                            <td><?php echo msp2Escape($tiposArchivo[(string) ($row['tipo_archivo'] ?? '')] ?? msp2ArchivosPdfTypeUiLabel((string) ($row['tipo_archivo'] ?? ''))); ?></td>
-                                            <td><?php echo msp2Escape(msp2FormatBytes((int) ($row['bytes_archivo'] ?? 0))); ?></td>
-                                            <td><span class="badge <?php echo msp2Escape((string) $estadoInfo['badge']); ?>"><?php echo msp2Escape((string) $estadoInfo['label']); ?></span></td>
+                                            <td><div><?php echo msp2Escape($tiposArchivo[(string) ($row['tipo_archivo'] ?? '')] ?? msp2ArchivosPdfTypeUiLabel((string) ($row['tipo_archivo'] ?? ''))); ?></div><div class="small text-muted"><?php echo msp2Escape(msp2FormatBytes((int) ($row['bytes_archivo'] ?? 0))); ?></div><span class="badge <?php echo msp2Escape((string) $estadoInfo['badge']); ?>"><?php echo msp2Escape((string) $estadoInfo['label']); ?></span></td>
                                             <td>
                                                 <div class="d-flex flex-wrap gap-1">
-                                                    <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2ArchivosPdfDownloadUrl((int) ($row['id_pago_contrato_archivo'] ?? 0), 'inline')); ?>" target="_blank" rel="noopener">
-                                                        <i class="bi bi-eye" aria-hidden="true"></i>
-                                                    </a>
-                                                    <a class="btn btn-outline-success btn-sm" href="<?php echo msp2Escape(msp2ArchivosPdfDownloadUrl((int) ($row['id_pago_contrato_archivo'] ?? 0), 'attachment')); ?>">
-                                                        <i class="bi bi-download" aria-hidden="true"></i>
-                                                    </a>
+
+                                            <?php if (!$esHuerfano): ?>
+                                                <a class="btn btn-outline-primary btn-sm"
+                                                href="<?php echo msp2Escape(
+                                                    msp2ArchivosPdfDownloadUrl(
+                                                        (int) ($row['id_pago_contrato_archivo'] ?? 0),
+                                                        'inline'
+                                                    )
+                                                ); ?>"
+                                                target="_blank"
+                                                rel="noopener"
+                                                title="Ver PDF">
+                                                    <i class="bi bi-eye" aria-hidden="true"></i>
+                                                </a>
+
+                                                <a class="btn btn-outline-success btn-sm"
+                                                href="<?php echo msp2Escape(
+                                                    msp2ArchivosPdfDownloadUrl(
+                                                        (int) ($row['id_pago_contrato_archivo'] ?? 0),
+                                                        'attachment'
+                                                    )
+                                                ); ?>"
+                                                title="Descargar PDF">
+                                                    <i class="bi bi-download" aria-hidden="true"></i>
+                                                </a>
+                                            <?php else: ?>
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary btn-sm"
+                                                        disabled
+                                                        title="No disponible: respaldo huérfano">
+                                                    <i class="bi bi-eye-slash" aria-hidden="true"></i>
+                                                </button>
+                                            <?php endif; ?>
+
+
+
+
                                                     <form method="post" action="<?php echo msp2Escape(msp2Url('pagos/regenerar_archivo_pdf.php')); ?>" class="d-inline">
                                                         <input type="hidden" name="id_pago_contrato_archivo" value="<?php echo (int) ($row['id_pago_contrato_archivo'] ?? 0); ?>">
                                                         <?php msp2CsrfField(); ?>
@@ -548,19 +570,19 @@ unset($queryBase['pagina']);
                             <nav aria-label="Paginacion archivos PDF">
                                 <ul class="pagination pagination-sm mb-0">
                                     <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo buildArchivosPdfQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>">&laquo;</a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(buildArchivosPdfQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>">&laquo;</a>
                                     </li>
                                     <?php foreach ($paginationItems as $item): ?>
                                         <?php if ($item === 'ellipsis'): ?>
                                             <li class="page-item disabled"><span class="page-link">...</span></li>
                                         <?php else: ?>
                                             <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                                <a class="page-link" href="?<?php echo buildArchivosPdfQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                                <a class="page-link" href="?<?php echo msp2Escape(buildArchivosPdfQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                             </li>
                                         <?php endif; ?>
                                     <?php endforeach; ?>
                                     <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo buildArchivosPdfQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>">&raquo;</a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(buildArchivosPdfQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>">&raquo;</a>
                                     </li>
                                 </ul>
                             </nav>
@@ -570,7 +592,7 @@ unset($queryBase['pagina']);
     </div>
 </main>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((element) => {
     new bootstrap.Tooltip(element);

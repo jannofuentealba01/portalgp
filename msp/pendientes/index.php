@@ -107,6 +107,21 @@ function pendientesUrlAccion(string $url): string
     }
     return str_starts_with($url, '/') ? $url : msp2Url($url);
 }
+
+function pendientesAgregarRetorno(string $url, string $returnPath): string
+{
+    if ($url === '') {
+        return '';
+    }
+    $fragment = '';
+    $fragmentPos = strpos($url, '#');
+    if ($fragmentPos !== false) {
+        $fragment = substr($url, $fragmentPos);
+        $url = substr($url, 0, $fragmentPos);
+    }
+    $url .= (str_contains($url, '?') ? '&' : '?') . 'return_to=' . rawurlencode($returnPath);
+    return $url . $fragment;
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -114,36 +129,9 @@ function pendientesUrlAccion(string $url): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bandeja de pendientes MSP</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .pending-shell { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
-        .pending-shell .pending-page-header { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 1rem; margin-bottom: .85rem; }
-        .pending-page-header .pending-back { grid-column: 1; grid-row: 1; justify-self: start; }
-        .pending-page-header h1 { grid-column: 2; grid-row: 1; justify-self: center; margin: 0; color: #003399; font-size: 1.75rem; line-height: 1.2; font-weight: 600; text-align: center; }
-        .pending-page-header .pending-updated { grid-column: 3; grid-row: 1; justify-self: end; white-space: nowrap; }
-        .pending-kpi { border: 1px solid #dbe4ef; border-radius: .65rem; background: #fff; padding: .7rem .8rem; height: 100%; }
-        .pending-kpi strong { display: block; font-size: 1.45rem; line-height: 1; margin-top: .25rem; }
-        .pending-card { border: 1px solid #ced8e5; border-left-width: 5px; border-radius: .65rem; background: #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, .05); }
-        .pending-card.priority-CRITICA { border-left-color: #b42318; }
-        .pending-card.priority-ALTA { border-left-color: #d97706; }
-        .pending-card.priority-NORMAL { border-left-color: #2563eb; }
-        .pending-card.priority-INFORMATIVA { border-left-color: #64748b; }
-        .pending-context { display: flex; flex-wrap: wrap; gap: .45rem; }
-        .pending-context span { border: 1px solid #dbe4ef; border-radius: 999px; padding: .25rem .55rem; background: #f8fafc; font-size: .8rem; color: #475569; }
-        .pending-quick .nav-link { border-radius: 999px; color: #334155; font-weight: 600; }
-        .pending-quick .nav-link.active { background: #123f72; color: #fff; }
-        .pending-management { background: #f8fafc; border-top: 1px solid #e2e8f0; }
-        .pending-detail-row { border-bottom: 1px solid #e2e8f0; padding: .65rem 0; }
-        .pending-detail-row:last-child { border-bottom: 0; }
-        @media (max-width: 850px) {
-            .pending-shell .pending-page-header { display: flex; flex-direction: column; align-items: stretch; gap: .6rem; }
-            .pending-page-header h1 { align-self: center; order: 1; }
-            .pending-page-header .pending-back { align-self: flex-start; order: 2; }
-            .pending-page-header .pending-updated { align-self: flex-start; order: 3; font-size: .72rem; }
-        }
-    </style>
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
@@ -202,10 +190,10 @@ function pendientesUrlAccion(string $url): string
             $gestionId = 'gestion-' . $index;
             $detalles = (array) ($item['detalles'] ?? []);
             $urlAccionPendiente = (string) ($item['url_accion'] ?? '');
+            $returnQuery = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+            $returnPath = 'pendientes/index.php' . ($returnQuery !== '' ? '?' . $returnQuery : '');
             if ($urlAccionPendiente !== '') {
-                $returnQuery = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
-                $returnPath = 'pendientes/index.php' . ($returnQuery !== '' ? '?' . $returnQuery : '');
-                $urlAccionPendiente .= (str_contains($urlAccionPendiente, '?') ? '&' : '?') . 'return_to=' . rawurlencode($returnPath);
+                $urlAccionPendiente = pendientesAgregarRetorno($urlAccionPendiente, $returnPath);
             }
             ?>
             <article class="pending-card priority-<?php echo msp2Escape($prioridad); ?> overflow-hidden">
@@ -267,7 +255,7 @@ function pendientesUrlAccion(string $url): string
                             </form>
                         </div>
                         <div class="col-12 d-flex flex-wrap gap-2">
-                            <form method="post" action="accion.php"><?php msp2CsrfField(); ?><input type="hidden" name="pendiente_clave" value="<?php echo msp2Escape((string) $item['id']); ?>"><input type="hidden" name="redirect_to" value="pendientes/index.php"><button class="btn btn-sm btn-info" name="accion" value="TOMAR_REVISION"><i class="bi bi-eye me-1"></i>Tomar en revisión</button></form>
+                            <form method="post" action="accion.php"><?php msp2CsrfField(); ?><input type="hidden" name="pendiente_clave" value="<?php echo msp2Escape((string) $item['id']); ?>"><input type="hidden" name="redirect_to" value="pendientes/index.php"><button class="btn btn-sm btn-primary" name="accion" value="TOMAR_REVISION"><i class="bi bi-eye me-1"></i>Tomar en revisión</button></form>
                             <?php if ($estado === 'POSPUESTO'): ?><form method="post" action="accion.php"><?php msp2CsrfField(); ?><input type="hidden" name="pendiente_clave" value="<?php echo msp2Escape((string) $item['id']); ?>"><input type="hidden" name="redirect_to" value="pendientes/index.php"><button class="btn btn-sm btn-outline-primary" name="accion" value="REABRIR">Reabrir ahora</button></form><?php endif; ?>
                             <?php if (!empty($item['id_usuario_asignado'])): ?><form method="post" action="accion.php"><?php msp2CsrfField(); ?><input type="hidden" name="pendiente_clave" value="<?php echo msp2Escape((string) $item['id']); ?>"><input type="hidden" name="redirect_to" value="pendientes/index.php"><button class="btn btn-sm btn-outline-danger" name="accion" value="LIBERAR_ASIGNACION">Liberar asignación</button></form><?php endif; ?>
                             <a class="btn btn-sm btn-outline-secondary" href="historial.php?clave=<?php echo rawurlencode((string) $item['id']); ?>"><i class="bi bi-clock-history me-1"></i>Ver historial</a>
@@ -279,7 +267,7 @@ function pendientesUrlAccion(string $url): string
         </div>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

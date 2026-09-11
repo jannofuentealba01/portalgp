@@ -23,11 +23,6 @@ $stmt->execute();
 $roles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 
-// Habilitar la visualización de errores
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 // Verificar si el ID de usuario está presente en la URL
 $userId = $_GET['id'] ?? null;
 
@@ -65,7 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !$registrosAsociados) {
             echo "<script>alert('Error al eliminar el usuario.'); window.location.href = '/portalgp/sistema/gestion/usuarios.php';</script>";
         }
     } catch (PDOException $e) {
-        echo "Error en la eliminación del usuario: " . $e->getMessage();
+        pgpLogException($e, 'legacy_user_delete');
+        echo "<script>alert('No fue posible eliminar el usuario.'); window.location.href = '/portalgp/sistema/gestion/usuarios.php';</script>";
     }
     exit();
 }

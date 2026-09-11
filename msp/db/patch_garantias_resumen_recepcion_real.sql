@@ -67,3 +67,4 @@ OUTER APPLY (
     FROM dbo.msp_movimientos_garantia mg
     WHERE mg.id_garantia = g.id_garantia
 ) mov;
+GO

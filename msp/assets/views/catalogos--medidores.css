@@ -1,0 +1,4 @@
+/* Page-specific screen layout. Source: msp/catalogos/medidores.php */
+
+.medidores-actions { flex-wrap:nowrap !important; white-space:nowrap; }
+        .medidores-actions .btn { padding-inline:.65rem; }

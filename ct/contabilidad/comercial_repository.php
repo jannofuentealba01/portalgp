@@ -68,6 +68,19 @@ function ctComercialRepoCountTerrenos(PDO $conn, array $filtros): int
 
 function ctComercialRepoListTerrenos(PDO $conn, array $filtros, string $orderSql, int $offset, int $limit): array
 {
+    $allowedOrder = [
+        't.id_terreno',
+        't.rol_asignado',
+        'ec.nombre',
+        'lt.fecha_tasacion',
+        'lv.fecha_venta',
+    ];
+    if (preg_match('/^(.+)\s+(ASC|DESC)$/D', trim($orderSql), $match) !== 1
+        || !in_array($match[1], $allowedOrder, true)) {
+        throw new InvalidArgumentException('El orden comercial solicitado no está permitido.');
+    }
+    $orderSql = $match[1] . ' ' . $match[2];
+
     $where = ctComercialRepoBuildWhere($filtros);
 
     $sql = "SELECT

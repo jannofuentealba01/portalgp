@@ -19,6 +19,9 @@ function msp2DescargaArchivoPdfLogPath(): string
 
 function msp2DescargaArchivoPdfDebug(array $context): void
 {
+    if (getenv('PORTALGP_PDF_DEBUG') !== '1') {
+        return;
+    }
     $line = '[' . date('Y-m-d H:i:s') . '] ';
     $parts = [];
     foreach ($context as $key => $value) {
@@ -30,10 +33,10 @@ function msp2DescargaArchivoPdfDebug(array $context): void
             $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $value = is_string($encoded) ? $encoded : '[array]';
         }
-        $parts[] = $key . '=' . str_replace(["\r", "\n"], [' ', ' '], (string) $value);
+        $parts[] = $key . '=' . pgpRedactLogMessage((string) $value);
     }
     $line .= implode(' | ', $parts) . PHP_EOL;
-    @file_put_contents(msp2DescargaArchivoPdfLogPath(), $line, FILE_APPEND);
+    error_log('[PortalGP][msp.pdf_debug] ' . pgpRedactLogMessage(trim($line)));
 }
 
 function msp2DescargaArchivoPdfAbort(int $status, string $message): never
@@ -46,12 +49,7 @@ function msp2DescargaArchivoPdfAbort(int $status, string $message): never
 
 function msp2DescargaArchivoPdfDebugMessage(Throwable $exception, string $fallback): string
 {
-    $message = trim($exception->getMessage());
-    if ($message === '') {
-        return $fallback;
-    }
-
-    return $fallback . ' Detalle: ' . $message;
+    return pgpPublicException($exception, 'msp.pdf_download', $fallback);
 }
 
 $idArchivo = filter_input(INPUT_GET, 'id_archivo', FILTER_VALIDATE_INT, [
@@ -66,7 +64,6 @@ msp2DescargaArchivoPdfDebug([
     'event' => 'request_start',
     'id_archivo' => $idArchivo === false ? 'false' : ($idArchivo ?? 'null'),
     'disposition' => $disposition,
-    'request_uri' => (string) ($_SERVER['REQUEST_URI'] ?? ''),
     'user_id' => (int) ($_SESSION['usuario']['id'] ?? 0),
 ]);
 
@@ -86,8 +83,6 @@ if ($idArchivo !== false && $idArchivo !== null) {
             'id_archivo' => (int) $idArchivo,
             'tipo_archivo' => (string) ($row['tipo_archivo'] ?? ''),
             'estado_archivo' => (string) ($row['estado_archivo'] ?? ''),
-            'ruta_relativa' => (string) ($row['ruta_relativa'] ?? ''),
-            'nombre_archivo' => (string) ($row['nombre_archivo'] ?? ''),
             'bytes_archivo_db' => (int) ($row['bytes_archivo'] ?? 0),
         ]);
 
@@ -96,7 +91,6 @@ if ($idArchivo !== false && $idArchivo !== null) {
         msp2DescargaArchivoPdfDebug([
             'event' => 'materialized',
             'id_archivo' => (int) $idArchivo,
-            'absolute_path' => $absolutePath,
             'is_file' => $absolutePath !== '' ? is_file($absolutePath) : false,
             'is_readable' => $absolutePath !== '' ? is_readable($absolutePath) : false,
         ]);
@@ -110,8 +104,6 @@ if ($idArchivo !== false && $idArchivo !== null) {
         msp2DescargaArchivoPdfDebug([
             'event' => 'file_stats',
             'id_archivo' => (int) $idArchivo,
-            'absolute_path' => $absolutePath,
-            'filename' => $filename,
             'mime_type' => $mimeType,
             'filesize' => $fileSize === false ? 'false' : $fileSize,
         ]);
@@ -123,9 +115,6 @@ if ($idArchivo !== false && $idArchivo !== null) {
             'event' => 'exception',
             'id_archivo' => (int) $idArchivo,
             'exception_class' => $exception::class,
-            'message' => $exception->getMessage(),
-            'file' => $exception->getFile(),
-            'line' => $exception->getLine(),
         ]);
         msp2DescargaArchivoPdfAbort(500, msp2DescargaArchivoPdfDebugMessage($exception, 'No fue posible generar el PDF solicitado.'));
     }
@@ -140,13 +129,13 @@ if ($idArchivo !== false && $idArchivo !== null) {
     }
     header('Cache-Control: private, no-store, max-age=0');
     header('Pragma: no-cache');
+    header('X-Content-Type-Options: nosniff');
     header('Content-Type: ' . $mimeType);
     header('Content-Disposition: ' . $disposition . '; filename="' . $safeFilename . '"');
     header('Content-Length: ' . (string) $fileSize);
     msp2DescargaArchivoPdfDebug([
         'event' => 'before_readfile',
         'id_archivo' => (int) $idArchivo,
-        'absolute_path' => $absolutePath,
         'content_length' => $fileSize,
     ]);
     $result = @readfile($absolutePath);
@@ -154,7 +143,6 @@ if ($idArchivo !== false && $idArchivo !== null) {
         msp2DescargaArchivoPdfDebug([
             'event' => 'readfile_failed',
             'id_archivo' => (int) $idArchivo,
-            'absolute_path' => $absolutePath,
         ]);
         msp2DescargaArchivoPdfAbort(500, 'No fue posible transmitir el archivo respaldado.');
     }
@@ -212,6 +200,7 @@ if ($safeFilename === '') {
 
 header('Cache-Control: private, no-store, max-age=0');
 header('Pragma: no-cache');
+header('X-Content-Type-Options: nosniff');
 header('Content-Type: ' . $mimeType);
 header('Content-Disposition: attachment; filename="' . $safeFilename . '"');
 header('Content-Length: ' . (string) strlen($output));

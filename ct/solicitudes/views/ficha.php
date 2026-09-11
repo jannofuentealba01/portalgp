@@ -981,7 +981,7 @@ require_once __DIR__ . '/partials/tercero_modal.php';
                     }
                 }
             </style>
-            <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+            <script src="/portalgp/assets/vendor/htmx-1.9.12/htmx.min.js"></script>
             <script>
             (function () {
                 function syncAreaCommentsHeight() {
@@ -1036,11 +1036,13 @@ require_once __DIR__ . '/partials/tercero_modal.php';
                         if (!item) {
                             return;
                         }
-                        if (ok) {
-                            item.innerHTML = '<i class="bi bi-check-circle me-1 text-success" aria-hidden="true"></i>' + item.textContent.replace(/^\s+|\s+$/g, '');
-                        } else {
-                            item.innerHTML = '<i class="bi bi-x-circle me-1 text-danger" aria-hidden="true"></i>' + item.textContent.replace(/^\s+|\s+$/g, '');
-                        }
+                        var label = item.textContent.replace(/^\s+|\s+$/g, '');
+                        var icon = document.createElement('i');
+                        icon.className = ok
+                            ? 'bi bi-check-circle me-1 text-success'
+                            : 'bi bi-x-circle me-1 text-danger';
+                        icon.setAttribute('aria-hidden', 'true');
+                        item.replaceChildren(icon, document.createTextNode(label));
                     });
 
                     if (completeButton) {

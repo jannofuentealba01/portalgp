@@ -530,34 +530,13 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Cobranza | Cargos Extra</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .ce-subtle {
-            font-size: 12px;
-            color: var(--color-text-muted);
-        }
-
-        .ce-picker-btn {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            padding-right: 2rem;
-        }
-
-        .ce-date-range-hint {
-            font-size: 0.72rem;
-            line-height: 1.15;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-    </style>
-    <?php msp2RenderMontoClpAssets(); ?>
+<?php msp2RenderMontoClpAssets(); ?>
     <?php msp2RenderSearchableSelectAssets(); ?>
 </head>
-<body class="gp-layout bg-light">
+<body class="gp-layout bg-light gp-module-msp">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <?php msp2RenderCsrfAutoFieldScript(); ?>
 <main class="gp-main p-3 p-xl-4">
@@ -725,14 +704,12 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
                             No hay cargos extra pendientes para incorporar.
                         </div>
                     <?php else: ?>
-                        <div class="msp-management-table-responsive">
-                            <table class="table table-sm align-middle mb-0 msp-management-table msp-extra-charges-table">
+                        <div class="msp-management-table-responsive gp-table-shell">
+                            <table class="table table-sm align-middle mb-0 msp-management-table gp-table-compact gp-table-mobile-cards msp-extra-charges-compact">
                                 <thead>
                                 <tr>
-                                    <th>Fecha</th>
-                                    <th>Tipo</th>
-                                    <th>Local</th>
-                                    <th>Arrendatario</th>
+                                    <th>Fecha / tipo</th>
+                                    <th>Tienda / arrendatario / local</th>
                                     <th>Descripción</th>
                                     <th class="text-end">Monto</th>
                                     <th class="text-end">Acciones</th>
@@ -742,14 +719,12 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
                                 <?php foreach ($pendientes as $row): ?>
                                     <?php $rowIdCargo = (int) ($row['id_cargo_salida'] ?? 0); ?>
                                     <tr>
-                                        <td><?php echo msp2Escape(ceFmtFecha((string) ($row['fecha_cargo'] ?? ''))); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['nombre_tipo_cargo'] ?? '-')); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['cdo_local'] ?? '-')); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['nombre_arrendatario'] ?? ($row['nombre_comercial'] ?? '-'))); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['descripcion_cargo'] ?? '-')); ?></td>
-                                        <td class="text-end"><?php echo msp2Escape(ceFmtMonto($row['monto_cargo'] ?? 0)); ?></td>
-                                        <td class="text-end">
-                                            <div class="d-inline-flex gap-1">
+                                        <td data-gp-label="Fecha / tipo"><strong><?php echo msp2Escape(ceFmtFecha((string) ($row['fecha_cargo'] ?? ''))); ?></strong><div class="small text-muted"><?php echo msp2Escape((string) ($row['nombre_tipo_cargo'] ?? '-')); ?></div></td>
+                                        <td data-gp-label="Tienda / arrendatario / local" class="gp-cell-description"><strong><?php echo msp2Escape((string) ($row['nombre_comercial'] ?? '-')); ?></strong><div><?php echo msp2Escape((string) ($row['nombre_arrendatario'] ?? '-')); ?></div><small class="text-muted">Local <?php echo msp2Escape((string) ($row['cdo_local'] ?? '-')); ?></small></td>
+                                        <td data-gp-label="Descripción" class="gp-cell-description"><?php echo msp2Escape((string) ($row['descripcion_cargo'] ?? '-')); ?><?php if (trim((string) ($row['observaciones'] ?? '')) !== ''): ?><details class="gp-row-detail mt-1"><summary>Ver observación</summary><div><?php echo msp2Escape((string) $row['observaciones']); ?></div></details><?php endif; ?></td>
+                                        <td data-gp-label="Monto" class="text-end fw-semibold"><?php echo msp2Escape(ceFmtMonto($row['monto_cargo'] ?? 0)); ?></td>
+                                        <td data-gp-label="Acciones" class="gp-cell-actions">
+                                            <div class="d-inline-flex flex-wrap gap-1">
                                                 <button
                                                     type="button"
                                                     class="btn btn-outline-warning btn-sm"
@@ -881,15 +856,12 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
                     <?php if ($aplicadosCount === 0): ?>
                         <div class="small text-muted">Todavía no hay cargos asignados en este período.</div>
                     <?php else: ?>
-                        <div class="msp-management-table-responsive">
-                            <table class="table table-sm align-middle mb-0 msp-management-table msp-extra-charges-table">
+                        <div class="msp-management-table-responsive gp-table-shell">
+                            <table class="table table-sm align-middle mb-0 msp-management-table gp-table-compact gp-table-mobile-cards msp-extra-charges-applied-table">
                                 <thead>
                                 <tr>
-                                    <th>#</th>
-                                    <th>Fecha</th>
-                                    <th>Tipo</th>
-                                    <th>Local</th>
-                                    <th>Tienda</th>
+                                    <th>Cargo / fecha / tipo</th>
+                                    <th>Tienda / local</th>
                                     <th>Documento</th>
                                     <th>Descripción</th>
                                     <th class="text-end">Monto</th>
@@ -898,14 +870,11 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
                                 <tbody>
                                 <?php foreach ($aplicados as $row): ?>
                                     <tr>
-                                        <td><?php echo (int) ($row['id_cargo_salida'] ?? 0); ?></td>
-                                        <td><?php echo msp2Escape(ceFmtFecha((string) ($row['fecha_cargo'] ?? ''))); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['nombre_tipo_cargo'] ?? '-')); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['cdo_local'] ?? '-')); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['nombre_comercial'] ?? '-')); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['numero_documento'] ?? ('#' . ((int) ($row['id_documento_cobro'] ?? 0))))); ?></td>
-                                        <td><?php echo msp2Escape((string) ($row['descripcion_cargo'] ?? '-')); ?></td>
-                                        <td class="text-end"><?php echo msp2Escape(ceFmtMonto($row['monto_cargo'] ?? 0)); ?></td>
+                                        <td data-gp-label="Cargo / fecha / tipo"><strong>#<?php echo (int) ($row['id_cargo_salida'] ?? 0); ?></strong><div><?php echo msp2Escape(ceFmtFecha((string) ($row['fecha_cargo'] ?? ''))); ?></div><small class="text-muted"><?php echo msp2Escape((string) ($row['nombre_tipo_cargo'] ?? '-')); ?></small></td>
+                                        <td data-gp-label="Tienda / local"><strong><?php echo msp2Escape((string) ($row['nombre_comercial'] ?? '-')); ?></strong><div class="small text-muted">Local <?php echo msp2Escape((string) ($row['cdo_local'] ?? '-')); ?></div></td>
+                                        <td data-gp-label="Documento"><?php echo msp2Escape((string) ($row['numero_documento'] ?? ('#' . ((int) ($row['id_documento_cobro'] ?? 0))))); ?></td>
+                                        <td data-gp-label="Descripción" class="gp-cell-description"><?php echo msp2Escape((string) ($row['descripcion_cargo'] ?? '-')); ?></td>
+                                        <td data-gp-label="Monto" class="text-end fw-semibold"><?php echo msp2Escape(ceFmtMonto($row['monto_cargo'] ?? 0)); ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>
@@ -916,7 +885,7 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const quickExtraForm = document.getElementById('form_cargo_extra_rapido');

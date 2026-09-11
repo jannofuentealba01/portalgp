@@ -30,6 +30,7 @@ if (!in_array($lineasPorPagina, $lineasPermitidas, true)) {
 
 $paginaActual = isset($_GET['pagina']) && is_numeric($_GET['pagina']) ? max(1, (int) $_GET['pagina']) : 1;
 $filters = msp2PagosNormalizeFilters($_GET);
+$filtroGeneral = $filters['filtroGeneral'];
 $filtroDocumento = $filters['filtroDocumento'];
 $filtroTienda = $filters['filtroTienda'];
 $filtroArrendatario = $filters['filtroArrendatario'];
@@ -139,7 +140,7 @@ if ($tablaExiste) {
         $stmt->execute();
         $pagos = $stmt->fetchAll();
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar los pagos. Detalle tecnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.pagos.index', 'No fue posible cargar los pagos.');
     }
 }
 
@@ -213,11 +214,11 @@ function formatoPagoPeriodo(?string $value): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Pagos</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
-<body class="gp-layout bg-light">
+<body class="gp-layout bg-light gp-module-msp">
 
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 
@@ -237,7 +238,7 @@ function formatoPagoPeriodo(?string $value): string
                 <a href="<?php echo msp2Escape(msp2Url('pagos/exportar_respaldo.php?' . msp2PagosBuildQuery($_GET))); ?>" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-file-earmark-excel me-1" aria-hidden="true"></i>Exportar respaldo XLSX
                 </a>
-                <a href="<?php echo msp2Escape(msp2Url('pagos/archivos_pdf.php')); ?>" class="btn btn-outline-dark btn-sm">
+                <a href="<?php echo msp2Escape(msp2Url('pagos/archivos_pdf.php')); ?>" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-archive me-1" aria-hidden="true"></i>Respaldo PDFs
                 </a>
                 <a href="<?php echo msp2Escape(msp2Url('pagos/simulacion_masiva.php')); ?>" class="btn btn-outline-success btn-sm">
@@ -253,7 +254,7 @@ function formatoPagoPeriodo(?string $value): string
                 </button>
                 <button
                     type="button"
-                    class="btn btn-outline-dark btn-sm"
+                    class="btn btn-outline-secondary btn-sm"
                     data-bs-toggle="modal"
                     data-bs-target="#modalAplicarGarantia"
                     <?php echo (!$tablaExiste || empty($documentosDisponibles)) ? 'disabled' : ''; ?>>
@@ -326,7 +327,7 @@ function formatoPagoPeriodo(?string $value): string
 
                     <?php if ($previewRows !== []): ?>
                         <div class="table-responsive">
-                            <table class="table table-sm table-bordered align-middle">
+                            <table class="table table-sm table-bordered align-middle gp-table-compact gp-table-mobile-cards msp-import-results-table">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Estado</th>
@@ -340,19 +341,19 @@ function formatoPagoPeriodo(?string $value): string
                                 <tbody>
                                     <?php foreach ($previewRows as $previewRow): ?>
                                         <tr>
-                                            <td>
+                                            <td data-gp-label="Estado">
                                                 <span class="badge <?php echo ($previewRow['status'] ?? '') === 'OK' ? 'text-bg-success' : 'text-bg-warning'; ?>">
                                                     <?php echo msp2Escape((string) ($previewRow['status'] ?? 'ERROR')); ?>
                                                 </span>
                                             </td>
-                                            <td><?php echo msp2Escape((string) ($previewRow['pago_uid'] ?? '')); ?></td>
-                                            <td>
+                                            <td data-gp-label="Pago UID"><?php echo msp2Escape((string) ($previewRow['pago_uid'] ?? '')); ?></td>
+                                            <td data-gp-label="Documento destino">
                                                 <div><?php echo msp2Escape((string) ($previewRow['document_label'] ?? '')); ?></div>
                                                 <small class="text-muted"><?php echo msp2Escape((string) ($previewRow['document_key'] ?? '')); ?></small>
                                             </td>
-                                            <td><?php echo msp2Escape(formatoPagoFecha((string) ($previewRow['fecha_pago'] ?? ''))); ?></td>
-                                            <td class="text-end"><?php echo msp2Escape(formatoPagoMonto($previewRow['monto_pagado'] ?? null)); ?></td>
-                                            <td>
+                                            <td data-gp-label="Fecha pago"><?php echo msp2Escape(formatoPagoFecha((string) ($previewRow['fecha_pago'] ?? ''))); ?></td>
+                                            <td data-gp-label="Monto" class="text-end"><?php echo msp2Escape(formatoPagoMonto($previewRow['monto_pagado'] ?? null)); ?></td>
+                                            <td data-gp-label="Resultado">
                                                 <?php if (($previewRow['status'] ?? '') === 'OK'): ?>
                                                     <span class="text-success">Listo para importar</span>
                                                 <?php else: ?>
@@ -401,20 +402,12 @@ function formatoPagoPeriodo(?string $value): string
                 <?php echo msp2Escape($loadError); ?>
             </div>
         <?php else: ?>
-            <form method="get" class="row g-2 mb-3 align-items-end">
-                <div class="col-12 col-md-3">
-                    <label for="filtroDocumento" class="form-label">Documento</label>
-                    <input type="text" id="filtroDocumento" name="filtroDocumento" class="form-control" value="<?php echo msp2Escape($filtroDocumento); ?>" placeholder="Numero o ID">
+            <form method="get" class="row g-2 mb-3 align-items-end gp-filter-bar">
+                <div class="col-12 col-lg-6">
+                    <label for="filtroGeneral" class="form-label">Pago, documento, tienda, arrendatario o RUT</label>
+                    <input type="search" id="filtroGeneral" name="filtroGeneral" class="form-control" value="<?php echo msp2Escape($filtroGeneral); ?>" placeholder="Ej.: ivon transferencia, RUT, documento o #25">
                 </div>
-                <div class="col-12 col-md-3">
-                    <label for="filtroTienda" class="form-label">Tienda</label>
-                    <input type="text" id="filtroTienda" name="filtroTienda" class="form-control" value="<?php echo msp2Escape($filtroTienda); ?>" placeholder="Nombre tienda">
-                </div>
-                <div class="col-12 col-md-3">
-                    <label for="filtroArrendatario" class="form-label">Arrendatario</label>
-                    <input type="text" id="filtroArrendatario" name="filtroArrendatario" class="form-control" value="<?php echo msp2Escape($filtroArrendatario); ?>" placeholder="Nombre o RUT">
-                </div>
-                <div class="col-6 col-md-2">
+                <div class="col-12 col-lg-2">
                     <label for="filtroEstado" class="form-label">Estado pago</label>
                     <select id="filtroEstado" name="filtroEstado" class="form-select">
                         <option value="">(Todos)</option>
@@ -425,9 +418,9 @@ function formatoPagoPeriodo(?string $value): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-6 col-md-1">
+                <div class="col-6 col-lg-2 gp-secondary-filter-field">
                     <label for="lineas" class="form-label">Lineas</label>
-                    <select id="lineas" name="lineas" class="form-select">
+                    <select id="lineas" name="lineas" class="form-select" data-gp-default="25">
                         <?php foreach ($lineasPermitidas as $lineas): ?>
                             <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                 <?php echo $lineas; ?>
@@ -435,63 +428,64 @@ function formatoPagoPeriodo(?string $value): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-12 col-md-12 d-grid">
-                    <button type="submit" class="btn btn-primary">Filtrar</button>
+                <div class="col-12 col-lg-4 d-flex gap-2" data-gp-filter-actions>
+                    <button type="submit" class="btn btn-primary flex-grow-1">Buscar</button>
+                    <?php if ($filtroGeneral !== '' || $filtroDocumento !== '' || $filtroTienda !== '' || $filtroArrendatario !== '' || $filtroEstado !== ''): ?><a class="btn btn-outline-secondary" href="<?php echo msp2Escape(msp2Url('pagos/index.php')); ?>">Limpiar filtros</a><?php endif; ?>
                 </div>
             </form>
 
-            <div class="table-responsive mt-3">
-                <table class="table table-bordered table-hover align-middle text-center">
+            <div class="table-responsive gp-table-shell mt-3">
+                <table class="table table-bordered table-hover align-middle gp-table-compact gp-table-mobile-cards mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 60px;">#</th>
-                            <th style="width: 120px;">Fecha pago</th>
-                            <th style="width: 140px;">Documento</th>
-                            <th style="width: 120px;">Periodo</th>
-                            <th>Tienda</th>
-                            <th>Arrendatario</th>
-                            <th style="width: 140px;">Monto pagado</th>
-                            <th style="width: 140px;">Estado pago</th>
-                            <th style="width: 160px;">Saldo documento</th>
-                            <th style="width: 130px;">Acciones</th>
+                            <th data-gp-column-kind="short">#</th>
+                            <th>Fecha / estado</th>
+                            <th>Documento / período</th>
+                            <th>Tienda / arrendatario</th>
+                            <th>Resumen financiero</th>
+                            <th data-gp-column-kind="actions">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($pagos)): ?>
                             <tr>
-                                <td colspan="10" class="text-muted">
-                                    <?php echo ($filtroDocumento === '' && $filtroTienda === '' && $filtroArrendatario === '' && $filtroEstado === '') ? 'No hay pagos registrados todavía.' : 'Sin resultados para los filtros actuales.'; ?>
+                                <td colspan="6" class="text-muted gp-table-empty-cell">
+                                    <?php echo ($filtroGeneral === '' && $filtroDocumento === '' && $filtroTienda === '' && $filtroArrendatario === '' && $filtroEstado === '') ? 'No hay pagos registrados todavía.' : 'Sin resultados para los filtros actuales.'; ?>
                                 </td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($pagos as $index => $pago): ?>
                                 <?php $estado = $estadoPago[(int) ($pago['estado_pago'] ?? 0)] ?? ['label' => 'Desconocido', 'badge' => 'text-bg-light text-dark']; ?>
                                 <tr>
-                                    <td><?php echo (($paginaActual - 1) * $lineasPorPagina) + $index + 1; ?></td>
-                                    <td><?php echo msp2Escape(formatoPagoFecha($pago['fecha_pago'] ?? null)); ?></td>
-                                    <td>
-                                        <div><strong>#<?php echo (int) $pago['id_documento_cobro']; ?></strong></div>
-                                        <small class="text-muted"><?php echo msp2Escape((string) ($pago['numero_documento'] ?? '')); ?></small>
-                                    </td>
-                                    <td><?php echo msp2Escape(formatoPagoPeriodo($pago['periodo_facturacion'] ?? null)); ?></td>
-                                    <td class="text-start"><?php echo msp2Escape((string) ($pago['nombre_comercial'] ?? '')); ?></td>
-                                    <td class="text-start">
-                                        <div><?php echo msp2Escape((string) ($pago['nombre_arrendatario_snapshot'] ?? '')); ?></div>
-                                        <small class="text-muted"><?php echo msp2Escape((string) ($pago['rut_arrendatario_snapshot'] ?? '')); ?></small>
-                                    </td>
-                                    <td class="text-end"><?php echo msp2Escape(formatoPagoMonto($pago['monto_pagado'] ?? null)); ?></td>
-                                    <td>
-                                        <span class="badge <?php echo $estado['badge']; ?>">
-                                            <?php echo msp2Escape($estado['label']); ?>
-                                        </span>
-                                        <?php if ((int) ($pago['estado_pago'] ?? 0) === 2): ?>
-                                            <div class="small text-muted mt-1">
-                                                <?php echo msp2Escape('Anulado: ' . formatoPagoFecha($pago['fecha_anulacion'] ?? null)); ?>
-                                            </div>
+                                    <td data-gp-label="#" class="text-center"><?php echo (($paginaActual - 1) * $lineasPorPagina) + $index + 1; ?></td>
+                                    <td data-gp-label="Fecha / estado">
+                                        <strong><?php echo msp2Escape(formatoPagoFecha($pago['fecha_pago'] ?? null)); ?></strong>
+                                        <div class="mt-1"><span class="badge <?php echo $estado['badge']; ?>"><?php echo msp2Escape($estado['label']); ?></span></div>
+                                        <?php if ((int) ($pago['estado_pago'] ?? 0) === 2): ?><div class="small text-muted mt-1"><?php echo msp2Escape('Anulado: ' . formatoPagoFecha($pago['fecha_anulacion'] ?? null)); ?></div><?php endif; ?>
+                                        <?php
+                                        $detallePago = [];
+                                        if (trim((string) ($pago['medio_pago'] ?? '')) !== '') $detallePago[] = 'Medio: ' . trim((string) $pago['medio_pago']);
+                                        if (trim((string) ($pago['referencia_pago'] ?? '')) !== '') $detallePago[] = 'Referencia: ' . trim((string) $pago['referencia_pago']);
+                                        if (trim((string) ($pago['observaciones'] ?? '')) !== '') $detallePago[] = 'Observación: ' . trim((string) $pago['observaciones']);
+                                        if (trim((string) ($pago['motivo_anulacion'] ?? '')) !== '') $detallePago[] = 'Motivo de anulación: ' . trim((string) $pago['motivo_anulacion']);
+                                        ?>
+                                        <?php if ($detallePago !== []): ?>
+                                            <details class="gp-row-detail mt-2">
+                                                <summary>Ver datos del pago</summary>
+                                                <div><?php echo msp2Escape(implode(' · ', $detallePago)); ?></div>
+                                            </details>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="text-end"><?php echo msp2Escape(formatoPagoMonto($pago['saldo_pendiente'] ?? null)); ?></td>
-                                    <td>
+                                    <td data-gp-label="Documento / período">
+                                        <div><strong>#<?php echo (int) $pago['id_documento_cobro']; ?></strong></div>
+                                        <small class="text-muted"><?php echo msp2Escape((string) ($pago['numero_documento'] ?? '')); ?></small>
+                                        <div class="small text-muted"><?php echo msp2Escape(formatoPagoPeriodo($pago['periodo_facturacion'] ?? null)); ?></div>
+                                    </td>
+                                    <td data-gp-label="Tienda / arrendatario" class="gp-cell-description"><strong><?php echo msp2Escape((string) ($pago['nombre_comercial'] ?? '')); ?></strong><div><?php echo msp2Escape((string) ($pago['nombre_arrendatario_snapshot'] ?? '')); ?></div>
+                                        <small class="text-muted"><?php echo msp2Escape((string) ($pago['rut_arrendatario_snapshot'] ?? '')); ?></small>
+                                    </td>
+                                    <td data-gp-label="Resumen financiero" class="gp-financial-cell"><span class="gp-data-pair"><span>Monto documento</span><strong><?php echo msp2Escape(formatoPagoMonto($pago['monto_total'] ?? null)); ?></strong></span><span class="gp-data-pair gp-data-pair--total"><span>Pago registrado</span><strong><?php echo msp2Escape(formatoPagoMonto($pago['monto_pagado'] ?? null)); ?></strong></span><span class="gp-data-pair"><span>Saldo actual</span><strong><?php echo msp2Escape(formatoPagoMonto($pago['saldo_pendiente'] ?? null)); ?></strong></span></td>
+                                    <td data-gp-label="Acciones" class="gp-cell-actions">
                                         <?php if ((int) ($pago['estado_pago'] ?? 0) === 1): ?>
                                             <button
                                                 type="button"
@@ -522,19 +516,19 @@ function formatoPagoPeriodo(?string $value): string
                     <nav aria-label="Paginacion de pagos">
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo msp2PagosBuildQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>" aria-label="Anterior">&laquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(msp2PagosBuildQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>" aria-label="Anterior">&laquo;</a>
                             </li>
                             <?php foreach ($paginationItems as $item): ?>
                                 <?php if ($item === 'ellipsis'): ?>
                                     <li class="page-item disabled"><span class="page-link">...</span></li>
                                 <?php else: ?>
                                     <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo msp2PagosBuildQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(msp2PagosBuildQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                     </li>
                                 <?php endif; ?>
                             <?php endforeach; ?>
                             <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo msp2PagosBuildQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>" aria-label="Siguiente">&raquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(msp2PagosBuildQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>" aria-label="Siguiente">&raquo;</a>
                             </li>
                         </ul>
                     </nav>
@@ -654,7 +648,7 @@ function formatoPagoPeriodo(?string $value): string
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="submit" class="btn btn-dark">Aplicar garantia</button>
+                <button type="submit" class="btn btn-success">Aplicar garantia</button>
             </div>
         </form>
     </div>
@@ -683,7 +677,7 @@ function formatoPagoPeriodo(?string $value): string
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     document.querySelectorAll('.js-anular-pago').forEach((button) => {

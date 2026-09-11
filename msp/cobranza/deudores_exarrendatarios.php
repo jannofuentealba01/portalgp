@@ -42,7 +42,7 @@ function dexFecha(mixed $fecha): string
     return $date instanceof DateTimeImmutable ? $date->format('d-m-Y') : $raw;
 }
 
-$buscar = trim((string) ($_GET['buscar'] ?? ''));
+$buscar = msp2SearchQuery($_GET['buscar'] ?? '');
 $estado = strtoupper(trim((string) ($_GET['estado'] ?? 'TODOS')));
 if (!in_array($estado, ['TODOS', 'EN_CIERRE', 'TERMINADO'], true)) {
     $estado = 'TODOS';
@@ -119,22 +119,20 @@ try {
         $conditions[] = 'c.estado_contrato=4';
     }
     if ($buscar !== '') {
-        $conditions[] = '(CAST(c.id_contrato_arriendo AS NVARCHAR(20)) LIKE :buscar_contrato
-            OR a.nombre_locatario LIKE :buscar_arrendatario
-            OR a.rut LIKE :buscar_rut
-            OR t.nombre_comercial LIKE :buscar_tienda
-            OR locales.locales LIKE :buscar_local)';
-        $like = '%' . $buscar . '%';
-        $params = [
-            ':buscar_contrato' => $like,
-            ':buscar_arrendatario' => $like,
-            ':buscar_rut' => $like,
-            ':buscar_tienda' => $like,
-            ':buscar_local' => $like,
-        ];
+        $search = msp2BuildSearchCondition($buscar, [
+            'c.id_contrato_arriendo',
+            'a.nombre_locatario',
+            'a.rut',
+            "REPLACE(REPLACE(REPLACE(a.rut,N'.',N''),N'-',N''),N' ',N'')",
+            't.nombre_comercial',
+            'locales.locales',
+            "REPLACE(REPLACE(locales.locales,N'-',N''),N'.',N'')",
+        ], 'cobranza_buscar', 'c.id_contrato_arriendo');
+        $conditions[] = $search['sql'];
+        $params = array_merge($params, $search['params']);
     }
 
-    $sql = "SELECT TOP (250)
+    $sql = "SELECT
                 c.id_contrato_arriendo,
                 c.fecha_termino_efectiva,
                 c.estado_contrato,
@@ -212,40 +210,11 @@ foreach ($registros as $registro) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Deudores exarrendatarios | MSP</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode((string) filemtime(dirname(__DIR__, 2) . '/styles.css')); ?>">
-    <style>
-        .dex-shell{max-width:1640px;width:100%;margin:0 auto;font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif}
-        .dex-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:1rem;margin-bottom:.85rem}
-        .dex-page-header h1{grid-column:2;grid-row:1;justify-self:center;margin:0;color:#003399;font-size:1.75rem;font-weight:600;line-height:1.2}
-        .dex-page-back{grid-column:1;grid-row:1;justify-self:start}
-        .dex-page-actions{grid-column:3;grid-row:1;justify-self:end;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.5rem}
-        .dex-page-header .btn{min-height:34px;padding:.35rem .65rem;font-size:.825rem;line-height:1.2}
-        .dex-filters{margin-bottom:.85rem}
-        .dex-filters .form-label{margin-bottom:.25rem;font-size:.88rem}
-        .dex-filters .form-control,.dex-filters .form-select,.dex-filters .btn{min-height:38px;padding-top:.38rem;padding-bottom:.38rem}
-        .dex-kpis{margin-bottom:.85rem}
-        .dex-kpi{height:100%;border:1px solid #dce5ef;border-radius:8px;background:#fff;padding:.65rem .75rem}
-        .dex-kpi label{display:block;color:#64748b;font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-        .dex-kpi strong{display:block;margin-top:.15rem;color:#123f72;font-size:1.08rem;line-height:1.25}
-        .dex-sub{color:#64748b;font-size:.75rem;line-height:1.2}
-        .dex-list-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.35rem .75rem;margin-bottom:.35rem}
-        .dex-list-head strong{font-size:1rem}
-        .dex-table-wrap{overflow-x:auto;border-top:1px solid #dbe3ec}
-        .dex-table{min-width:1120px;margin-bottom:0;border-collapse:collapse}
-        .dex-table>:not(caption)>*>*{padding:.55rem .6rem;border:0;border-bottom:1px solid #dfe6ef;background:#fff}
-        .dex-table thead th{background:#eef2f7;color:#172b4d;font-size:.82rem;font-weight:600;white-space:nowrap}
-        .dex-table tbody tr:hover>*{background:#f8fafc}
-        .dex-table td{vertical-align:middle;font-size:.86rem}
-        .dex-table .tenant-name{font-weight:700}.dex-table .store{color:#64748b;font-size:.76rem;line-height:1.25}
-        .dex-row-total{font-size:.95rem;font-weight:700;color:#9f1239}.dex-amount{white-space:nowrap}
-        .dex-table .btn{padding:.3rem .48rem;font-size:.76rem;white-space:nowrap}
-        @media(max-width:700px){.dex-page-header{display:flex;flex-direction:column;align-items:stretch}.dex-page-header h1{order:1;align-self:center}.dex-page-back{order:2}.dex-page-actions{order:3;justify-content:flex-start}.dex-page-actions .btn{flex:1 1 auto}.dex-list-head{align-items:flex-start}}
-        @media print{.no-print,.msp-quick-access-hot-edge,.offcanvas,header,footer{display:none!important}.gp-main{padding:0!important}.dex-shell{max-width:none!important}.dex-table{min-width:0!important}}
-    </style>
 </head>
-<body class="gp-layout bg-light">
+<body class="gp-layout bg-light gp-module-msp">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main p-3 p-xl-4">
     <div class="dex-shell">
@@ -256,15 +225,15 @@ foreach ($registros as $registro) {
             <h1>Deudores exarrendatarios</h1>
             <div class="dex-page-actions">
                 <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('contabilidad/aging.php')); ?>"><i class="bi bi-bar-chart-line me-1"></i>Ver Aging general</a>
-                <button class="btn btn-outline-dark btn-sm" onclick="window.print()"><i class="bi bi-printer me-1"></i>Imprimir</button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="bi bi-printer me-1"></i>Imprimir</button>
             </div>
         </header>
 
-        <form class="dex-filters no-print" method="get">
+        <form class="dex-filters no-print gp-filter-bar" method="get">
             <div class="row g-2 align-items-end">
-                <div class="col-lg-7"><label class="form-label fw-semibold">Buscar por contrato, tienda, arrendatario, RUT o local</label><input class="form-control" name="buscar" value="<?php echo msp2Escape($buscar); ?>" placeholder="Ej.: 61, Yesenia, 17.647.451-3, óptica o A-5"></div>
+                <div class="col-lg-7"><label class="form-label fw-semibold">Buscar por contrato, tienda, arrendatario, RUT o local</label><input type="search" class="form-control" name="buscar" value="<?php echo msp2Escape($buscar); ?>" placeholder="Ej.: óptica A-5, nombre y tienda, o #61"></div>
                 <div class="col-lg-3"><label class="form-label fw-semibold">Estado contractual</label><select class="form-select" name="estado"><option value="TODOS" <?php echo $estado === 'TODOS' ? 'selected' : ''; ?>>Todos con término operativo</option><option value="EN_CIERRE" <?php echo $estado === 'EN_CIERRE' ? 'selected' : ''; ?>>En proceso de cierre</option><option value="TERMINADO" <?php echo $estado === 'TERMINADO' ? 'selected' : ''; ?>>Terminados</option></select></div>
-                <div class="col-lg-2 d-grid"><button class="btn btn-primary"><i class="bi bi-search me-1"></i>Buscar</button></div>
+                <div class="col-lg-2 d-flex gap-2" data-gp-filter-actions><button class="btn btn-primary flex-grow-1"><i class="bi bi-search me-1"></i>Buscar</button><?php if ($buscar !== '' || $estado !== 'TODOS'): ?><a class="btn btn-outline-secondary" href="<?php echo msp2Escape(msp2Url('cobranza/deudores_exarrendatarios.php')); ?>" title="Limpiar filtros" aria-label="Limpiar filtros"><i class="bi bi-x-lg"></i></a><?php endif; ?></div>
             </div>
         </form>
 
@@ -272,7 +241,7 @@ foreach ($registros as $registro) {
             <div class="alert alert-danger"><?php echo msp2Escape($error); ?></div>
         <?php else: ?>
             <div class="row g-2 dex-kpis">
-                <div class="col-sm-6 col-xl"><div class="dex-kpi"><label>Casos pendientes</label><strong><?php echo (int) $totales['casos']; ?></strong><span class="dex-sub">máximo 250 resultados</span></div></div>
+                <div class="col-sm-6 col-xl"><div class="dex-kpi"><label>Casos pendientes</label><strong><?php echo (int) $totales['casos']; ?></strong><span class="dex-sub">resultados encontrados</span></div></div>
                 <div class="col-sm-6 col-xl"><div class="dex-kpi"><label>Deuda residual</label><strong><?php echo msp2Escape(dexMonto($totales['saldo'])); ?></strong><span class="dex-sub">documentos y cargos pendientes</span></div></div>
                 <div class="col-sm-6 col-xl"><div class="dex-kpi"><label>Garantía aplicada</label><strong><?php echo msp2Escape(dexMonto($totales['garantia_aplicada'])); ?></strong><span class="dex-sub">ya usada para cubrir deuda</span></div></div>
                 <div class="col-sm-6 col-xl"><div class="dex-kpi"><label>Garantía disponible</label><strong><?php echo msp2Escape(dexMonto($totales['garantia_disponible'])); ?></strong><span class="dex-sub">aún no aplicada</span></div></div>
@@ -285,22 +254,19 @@ foreach ($registros as $registro) {
             <section>
                 <div class="dex-list-head"><strong>Listado de deuda residual</strong><span class="text-muted small">La garantía disponible no se descuenta hasta que sea aplicada formalmente.</span></div>
                 <div class="dex-table-wrap">
-                    <table class="table table-hover mb-0 dex-table">
-                        <thead class="table-light"><tr><th>Exarrendatario</th><th>Contrato / tienda</th><th>Término</th><th>Deuda documental</th><th>Cargos pendientes</th><th>Saldo residual</th><th>Garantía</th><th class="text-end">Acciones</th></tr></thead>
+                    <table class="table table-hover mb-0 dex-table gp-table-compact gp-table-mobile-cards">
+                        <thead class="table-light"><tr><th>Exarrendatario</th><th>Contrato / tienda / locales</th><th>Deuda documental / cargos</th><th>Saldo / garantía</th><th class="text-end">Acciones</th></tr></thead>
                         <tbody>
                         <?php if ($registros === []): ?>
-                            <tr><td colspan="8" class="text-center text-muted py-5"><i class="bi bi-check-circle text-success me-1"></i>No hay exarrendatarios con saldo pendiente para los filtros indicados.</td></tr>
+                            <tr><td colspan="5" class="text-center text-muted py-5"><i class="bi bi-check-circle text-success me-1"></i>No hay exarrendatarios con saldo pendiente para los filtros indicados.</td></tr>
                         <?php else: foreach ($registros as $registro): ?>
                             <?php $idContrato = (int) $registro['id_contrato_arriendo']; ?>
                             <tr>
                                 <td><div class="tenant-name"><?php echo msp2Escape((string) $registro['nombre_locatario']); ?></div><div class="store"><?php echo msp2Escape((string) ($registro['rut'] ?: '-')); ?></div></td>
-                                <td><div><strong>#<?php echo $idContrato; ?></strong> <span class="badge text-bg-<?php echo (int) $registro['estado_contrato'] === 3 ? 'warning' : 'secondary'; ?>"><?php echo msp2Escape((string) $registro['estado_nombre']); ?></span></div><div class="store"><?php echo msp2Escape((string) $registro['nombre_comercial']); ?> · <?php echo msp2Escape((string) $registro['locales']); ?></div><?php if (!empty($registro['fecha_derivacion'])): ?><div class="store">Derivada el <?php echo msp2Escape(dexFecha((string) $registro['fecha_derivacion'])); ?></div><?php endif; ?></td>
-                                <td class="dex-amount"><?php echo msp2Escape(dexFecha($registro['fecha_termino_efectiva'])); ?></td>
-                                <td><div class="dex-amount"><?php echo msp2Escape(dexMonto($registro['saldo_documental'])); ?></div><div class="store"><?php echo (int) $registro['documentos_pendientes']; ?> documento(s)</div></td>
-                                <td><div class="dex-amount"><?php echo msp2Escape(dexMonto($registro['saldo_cargos'])); ?></div><div class="store"><?php echo (int) $registro['cargos_pendientes']; ?> cargo(s)</div></td>
-                                <td class="dex-row-total dex-amount"><?php echo msp2Escape(dexMonto($registro['saldo_residual'])); ?></td>
-                                <td><div class="dex-amount text-success">Aplicada: <?php echo msp2Escape(dexMonto($registro['garantia_aplicada'])); ?></div><div class="dex-amount text-primary">Disponible: <?php echo msp2Escape(dexMonto($registro['garantia_disponible'])); ?></div></td>
-                                <td class="text-end"><div class="btn-group btn-group-sm"><a class="btn btn-outline-dark" href="<?php echo msp2Escape(msp2Url('cobranza/deudor_historico.php?id_contrato=' . $idContrato)); ?>">Ver desglose</a><a class="btn btn-primary" href="<?php echo msp2Escape(msp2Url('cobranza/gestionar.php?id_contrato=' . $idContrato . '&return_to=cobranza/deudores_exarrendatarios.php')); ?>">Seguimiento</a><a class="btn btn-outline-secondary" href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?id_contrato_arriendo=' . $idContrato)); ?>" title="Ver ficha de contrato"><i class="bi bi-file-earmark-text"></i></a></div></td>
+                                <td><div><strong>#<?php echo $idContrato; ?></strong> <span class="badge text-bg-<?php echo (int) $registro['estado_contrato'] === 3 ? 'warning' : 'secondary'; ?>"><?php echo msp2Escape((string) $registro['estado_nombre']); ?></span></div><div class="store"><?php echo msp2Escape((string) $registro['nombre_comercial']); ?> · <?php echo msp2Escape((string) $registro['locales']); ?></div><div class="store">Término: <?php echo msp2Escape(dexFecha($registro['fecha_termino_efectiva'])); ?></div><?php if (!empty($registro['fecha_derivacion'])): ?><div class="store">Derivada el <?php echo msp2Escape(dexFecha((string) $registro['fecha_derivacion'])); ?></div><?php endif; ?></td>
+                                <td><div class="gp-data-pair"><span>Documentos (<?php echo (int) $registro['documentos_pendientes']; ?>)</span><strong><?php echo msp2Escape(dexMonto($registro['saldo_documental'])); ?></strong></div><div class="gp-data-pair"><span>Cargos (<?php echo (int) $registro['cargos_pendientes']; ?>)</span><strong><?php echo msp2Escape(dexMonto($registro['saldo_cargos'])); ?></strong></div></td>
+                                <td><div class="dex-row-total dex-amount">Saldo: <?php echo msp2Escape(dexMonto($registro['saldo_residual'])); ?></div><div class="store text-success">Garantía aplicada: <?php echo msp2Escape(dexMonto($registro['garantia_aplicada'])); ?></div><div class="store text-primary">Garantía disponible: <?php echo msp2Escape(dexMonto($registro['garantia_disponible'])); ?></div></td>
+                                <td class="text-end"><div class="dex-actions"><a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('cobranza/deudor_historico.php?id_contrato=' . $idContrato)); ?>">Desglose</a><a class="btn btn-primary btn-sm" href="<?php echo msp2Escape(msp2Url('cobranza/gestionar.php?id_contrato=' . $idContrato . '&return_to=cobranza/deudores_exarrendatarios.php')); ?>">Seguimiento</a><a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?id_contrato_arriendo=' . $idContrato)); ?>" title="Ver ficha de contrato" aria-label="Ver ficha de contrato"><i class="bi bi-file-earmark-text"></i></a></div></td>
                             </tr>
                         <?php endforeach; endif; ?>
                         </tbody>

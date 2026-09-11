@@ -29,6 +29,7 @@ function gpGestionUserId(): int
 
 function gpGestionSetFlash(string $type, string $message): void
 {
+    $message = pgpSafePublicMessage($message, 'gestion.flash', 'No fue posible completar la operación.');
     $_SESSION['gp_gestion_flash'] = [
         'type' => $type,
         'message' => $message,
@@ -92,6 +93,9 @@ function gpGestionCanAccessModule(): bool
 
 function gpGestionDenyAccess(string $message = 'No tienes permisos para acceder a esta sección.'): never
 {
+    if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+        pgpSecurityAbort(403, $message);
+    }
     gpGestionSetFlash('danger', $message);
     header('Location: /portalgp/index.php');
     exit;
@@ -106,6 +110,7 @@ function gpGestionRequireModuleAccess(): void
 
 function gpGestionRequireSection(string $section): void
 {
+    pgpRequireEnabledSession($GLOBALS['conn']);
     $allowed = match ($section) {
         'usuarios' => gpGestionCanAccessUsuarios(),
         'roles' => gpGestionCanAccessRoles(),
@@ -115,7 +120,11 @@ function gpGestionRequireSection(string $section): void
     };
 
     if (!$allowed) {
+        http_response_code(403);
         gpGestionDenyAccess('No tienes permisos para acceder a esta sección.');
+    }
+    if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST') {
+        pgpRequireCsrf();
     }
 }
 

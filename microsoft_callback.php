@@ -3,13 +3,13 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/auth_helper.php';
 
-if (!pgpConsumeMicrosoftOauthState((string)($_GET['state'] ?? ''))) {
+$oauthRequest = pgpConsumeMicrosoftOauthRequest((string)($_GET['state'] ?? ''));
+if ($oauthRequest === null) {
     pgpRedirectToLogin('No se pudo validar la respuesta de Microsoft. Intenta nuevamente.');
 }
 
 if (!empty($_GET['error'])) {
-    $errorDescription = trim((string)($_GET['error_description'] ?? $_GET['error']));
-    pgpRedirectToLogin('Microsoft devolvió un error: ' . $errorDescription);
+    pgpRedirectToLogin('Microsoft canceló o rechazó el inicio de sesión. Intenta nuevamente.');
 }
 
 $code = trim((string)($_GET['code'] ?? ''));
@@ -24,27 +24,47 @@ if ($config['tenant_id'] === '' || $config['client_id'] === '' || $config['clien
 
 $tokenUrl = 'https://login.microsoftonline.com/' . rawurlencode($config['tenant_id']) . '/oauth2/v2.0/token';
 
+$tokenHttpCode = 0;
+$tokenResponse = '';
 try {
-    [$tokenHttpCode, $tokenResponse] = pgpHttpPostForm($tokenUrl, [
-        'client_id' => $config['client_id'],
-        'client_secret' => $config['client_secret'],
-        'code' => $code,
-        'grant_type' => 'authorization_code',
-        'redirect_uri' => pgpMicrosoftRedirectUri($config),
-    ]);
+    $candidateSecrets = array_values(array_unique(array_filter([
+        (string)$config['client_secret'],
+        (string)($config['client_secret_previous'] ?? ''),
+    ], static fn(string $secret): bool => trim($secret) !== '')));
+    foreach ($candidateSecrets as $candidateSecret) {
+        [$tokenHttpCode, $tokenResponse] = pgpHttpPostForm($tokenUrl, [
+            'client_id' => $config['client_id'],
+            'client_secret' => $candidateSecret,
+            'code' => $code,
+            'grant_type' => 'authorization_code',
+            'redirect_uri' => pgpMicrosoftRedirectUri($config),
+        ]);
+        if ($tokenHttpCode >= 200 && $tokenHttpCode < 300) {
+            break;
+        }
+    }
 } catch (Throwable $e) {
-    pgpRedirectToLogin($e->getMessage());
+    pgpRedirectToLogin(pgpPublicException($e, 'auth.microsoft.token', 'No fue posible contactar a Microsoft.'));
 }
 
 $tokenJson = json_decode($tokenResponse, true);
 if (!is_array($tokenJson) || $tokenHttpCode < 200 || $tokenHttpCode >= 300 || empty($tokenJson['access_token'])) {
-    $detail = is_array($tokenJson) ? ($tokenJson['error_description'] ?? $tokenJson['error'] ?? 'No se pudo obtener token.') : 'Respuesta inválida al solicitar token.';
-    pgpRedirectToLogin('Falló autenticación Microsoft: ' . $detail);
+    pgpRedirectToLogin('Microsoft no pudo completar la autenticación. Intenta nuevamente.');
+}
+
+try {
+    $claims = pgpValidateMicrosoftIdToken(
+        (string)($tokenJson['id_token'] ?? ''),
+        $config,
+        (string)$oauthRequest['nonce']
+    );
+} catch (Throwable $e) {
+    pgpClearMicrosoftTokens();
+    pgpRedirectToLogin(pgpPublicException($e, 'auth.microsoft.id_token', 'Microsoft devolvió una identidad que no pudo validarse.'));
 }
 
 pgpStoreMicrosoftTokens($tokenJson);
-
-$profile = pgpMicrosoftProfileFromIdToken($tokenJson, $config);
+$profile = pgpMicrosoftProfileFromVerifiedClaims($claims);
 $email = pgpMicrosoftProfileEmail($profile);
 
 if ($email === '') {
@@ -55,14 +75,13 @@ if ($email === '') {
         );
     } catch (Throwable $e) {
         pgpClearMicrosoftTokens();
-        pgpRedirectToLogin($e->getMessage());
+        pgpRedirectToLogin(pgpPublicException($e, 'auth.microsoft.profile', 'No fue posible consultar el perfil de Microsoft.'));
     }
 
     $meJson = json_decode($meResponse, true);
     if (!is_array($meJson) || $meHttpCode < 200 || $meHttpCode >= 300) {
         pgpClearMicrosoftTokens();
-        $detail = is_array($meJson) ? ($meJson['error']['message'] ?? 'No se pudo leer el perfil del usuario.') : 'Respuesta inválida de Microsoft Graph.';
-        pgpRedirectToLogin('Falló lectura de perfil Microsoft: ' . $detail);
+        pgpRedirectToLogin('Microsoft no pudo entregar el perfil de la cuenta. Intenta nuevamente.');
     }
 
     $profile = $meJson;
@@ -82,7 +101,7 @@ if (!pgpIsAllowedMicrosoftEmail($email, $config)) {
 $user = pgpFindEnabledUserByEmail($conn, $email);
 if (!$user) {
     pgpClearMicrosoftTokens();
-    pgpRedirectToLogin('El correo ' . $email . ' no está habilitado en Portal GP.');
+    pgpRedirectToLogin('La cuenta Microsoft no está habilitada en Portal GP.');
 }
 
 pgpLoginUserRecord($conn, $user, 'microsoft');

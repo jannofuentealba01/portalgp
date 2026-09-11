@@ -137,7 +137,8 @@ BEGIN
    SELECT @id_ajuste=id_tipo_movimiento_garantia FROM dbo.msp_tipos_movimiento_garantia WHERE codigo_movimiento=N'AJUSTE_POSITIVO';
    UPDATE dbo.msp_garantia_devoluciones SET estado_devolucion=N'ANULADA',observaciones=CONCAT(ISNULL(observaciones,N''),N' | Reversa: ',@motivo) WHERE id_devolucion_garantia=@id_origen;
    UPDATE dbo.msp_tesoreria_movimientos SET estado_movimiento=N'ANULADO',observaciones=CONCAT(ISNULL(observaciones,N''),N' | Reversa: ',@motivo) WHERE id_movimiento_tesoreria=@id_tm;
-   UPDATE dbo.msp_movimientos_garantia SET id_tipo_movimiento_garantia=@id_ajuste,observaciones=CONCAT(ISNULL(observaciones,N''),N' | Reversa de devolución: ',@motivo) WHERE id_movimiento_garantia=@id_mov;
+   INSERT dbo.msp_movimientos_garantia(id_garantia,fecha_movimiento,id_tipo_movimiento_garantia,monto_movimiento,observaciones,id_usuario_solicita,id_usuario_autoriza)
+   VALUES(@id_garantia,@fecha_reversa,@id_ajuste,@monto,CONCAT(N'Reversa financiera compensatoria de devolución #',@id_origen,N': ',@motivo),@id_usuario,@id_usuario);
   END
   ELSE
   BEGIN
@@ -145,8 +146,9 @@ BEGIN
    IF @id_garantia IS NULL THROW 53406,N'La aplicación no existe o ya fue revertida.',1;
    IF @id_pago IS NOT NULL EXEC dbo.msp_anular_pago_documento @id_pago=@id_pago,@fecha_anulacion=@fecha_reversa,@motivo_anulacion=@motivo;
    SELECT @id_ajuste=id_tipo_movimiento_garantia FROM dbo.msp_tipos_movimiento_garantia WHERE codigo_movimiento=N'AJUSTE_POSITIVO';
-   UPDATE dbo.msp_movimientos_garantia SET id_tipo_movimiento_garantia=@id_ajuste,observaciones=CONCAT(ISNULL(observaciones,N''),N' | Reversa de aplicación: ',@motivo) WHERE id_movimiento_garantia=@id_mov;
-   IF @id_ccl IS NOT NULL UPDATE c SET monto_aplicado_garantia=ISNULL(x.aplicado,0),estado_cargo=CASE WHEN ISNULL(x.aplicado,0)>=c.monto_cargo THEN 3 WHEN ISNULL(x.reservado,0)>0 THEN 2 ELSE 1 END FROM dbo.msp_cargos_contrato_local c OUTER APPLY(SELECT SUM(CASE WHEN t.codigo_movimiento=N'APLICACION_CARGO' THEN m.monto_movimiento ELSE 0 END) aplicado,SUM(CASE WHEN t.codigo_movimiento=N'RESERVA' THEN m.monto_movimiento WHEN t.codigo_movimiento=N'LIBERACION_RESERVA' THEN -m.monto_movimiento ELSE 0 END) reservado FROM dbo.msp_movimientos_garantia m JOIN dbo.msp_tipos_movimiento_garantia t ON t.id_tipo_movimiento_garantia=m.id_tipo_movimiento_garantia WHERE m.id_cargo_contrato_local=c.id_cargo_contrato_local)x WHERE c.id_cargo_contrato_local=@id_ccl;
+   INSERT dbo.msp_movimientos_garantia(id_garantia,fecha_movimiento,id_tipo_movimiento_garantia,monto_movimiento,id_documento_cobro,id_pago,observaciones,id_usuario_solicita,id_usuario_autoriza)
+   VALUES(@id_garantia,@fecha_reversa,@id_ajuste,@monto,NULL,@id_pago,CONCAT(N'Reversa financiera compensatoria de aplicación #',@id_origen,N': ',@motivo),@id_usuario,@id_usuario);
+   IF @id_ccl IS NOT NULL UPDATE c SET monto_aplicado_garantia=ISNULL(x.aplicado,0),estado_cargo=CASE WHEN ISNULL(x.aplicado,0)>=c.monto_cargo THEN 3 WHEN ISNULL(x.reservado,0)>0 THEN 2 ELSE 1 END FROM dbo.msp_cargos_contrato_local c OUTER APPLY(SELECT SUM(CASE WHEN t.codigo_movimiento=N'APLICACION_CARGO' THEN m.monto_movimiento ELSE 0 END) aplicado,SUM(CASE WHEN t.codigo_movimiento=N'RESERVA' THEN m.monto_movimiento WHEN t.codigo_movimiento=N'LIBERACION_RESERVA' THEN -m.monto_movimiento ELSE 0 END) reservado FROM dbo.msp_movimientos_garantia m JOIN dbo.msp_tipos_movimiento_garantia t ON t.id_tipo_movimiento_garantia=m.id_tipo_movimiento_garantia WHERE m.id_cargo_contrato_local=c.id_cargo_contrato_local AND m.id_movimiento_garantia<>@id_mov)x WHERE c.id_cargo_contrato_local=@id_ccl;
   END;
   INSERT dbo.msp_garantia_reversas(id_garantia,tipo_origen,id_origen,fecha_reversa,monto_reversa,motivo,id_usuario) VALUES(@id_garantia,@tipo_origen,@id_origen,@fecha_reversa,@monto,@motivo,@id_usuario);
   COMMIT;SELECT CAST(SCOPE_IDENTITY() AS INT) id_reversa_garantia;

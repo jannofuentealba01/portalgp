@@ -1,0 +1,9 @@
+/* Page-specific screen layout. Source: msp/documentos_tienda/index.php */
+
+.document-row { display: block; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+        .document-row-body { padding: .65rem .75rem; }
+        .document-name { overflow-wrap: anywhere; }
+        .batch-strip { overflow-x: auto; scrollbar-width: thin; }
+        .batch-strip .btn { white-space: nowrap; }
+        .batch-status-strip { grid-template-columns: repeat(6,minmax(0,1fr)); }
+        @media (max-width:991.98px){.batch-status-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -64,7 +64,7 @@ final class Ficha360Service
                     'garantias' => [],
                     'garantia_totales' => [],
                     'operacion' => [],
-                    'error' => $e->getMessage(),
+                    'error' => pgpPublicOrBusinessException($e, 'msp.ficha360', 'No fue posible cargar esta sección.'),
                 ];
             }
 
@@ -136,10 +136,19 @@ final class Ficha360Service
 
     private function contactos(string $tabla, string $campo, string $idCampo, int $id): array
     {
+        $allowedContacts = [
+            'msp_arrendatarios_correos|correo|id_arrendatario_correo',
+            'msp_arrendatarios_telefonos|telefono|id_arrendatario_telefono',
+        ];
+        if (!in_array($tabla . '|' . $campo . '|' . $idCampo, $allowedContacts, true)) {
+            throw new InvalidArgumentException('El tipo de contacto solicitado no está permitido.');
+        }
         if (!msp2TableExists($this->conn, $tabla)) {
             return [];
         }
-        $sql = "SELECT {$campo} valor,es_principal FROM dbo.{$tabla} WHERE id_arrendatario=:id ORDER BY es_principal DESC,{$idCampo}";
+        $sql = 'SELECT ' . msp2SqlIdentifier($campo) . ' valor,es_principal FROM '
+            . msp2SqlIdentifier('dbo.' . $tabla)
+            . ' WHERE id_arrendatario=:id ORDER BY es_principal DESC,' . msp2SqlIdentifier($idCampo);
         $stmt = $this->conn->prepare($sql);
         $stmt->execute([':id' => $id]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];

@@ -42,6 +42,9 @@ $estadoDestinatarioEnvio = [
 $idArrendatario = filter_input(INPUT_GET, 'id_arrendatario', FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
 ]);
+$filtroDocumento = filter_input(INPUT_GET, 'filtroDocumento', FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1],
+]);
 $filtroPeriodo = trim((string) ($_GET['filtroPeriodo'] ?? ''));
 
 $arrendatariosDisponibles = [];
@@ -159,6 +162,37 @@ try {
 
 if ($tablaExiste) {
     try {
+        if ($filtroDocumento !== false && $filtroDocumento !== null) {
+            $stmtDocumentoObjetivo = $conn->prepare(
+                "SELECT TOP 1
+                    dc.periodo_facturacion,
+                    COALESCE(ca.id_arrendatario, t.id_arrendatario) AS id_arrendatario
+                 FROM dbo.msp_documentos_cobro dc
+                 LEFT JOIN dbo.msp_contratos_arriendo ca
+                    ON ca.id_contrato_arriendo = dc.id_contrato_arriendo
+                 LEFT JOIN dbo.msp_tiendas t
+                    ON t.id_tienda = dc.id_tienda
+                   AND dc.id_contrato_arriendo IS NULL
+                 WHERE dc.id_documento_cobro = :id_documento"
+            );
+            $stmtDocumentoObjetivo->bindValue(':id_documento', $filtroDocumento, PDO::PARAM_INT);
+            $stmtDocumentoObjetivo->execute();
+            $documentoObjetivo = $stmtDocumentoObjetivo->fetch() ?: null;
+            if ($documentoObjetivo !== null) {
+                $idArrendatarioObjetivo = (int) ($documentoObjetivo['id_arrendatario'] ?? 0);
+                $periodoObjetivo = substr((string) ($documentoObjetivo['periodo_facturacion'] ?? ''), 0, 7);
+                if ($idArrendatarioObjetivo > 0 && preg_match('/^\d{4}-\d{2}$/', $periodoObjetivo) === 1) {
+                    $idArrendatario = $idArrendatarioObjetivo;
+                    $filtroPeriodo = $periodoObjetivo;
+                    $periodoParsed = DateTimeImmutable::createFromFormat('!Y-m', $periodoObjetivo);
+                    if ($periodoParsed instanceof DateTimeImmutable) {
+                        $filtroPeriodoFactura = $periodoParsed->format('Y-m-01');
+                        $filtroPeriodoFinFactura = $periodoParsed->modify('last day of this month')->format('Y-m-d');
+                    }
+                }
+            }
+        }
+
         if ($filtroPeriodoFactura !== null) {
             $stmtArr = $conn->prepare(
                 "DECLARE @periodo DATE = :periodo;
@@ -172,20 +206,18 @@ if ($tablaExiste) {
                     FROM dbo.msp_documentos_cobro dc
                     WHERE dc.periodo_facturacion = @periodo
                       AND (
-                        EXISTS (
+                        (dc.id_contrato_arriendo IS NOT NULL AND EXISTS (
+                            SELECT 1
+                            FROM dbo.msp_contratos_arriendo ca_doc
+                            WHERE ca_doc.id_contrato_arriendo = dc.id_contrato_arriendo
+                              AND ca_doc.id_arrendatario = a.id_arrendatario
+                        ))
+                        OR (dc.id_contrato_arriendo IS NULL AND EXISTS (
                             SELECT 1
                             FROM dbo.msp_tiendas t
                             WHERE t.id_tienda = dc.id_tienda
                               AND t.id_arrendatario = a.id_arrendatario
-                        )
-                        OR EXISTS (
-                            SELECT 1
-                            FROM dbo.msp_contratos_arriendo ca_doc
-                            WHERE ca_doc.id_tienda = dc.id_tienda
-                              AND ca_doc.id_arrendatario = a.id_arrendatario
-                              AND ca_doc.fecha_inicio <= EOMONTH(@periodo)
-                              AND (ca_doc.fecha_termino_efectiva IS NULL OR ca_doc.fecha_termino_efectiva >= @periodo)
-                        )
+                        ))
                       )
                  )
                  OR EXISTS (
@@ -281,6 +313,7 @@ if ($tablaExiste) {
             $filtroPeriodoFactura !== null
             && $idArrendatario !== false
             && $idArrendatario !== null
+            && isset($arrendatarioIdsDisponibles[(int) $idArrendatario])
         ) {
             $stmtSel = $conn->prepare(
                 "SELECT
@@ -326,13 +359,16 @@ if ($tablaExiste) {
                             dcd.descripcion_item,
                             dcd.subtotal
                         FROM dbo.msp_documentos_cobro dc
-                        INNER JOIN dbo.msp_tiendas t
+                        LEFT JOIN dbo.msp_contratos_arriendo ca_doc
+                            ON ca_doc.id_contrato_arriendo = dc.id_contrato_arriendo
+                        LEFT JOIN dbo.msp_tiendas t
                             ON t.id_tienda = dc.id_tienda
+                           AND dc.id_contrato_arriendo IS NULL
                         INNER JOIN dbo.msp_documentos_cobro_detalle dcd
                             ON dcd.id_documento_cobro = dc.id_documento_cobro
                         INNER JOIN dbo.msp_tipo_item_documento tid
                             ON tid.id_tipo_item_documento = dcd.id_tipo_item_documento
-                        WHERE t.id_arrendatario = :id_arrendatario
+                        WHERE COALESCE(ca_doc.id_arrendatario, t.id_arrendatario) = :id_arrendatario
                           AND dc.periodo_facturacion = :periodo
                           AND tid.codigo_item = N'ARRIENDO'
                     )
@@ -448,6 +484,7 @@ if ($tablaExiste) {
                     dc.id_documento_cobro,
                     {$selectUuidDocumentoSql}
                     dc.id_tienda,
+                    dc.id_contrato_arriendo,
                     dc.numero_documento,
                     dc.nombre_tienda_snapshot,
                     dc.periodo_facturacion,
@@ -467,20 +504,18 @@ if ($tablaExiste) {
                  FROM dbo.msp_documentos_cobro dc
                  WHERE dc.periodo_facturacion = :periodo
                    AND (
-                        EXISTS (
+                        (dc.id_contrato_arriendo IS NOT NULL AND EXISTS (
+                            SELECT 1
+                            FROM dbo.msp_contratos_arriendo ca_doc
+                            WHERE ca_doc.id_contrato_arriendo = dc.id_contrato_arriendo
+                              AND ca_doc.id_arrendatario = :id_arrendatario_contrato
+                        ))
+                        OR (dc.id_contrato_arriendo IS NULL AND EXISTS (
                             SELECT 1
                             FROM dbo.msp_tiendas t
                             WHERE t.id_tienda = dc.id_tienda
                               AND t.id_arrendatario = :id_arrendatario
-                        )
-                        OR EXISTS (
-                            SELECT 1
-                            FROM dbo.msp_contratos_arriendo ca_doc
-                            WHERE ca_doc.id_tienda = dc.id_tienda
-                              AND ca_doc.id_arrendatario = :id_arrendatario_contrato
-                              AND ca_doc.fecha_inicio <= EOMONTH(@periodo_contrato)
-                              AND (ca_doc.fecha_termino_efectiva IS NULL OR ca_doc.fecha_termino_efectiva >= @periodo_contrato)
-                        )
+                        ))
                    )
                  ORDER BY dc.id_documento_cobro DESC"
             );
@@ -1272,7 +1307,7 @@ if ($tablaExiste) {
             $controlComposicion['diferencia'] = round($controlComposicion['documentado'] - $controlComposicion['esperado'], 2);
         }
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar la vista de cobranza. Detalle tecnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.documentos_cobro.index', 'No fue posible cargar la vista de cobranza.');
     }
 }
 
@@ -1360,249 +1395,12 @@ function formatoRutFrontend(?string $rut): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Documentos de Cobro</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
     <?php msp2RenderSearchableSelectAssets(); ?>
-    <style>
-        .doc-card {
-            border-color: #d8e2f0;
-        }
-        .doc-card .doc-title {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 0.15rem;
-        }
-        .doc-card .doc-subtitle {
-            color: #61738b;
-            font-size: 0.84rem;
-        }
-        .doc-kpi {
-            border: 1px solid #e7edf6;
-            border-radius: 0.55rem;
-            background: #f8fbff;
-            padding: 0.7rem 0.8rem;
-            height: 100%;
-        }
-        .doc-kpi .label {
-            color: #6f8098;
-            font-size: 0.76rem;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-            margin-bottom: 0.2rem;
-        }
-        .doc-kpi .value {
-            font-size: 1.03rem;
-            font-weight: 600;
-            color: #1f2e44;
-            margin: 0;
-            line-height: 1.2;
-        }
-        .doc-detail-box {
-            border: 1px solid #e5ebf5;
-            border-radius: 0.55rem;
-            background: #ffffff;
-            padding: 0.9rem;
-            height: 100%;
-        }
-        .timeline-scroll {
-            max-height: none;
-            overflow: visible;
-            padding-right: 0;
-        }
-        .timeline-list {
-            margin: 0;
-            padding: 0;
-            list-style: none;
-        }
-        .timeline-item {
-            position: relative;
-            padding-left: 2.45rem;
-            padding-bottom: 1rem;
-        }
-        .timeline-item:last-child {
-            padding-bottom: 0;
-        }
-        .timeline-item:not(:last-child)::after {
-            content: '';
-            position: absolute;
-            left: 0.95rem;
-            top: 1.65rem;
-            bottom: 0.15rem;
-            width: 2px;
-            background: #d7e1ee;
-        }
-        .timeline-marker {
-            position: absolute;
-            left: 0.35rem;
-            top: 0.15rem;
-            width: 1.2rem;
-            height: 1.2rem;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            color: #fff;
-            border: 2px solid #fff;
-            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
-        }
-        .timeline-item-operativa .timeline-marker {
-            background: #1f8a53;
-        }
-        .timeline-item-sistema .timeline-marker {
-            background: #6b7785;
-        }
-        .timeline-content {
-            border: 1px solid #e8edf5;
-            border-radius: 0.5rem;
-            padding: 0.65rem 0.75rem;
-            background: #fff;
-        }
-        .msp-mail-sending-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(15, 23, 42, 0.45);
-            backdrop-filter: blur(1.5px);
-        }
-        .msp-mail-sending-box {
-            min-width: 250px;
-            max-width: 92vw;
-            border-radius: 0.85rem;
-            border: 1px solid #dbe4f0;
-            background: #fff;
-            box-shadow: 0 16px 42px rgba(15, 23, 42, 0.18);
-            padding: 1rem 1.15rem;
-            text-align: center;
-        }
-        .msp-mail-sending-plane {
-            display: inline-block;
-            font-size: 1.65rem;
-            color: #1d4ed8;
-            animation: msp-mail-plane-fly 1.2s ease-in-out infinite;
-            transform-origin: center;
-        }
-        .msp-mail-sending-text {
-            margin-top: 0.4rem;
-            color: #1f2937;
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-        @keyframes msp-mail-plane-fly {
-            0% { transform: translateX(-10px) translateY(2px) rotate(-16deg); opacity: .72; }
-            45% { transform: translateX(10px) translateY(-3px) rotate(12deg); opacity: 1; }
-            100% { transform: translateX(-10px) translateY(2px) rotate(-16deg); opacity: .72; }
-        }
-        body.msp-mail-sending-open {
-            overflow: hidden;
-        }
-        .msp-documents-index {
-            width: 100%;
-            max-width: none;
-            padding: 0;
-            border: 0;
-            border-radius: 0;
-            background: transparent;
-            box-shadow: none;
-            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        }
-        .msp-documents-page-header {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: .8rem;
-        }
-        .msp-documents-page-header .msp-documents-back {
-            grid-column: 1;
-            justify-self: start;
-        }
-        .msp-documents-page-header h1 {
-            grid-column: 2;
-            margin: 0;
-            color: #003da5;
-            font-size: 1.75rem;
-            line-height: 1.2;
-        }
-        .msp-documents-section {
-            margin-bottom: .75rem;
-            border: 0;
-            border-radius: .65rem;
-            background: #fff;
-            box-shadow: 0 1px 5px rgba(30, 50, 75, .09);
-        }
-        .msp-documents-section > .card-body {
-            padding: .8rem .9rem;
-        }
-        .msp-documents-section h2 {
-            color: #24364b;
-            font-size: 1rem;
-            font-weight: 700;
-        }
-        .msp-documents-index .form-label {
-            margin-bottom: .22rem;
-            font-size: .84rem;
-            font-weight: 600;
-        }
-        .msp-documents-index .form-control,
-        .msp-documents-index .form-select,
-        .msp-documents-index .msp-searchable-select-toggle {
-            min-height: 36px;
-            padding-top: .35rem;
-            padding-bottom: .35rem;
-            font-size: .88rem;
-        }
-        .msp-documents-index .btn {
-            min-height: 34px;
-            padding: .32rem .65rem;
-            font-size: .84rem;
-        }
-        .msp-documents-summary .border.rounded {
-            padding: .65rem .75rem !important;
-            border-color: #e4eaf1 !important;
-            background: #f7f9fc !important;
-        }
-        .msp-documents-summary .h5 {
-            font-size: 1rem;
-        }
-        .msp-documents-detail > .card-body {
-            padding: .8rem;
-        }
-        .msp-documents-detail .doc-card {
-            border: 1px solid #d8e0ea;
-            border-radius: .55rem;
-            box-shadow: none !important;
-        }
-        .msp-documents-detail .doc-card > .card-body {
-            padding: .75rem .8rem;
-        }
-        .msp-documents-detail .doc-detail-box {
-            padding: .7rem;
-        }
-        @media (max-width: 767.98px) {
-            .msp-documents-page-header {
-                display: flex;
-                flex-wrap: wrap;
-                justify-content: space-between;
-            }
-            .msp-documents-page-header h1 {
-                order: -1;
-                width: 100%;
-                text-align: center;
-                font-size: 1.55rem;
-            }
-            .msp-documents-section > .card-body,
-            .msp-documents-detail > .card-body {
-                padding: .7rem;
-            }
-        }
-    </style>
 </head>
-<body class="gp-layout bg-light">
+<body class="gp-layout bg-light gp-module-msp">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main p-3 p-xl-4">
     <div class="msp-documents-index">
@@ -1726,7 +1524,7 @@ function formatoRutFrontend(?string $rut): string
                                         $contratosArrendatario = $contratosLocalesPorArrendatario[$arrId] ?? [];
                                         if ($contratosArrendatario !== []) {
                                             $contratosOrdenadosPorLocal = [];
-                                            foreach ($contratosArrendatario as $localesContratoArrRaw) {
+                                            foreach ($contratosArrendatario as $idContratoBusqueda => $localesContratoArrRaw) {
                                                 if (!is_array($localesContratoArrRaw)) {
                                                     continue;
                                                 }
@@ -1746,6 +1544,7 @@ function formatoRutFrontend(?string $rut): string
 
                                                 usort($localesContratoArr, static fn(string $a, string $b): int => msp2CompareLocalCode($a, $b));
                                                 $contratosOrdenadosPorLocal[] = $localesContratoArr;
+                                                $arrSearch .= ' ' . (int) $idContratoBusqueda;
                                             }
 
                                             usort(
@@ -1779,7 +1578,7 @@ function formatoRutFrontend(?string $rut): string
                                         $arrendatarioOptions[] = [
                                             'value' => (string) $arrId,
                                             'label' => $arrLabel,
-                                            'label_html' => $arrLabelHtml,
+                                            'label_html' => msp2SearchableSelectTrustedHtml($arrLabelHtml),
                                             'search' => mb_strtolower($arrSearch, 'UTF-8'),
                                         ];
                                     }
@@ -1855,9 +1654,18 @@ function formatoRutFrontend(?string $rut): string
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                             <h2 class="h6 mb-0">Detalle por documento</h2>
                             <div class="small text-muted">
-                                <?php echo number_format((int) $resumenDeuda['documentos'], 0, ',', '.'); ?> documento(s) en <?php echo msp2Escape((string) $filtroPeriodo); ?>
+                                <span id="documentosVisiblesContador"><?php echo number_format((int) $resumenDeuda['documentos'], 0, ',', '.'); ?></span> documento(s) en <?php echo msp2Escape((string) $filtroPeriodo); ?>
                             </div>
                         </div>
+
+                        <?php if (!empty($documentosPeriodo)): ?>
+                            <div class="input-group input-group-sm mb-3">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="search" class="form-control" id="buscarDocumentoVisible" placeholder="Buscar documento, tienda, contrato, local o #ID" aria-label="Buscar en los documentos del período">
+                                <button type="button" class="btn btn-outline-secondary" id="limpiarDocumentoVisible">Limpiar</button>
+                            </div>
+                            <div class="alert alert-info py-2 d-none" id="sinDocumentoVisible">No hay documentos que coincidan con la búsqueda.</div>
+                        <?php endif; ?>
 
                         <?php if (empty($documentosPeriodo)): ?>
                             <div class="alert alert-warning mb-0">No hay documentos para este arrendatario/período.</div>
@@ -1871,6 +1679,7 @@ function formatoRutFrontend(?string $rut): string
                                     $docUuid = trim((string) ($doc['uuid_documento'] ?? ''));
                                     $docNumero = trim((string) ($doc['numero_documento'] ?? ''));
                                     $docTienda = trim((string) ($doc['nombre_tienda_snapshot'] ?? ''));
+                                    $docContrato = (int) ($doc['id_contrato_arriendo'] ?? 0);
                                     $tiendaId = (int) ($doc['id_tienda'] ?? 0);
                                     $saldo = round((float) ($doc['saldo_pendiente'] ?? 0), 2);
                                     $montoTotalDocumento = round((float) ($doc['monto_total'] ?? 0), 2);
@@ -1884,6 +1693,21 @@ function formatoRutFrontend(?string $rut): string
                                     $pagosDocumento = $pagosPorDocumento[$docId] ?? [];
                                     $enviosDocumento = $enviosPorDocumento[$docId] ?? [];
                                     $localesDocumento = $detalleLocalesPorDocumento[$docId] ?? [];
+                                    $docSearchParts = [
+                                        (string) $docId,
+                                        $docNumero,
+                                        $docUuid,
+                                        $docTienda,
+                                        (string) $docContrato,
+                                        (string) ($arrendatarioSeleccionado['nombre_arrendatario'] ?? ''),
+                                        (string) ($arrendatarioSeleccionado['rut'] ?? ''),
+                                    ];
+                                    foreach ($localesDocumento as $localDocumentoBusqueda) {
+                                        if (is_array($localDocumentoBusqueda)) {
+                                            $docSearchParts[] = implode(' ', array_map('strval', $localDocumentoBusqueda));
+                                        }
+                                    }
+                                    $docSearchText = implode(' ', $docSearchParts);
                                     $luzDocumento = $detalleLuzPorDocumento[$docId] ?? [];
                                     $gasDocumento = $detalleGasPorDocumento[$docId] ?? [];
                                     $aguaDocumento = $detalleAguaPorDocumento[$docId] ?? [];
@@ -2236,7 +2060,7 @@ function formatoRutFrontend(?string $rut): string
                                         600
                                     );
                                     ?>
-                                    <article class="card doc-card">
+                                    <article id="documento-<?php echo $docId; ?>" data-documento-visible data-documento-id="<?php echo $docId; ?>" data-documento-search="<?php echo msp2Escape($docSearchText); ?>" class="card doc-card<?php echo $filtroDocumento === $docId ? ' doc-target' : ''; ?>">
                                         <div class="card-body">
                                             <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
                                                 <div>
@@ -2317,6 +2141,14 @@ function formatoRutFrontend(?string $rut): string
                                                 </div>
                                             </div>
 
+                                            <div class="doc-section-tabs" data-doc-tabs role="tablist" aria-label="Secciones del documento">
+                                                <button type="button" class="btn btn-outline-primary btn-sm active" data-doc-section-target="resumen" aria-selected="true">Resumen</button>
+                                                <button type="button" class="btn btn-outline-primary btn-sm" data-doc-section-target="consumos" aria-selected="false">Consumos y conceptos</button>
+                                                <button type="button" class="btn btn-outline-primary btn-sm" data-doc-section-target="pagos" aria-selected="false">Pagos (<?php echo number_format(count($pagosDocumento), 0, ',', '.'); ?>)</button>
+                                                <button type="button" class="btn btn-outline-primary btn-sm" data-doc-section-target="ajustes" aria-selected="false">Ajustes e historial</button>
+                                            </div>
+
+                                            <div data-doc-section="resumen">
                                             <div class="row g-2 mb-3">
                                                 <div class="col-12 col-md-3">
                                                     <div class="doc-kpi">
@@ -2358,9 +2190,10 @@ function formatoRutFrontend(?string $rut): string
                                                     <div class="progress-bar <?php echo $saldo > 0 ? 'bg-warning text-dark' : 'bg-success'; ?>" style="width: <?php echo msp2Escape((string) $porcentajePagado); ?>%"></div>
                                                 </div>
                                             </div>
+                                            </div>
 
-                                            <div class="doc-detail-box mb-3">
-                                                <h3 class="h6 mb-1">Historial de acciones</h3>
+                                            <div class="doc-detail-box mb-3" data-doc-section="ajustes" hidden>
+                                                <h3 class="h6 mb-1">Ajustes e historial de acciones</h3>
                                                 <div class="small text-muted mb-2">Primero se muestran fechas operativas del cobro y luego eventos técnicos de sistema.</div>
                                                 <?php if ($historialDocumento === []): ?>
                                                     <div class="text-muted small">No hay acciones registradas para este documento.</div>
@@ -2411,7 +2244,7 @@ function formatoRutFrontend(?string $rut): string
                                                 <?php endif; ?>
                                             </div>
 
-                                            <div class="row g-3">
+                                            <div class="row g-3" data-doc-section="consumos" hidden>
                                                 <div class="col-12">
                                                     <div class="doc-detail-box">
                                                         <h3 class="h6 mb-2">Arriendo por local</h3>
@@ -2419,7 +2252,7 @@ function formatoRutFrontend(?string $rut): string
                                                             <div class="text-muted small">No hay detalle de arriendo para este documento.</div>
                                                         <?php else: ?>
                                                             <div class="table-responsive">
-                                                                <table class="table table-sm table-striped align-middle mb-0">
+                                                                <table class="table table-sm table-striped align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-document-detail-table">
                                                                     <thead class="table-light">
                                                                     <tr>
                                                                         <th style="width: 90px;">Local</th>
@@ -2449,7 +2282,7 @@ function formatoRutFrontend(?string $rut): string
                                                         <div class="doc-detail-box">
                                                             <h3 class="h6 mb-2">Servicios LUZ</h3>
                                                             <div class="table-responsive">
-                                                                <table class="table table-sm table-striped align-middle mb-0">
+                                                                <table class="table table-sm table-striped align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-document-detail-table">
                                                                     <thead class="table-light">
                                                                     <tr>
                                                                         <th style="width: 90px;">Local</th>
@@ -2483,7 +2316,7 @@ function formatoRutFrontend(?string $rut): string
                                                         <div class="doc-detail-box">
                                                             <h3 class="h6 mb-2">Servicios GAS</h3>
                                                             <div class="table-responsive">
-                                                                <table class="table table-sm table-striped align-middle mb-0">
+                                                                <table class="table table-sm table-striped align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-document-detail-table">
                                                                     <thead class="table-light">
                                                                     <tr>
                                                                         <th style="width: 90px;">Local</th>
@@ -2519,7 +2352,7 @@ function formatoRutFrontend(?string $rut): string
                                                         <div class="doc-detail-box">
                                                             <h3 class="h6 mb-2">Servicios AGUA</h3>
                                                             <div class="table-responsive">
-                                                                <table class="table table-sm table-striped align-middle mb-0">
+                                                                <table class="table table-sm table-striped align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-document-detail-table">
                                                                     <thead class="table-light">
                                                                     <tr>
                                                                         <th style="width: 90px;">Local</th>
@@ -2546,6 +2379,8 @@ function formatoRutFrontend(?string $rut): string
                                                     </div>
                                                 <?php endif; ?>
 
+                                            </div>
+                                            <div class="row g-3" data-doc-section="pagos" hidden>
                                                 <div class="col-12">
                                                     <div class="doc-detail-box">
                                                         <h3 class="h6 mb-2">Abonos del documento</h3>
@@ -2553,7 +2388,7 @@ function formatoRutFrontend(?string $rut): string
                                                             <div class="text-muted small">No hay abonos registrados para este documento.</div>
                                                         <?php else: ?>
                                                             <div class="table-responsive">
-                                                                <table class="table table-sm table-striped align-middle mb-0">
+                                                                <table class="table table-sm table-striped align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-document-detail-table">
                                                                     <thead class="table-light">
                                                                     <tr>
                                                                         <th style="width: 90px;">Fecha</th>
@@ -2657,7 +2492,7 @@ function formatoRutFrontend(?string $rut): string
             <input type="hidden" name="volver_a" value="documentos_cobro">
             <input type="hidden" name="volver_query" value="<?php echo msp2Escape(http_build_query($queryBase)); ?>">
 
-            <div class="modal-header" style="background:var(--color-surface,#fff);border-bottom:1px solid var(--color-border,#e5e7eb);">
+            <div class="modal-header" style="background:var(--color-surface);border-bottom:1px solid var(--color-border);">
                 <div>
                     <h2 class="modal-title fs-5 mb-0 d-flex align-items-center gap-2">Registrar pago</h2>
                     <div class="small text-muted" id="v2_doc_label" style="margin-top:2px;"></div>
@@ -2665,17 +2500,17 @@ function formatoRutFrontend(?string $rut): string
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
 
-            <div class="modal-body" style="background:var(--color-bg,#f9fafb);">
+            <div class="modal-body" style="background:var(--color-bg);">
                 <div class="row g-2 mb-3 align-items-end">
                     <div class="col-sm-4">
                         <label for="v2_monto_pagado_view" class="form-label mb-1 small fw-bold text-success">
                             <i class="bi bi-cash-coin me-1" aria-hidden="true"></i>Monto pagado
                         </label>
                         <div class="input-group">
-                            <span class="input-group-text fw-bold" style="background:#f0fdf4;border-color:#16a34a;color:#15803d;">$</span>
+                            <span class="input-group-text fw-bold" style="background:var(--color-success-soft);border-color:var(--color-success);color:var(--color-success-text);">$</span>
                             <input type="text" inputmode="decimal" class="form-control fw-bold" id="v2_monto_pagado_view"
                                    placeholder="0,00" required autocomplete="off"
-                                   style="font-size:1.25rem;border-color:#16a34a;box-shadow:0 0 0 1px #bbf7d0;color:#15803d;">
+                                   style="font-size:1.25rem;border-color:var(--color-success);box-shadow:0 0 0 1px var(--color-success-border);color:var(--color-success-text);">
                         </div>
                     </div>
                     <div class="col-sm-3">
@@ -2785,20 +2620,20 @@ function formatoRutFrontend(?string $rut): string
                     </div>
                 </div>
 
-                <div style="border-radius:10px;overflow:hidden;border:1px solid var(--color-border,#e5e7eb);background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+                <div style="border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--color-border);background:var(--color-surface);box-shadow:0 1px 4px rgba(var(--color-shadow-rgb),.06);">
                     <table class="table align-middle mb-0" id="v2_tabla_conceptos" style="font-size:.92rem;">
                         <thead>
-                            <tr style="background:var(--color-surface,#f3f4f6);">
-                                <th class="text-start ps-3" style="font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">Concepto</th>
-                                <th class="text-end" style="width:115px;font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">Saldo</th>
-                                <th style="width:148px;font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);">A pagar</th>
-                                <th style="width:110px;font-weight:600;color:#374151;border-bottom:1px solid var(--color-border,#e5e7eb);" class="text-center pe-2">Pendiente</th>
+                            <tr style="background:var(--color-surface-soft);">
+                                <th class="text-start ps-3" style="font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">Concepto</th>
+                                <th class="text-end" style="width:115px;font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">Saldo</th>
+                                <th style="width:148px;font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);">A pagar</th>
+                                <th style="width:110px;font-weight:600;color:var(--color-text);border-bottom:1px solid var(--color-border);" class="text-center pe-2">Pendiente</th>
                             </tr>
                         </thead>
                         <tbody id="v2_conceptos_body"></tbody>
                         <tfoot>
-                            <tr style="background:var(--color-surface,#f3f4f6);border-top:2px solid var(--color-border,#e5e7eb);">
-                                <th class="text-start ps-3" style="font-size:.85rem;color:#6b7280;">
+                            <tr style="background:var(--color-surface-soft);border-top:2px solid var(--color-border);">
+                                <th class="text-start ps-3" style="font-size:.85rem;color:var(--color-text-muted);">
                                     <button type="button" id="v2_pagar_todo_doc"
                                             class="btn btn-sm btn-outline-success py-0 px-2"
                                             title="Llenar todos los conceptos con su saldo completo">
@@ -2810,11 +2645,11 @@ function formatoRutFrontend(?string $rut): string
                                         <i class="bi bi-x-lg me-1" aria-hidden="true"></i>Limpiar
                                     </button>
                                 </th>
-                                <th class="text-end pe-2" style="font-size:.85rem;color:#6b7280;">Total aplicado</th>
+                                <th class="text-end pe-2" style="font-size:.85rem;color:var(--color-text-muted);">Total aplicado</th>
                                 <th class="text-end fw-bold fs-5" id="v2_total_label" colspan="2"
-                                    style="color:var(--color-primary,#16a34a);">$ 0</th>
+                                    style="color:var(--color-success);">$ 0</th>
                             </tr>
-                            <tr style="background:var(--color-surface,#f3f4f6);">
+                            <tr style="background:var(--color-surface-soft);">
                                 <th colspan="4" class="text-end pe-3 pt-1 pb-2">
                                     <button type="button" id="v2_set_monto_desde_total"
                                             class="btn btn-sm btn-outline-success py-0 px-2"
@@ -2839,7 +2674,7 @@ function formatoRutFrontend(?string $rut): string
                 </div>
             </div>
 
-            <div class="modal-footer" style="background:var(--color-surface,#fff);border-top:1px solid var(--color-border,#e5e7eb);">
+            <div class="modal-footer" style="background:var(--color-surface);border-top:1px solid var(--color-border);">
                 <div class="me-auto small text-muted" id="v2_footer_info"></div>
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn btn-success" id="v2_submit_btn">Guardar pago</button>
@@ -3020,8 +2855,24 @@ function formatoRutFrontend(?string $rut): string
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<?php msp2RenderSearchAssets(); ?>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
+    const escapeHtmlText = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    })[character]);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const target = document.querySelector('.doc-card.doc-target');
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    });
+
 (() => {
     const hiddenInput = document.getElementById('id_arrendatario');
     const formArrendatario = document.getElementById('form_arrendatario');
@@ -3366,10 +3217,13 @@ function formatoRutFrontend(?string $rut): string
             const bancoOptions = Array.from(bancoDropdownList.querySelectorAll('.js-v2-banco-option'));
 
             const filterBancoOptions = () => {
-                const term = bancoDropdownFilter.value.trim().toLowerCase();
+                const term = bancoDropdownFilter.value.trim();
+                const exact = term.match(/^#\s*([1-9][0-9]*)$/);
                 bancoOptions.forEach((option) => {
                     const searchable = option.dataset.search || '';
-                    const visible = term === '' || searchable.includes(term);
+                    const visible = exact
+                        ? String(option.dataset.value || '') === exact[1]
+                        : window.mspSearch.matches(term, searchable, option.dataset.label || '');
                     option.classList.toggle('d-none', !visible);
                 });
             };
@@ -3627,10 +3481,10 @@ function formatoRutFrontend(?string $rut): string
                     <td class="ps-3 py-2">
                         <div class="d-flex align-items-center gap-2">
                             <i class="bi ${icon}" style="color:${color};font-size:1.05em;flex-shrink:0;" aria-hidden="true"></i>
-                            <span class="fw-semibold" style="font-size:.92rem;">${nombre.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+                            <span class="fw-semibold" style="font-size:.92rem;">${escapeHtmlText(nombre)}</span>
                         </div>
                     </td>
-                    <td class="text-end py-2 pe-3" style="font-size:.85rem;color:#6b7280;white-space:nowrap;">${fmtMoney(saldo)}</td>
+                    <td class="text-end py-2 pe-3" style="font-size:.85rem;color:var(--color-text-muted);white-space:nowrap;">${fmtMoney(saldo)}</td>
                     <td class="py-2">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">$</span>
@@ -4042,7 +3896,7 @@ function formatoRutFrontend(?string $rut): string
                             <td class="text-center">
                                 <input class="form-check-input js-condonar-cargo-check" type="checkbox" id="${inputId}" name="ids_cargo_salida[]" value="${idCargo}" data-monto="${monto.toFixed(2)}" checked>
                             </td>
-                            <td><label class="mb-0" for="${inputId}">${resumen !== '' ? resumen : ('Cargo #' + idCargo)}</label></td>
+                            <td><label class="mb-0" for="${inputId}">${escapeHtmlText(resumen !== '' ? resumen : ('Cargo #' + idCargo))}</label></td>
                             <td class="text-end">${fmtMoney(monto)}</td>
                         </tr>`
                     );
@@ -4082,6 +3936,69 @@ function formatoRutFrontend(?string $rut): string
             });
         }
     })();
+})();
+</script>
+<script>
+(() => {
+    const input = document.getElementById('buscarDocumentoVisible');
+    const clear = document.getElementById('limpiarDocumentoVisible');
+    const empty = document.getElementById('sinDocumentoVisible');
+    const counter = document.getElementById('documentosVisiblesContador');
+    const cards = Array.from(document.querySelectorAll('[data-documento-visible]'));
+    if (!(input instanceof HTMLInputElement) || cards.length === 0) return;
+
+    const fallbackNormalize = (value) => String(value || '').normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[.\-]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+    const apply = () => {
+        const raw = input.value.trim();
+        const exact = raw.match(/^#\s*([1-9][0-9]*)$/);
+        let visible = 0;
+        cards.forEach((card) => {
+            const search = String(card.dataset.documentoSearch || '');
+            const matches = exact
+                ? String(card.dataset.documentoId || '') === exact[1]
+                : (window.mspSearch
+                    ? window.mspSearch.matches(raw, search)
+                    : fallbackNormalize(search).includes(fallbackNormalize(raw)));
+            card.classList.toggle('d-none', !matches);
+            if (matches) visible++;
+        });
+        if (counter) counter.textContent = String(visible);
+        if (empty) empty.classList.toggle('d-none', visible !== 0);
+    };
+    input.addEventListener('input', apply);
+    if (clear instanceof HTMLButtonElement) {
+        clear.addEventListener('click', () => {
+            input.value = '';
+            apply();
+            input.focus();
+        });
+    }
+})();
+
+(() => {
+    document.querySelectorAll('[data-documento-visible]').forEach((card) => {
+        const controls = Array.from(card.querySelectorAll('[data-doc-section-target]'));
+        const sections = Array.from(card.querySelectorAll('[data-doc-section]'));
+        if (controls.length === 0 || sections.length === 0) return;
+
+        const show = (name) => {
+            controls.forEach((control) => {
+                const active = control.dataset.docSectionTarget === name;
+                control.classList.toggle('active', active);
+                control.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            sections.forEach((section) => {
+                section.hidden = section.dataset.docSection !== name;
+            });
+        };
+
+        controls.forEach((control) => control.addEventListener('click', () => {
+            show(String(control.dataset.docSectionTarget || 'conceptos'));
+        }));
+        show('conceptos');
+    });
 })();
 </script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>

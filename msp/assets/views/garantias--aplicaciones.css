@@ -1,0 +1,11 @@
+/* Page-specific screen layout. Source: msp/garantias/aplicaciones.php */
+
+.ga-page .btn:not(.btn-close){display:inline-flex;width:auto;min-width:0;max-width:100%;align-items:center;justify-content:center;white-space:nowrap}
+.ga-unified-table{width:100%;min-width:0!important;table-layout:fixed}
+.ga-unified-table th:nth-child(1){width:23%}.ga-unified-table th:nth-child(2){width:25%}.ga-unified-table th:nth-child(3){width:20%}.ga-unified-table th:nth-child(4){width:32%}
+.ga-unified-table>:not(caption)>*>*{white-space:normal!important;overflow-wrap:anywhere;word-break:normal;line-height:1.25}
+.ga-unified-table td>div{max-width:100%}
+.ga-operation{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(88px,.65fr);gap:.35rem}
+.ga-operation .ga-operation-wide{grid-column:1/-1}
+.ga-operation .form-text{line-height:1.2;margin-top:.2rem}
+@media(max-width:767.98px){.ga-unified-table{min-width:0!important}}

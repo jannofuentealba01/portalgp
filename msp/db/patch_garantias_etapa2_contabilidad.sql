@@ -48,6 +48,8 @@ GO
 CREATE OR ALTER TRIGGER dbo.TR_msp_acc_movimientos_garantia ON dbo.msp_movimientos_garantia AFTER INSERT AS
 BEGIN SET NOCOUNT ON;DECLARE @id INT;DECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT id_movimiento_garantia FROM inserted;OPEN c;FETCH NEXT FROM c INTO @id;WHILE @@FETCH_STATUS=0 BEGIN EXEC dbo.msp_acc_generar_asiento_garantia_aplicacion @id_movimiento_garantia=@id;FETCH NEXT FROM c INTO @id;END;CLOSE c;DEALLOCATE c;END;
 GO
+
+
 CREATE OR ALTER TRIGGER dbo.TR_msp_acc_tesoreria_garantias ON dbo.msp_tesoreria_movimientos AFTER INSERT AS
 BEGIN SET NOCOUNT ON;DECLARE @r INT,@m INT;DECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT id_recepcion_garantia,id_movimiento_garantia FROM inserted WHERE tipo_movimiento IN(N'RECEPCION_GARANTIA',N'DEVOLUCION_GARANTIA');OPEN c;FETCH NEXT FROM c INTO @r,@m;WHILE @@FETCH_STATUS=0 BEGIN IF @r IS NOT NULL EXEC dbo.msp_acc_generar_asiento_garantia_recepcion @id_recepcion_garantia=@r;IF @m IS NOT NULL EXEC dbo.msp_acc_generar_asiento_garantia_devolucion @id_movimiento_garantia=@m;FETCH NEXT FROM c INTO @r,@m;END;CLOSE c;DEALLOCATE c;END;
 GO
@@ -55,11 +57,61 @@ CREATE OR ALTER TRIGGER dbo.TR_msp_acc_garantia_reversas ON dbo.msp_garantia_rev
 BEGIN SET NOCOUNT ON;DECLARE @tipo NVARCHAR(20),@id INT,@fecha DATE,@motivo NVARCHAR(500),@tabla NVARCHAR(128),@origen INT;DECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT tipo_origen,id_origen,fecha_reversa,motivo FROM inserted;OPEN c;FETCH NEXT FROM c INTO @tipo,@id,@fecha,@motivo;WHILE @@FETCH_STATUS=0 BEGIN SET @tabla=CASE WHEN @tipo=N'RECEPCION' THEN N'msp_garantia_recepciones' ELSE N'msp_movimientos_garantia' END;SET @origen=@id;IF @tipo=N'DEVOLUCION' SELECT @origen=id_movimiento_garantia FROM dbo.msp_garantia_devoluciones WHERE id_devolucion_garantia=@id;EXEC dbo.msp_acc_revertir_origen @tabla_origen=@tabla,@id_origen=@origen,@fecha_reversa=@fecha,@motivo=@motivo;FETCH NEXT FROM c INTO @tipo,@id,@fecha,@motivo;END;CLOSE c;DEALLOCATE c;END;
 GO
 
-/* Convierte el único asiento histórico válido de constitución en recepción efectiva. */
-UPDATE a SET tabla_origen=N'msp_garantia_recepciones',id_origen=r.id_recepcion_garantia,hash_origen=CONCAT(N'GARANTIA_RECEPCION|msp_garantia_recepciones|',r.id_recepcion_garantia),glosa=CONCAT(N'Recepción efectiva garantía #',r.id_garantia,N' / recepción #',r.id_recepcion_garantia)
-FROM dbo.msp_acc_asientos a JOIN dbo.msp_garantia_recepciones r ON r.id_garantia=a.id_origen AND r.estado_recepcion=N'CONFIRMADA' WHERE a.hash_origen=CONCAT(N'GARANTIA_CONSTITUCION|msp_garantias|',a.id_origen) AND r.monto_recibido=(SELECT SUM(d.debe) FROM dbo.msp_acc_asientos_detalle d JOIN dbo.msp_acc_plan_cuentas p ON p.id_cuenta_contable=d.id_cuenta_contable WHERE d.id_asiento_contable=a.id_asiento_contable AND p.codigo_cuenta IN(N'1.1.01',N'1.1.02'));
+/*
+    Proteccion frente al modelo contable legacy:
+    una garantia pactada no mueve Caja/Banco.
+*/
+IF OBJECT_ID(N'dbo.TR_msp_acc_garantias', N'TR') IS NOT NULL
+BEGIN
+    DISABLE TRIGGER dbo.TR_msp_acc_garantias ON dbo.msp_garantias;
+END;
 GO
-DECLARE @r INT;DECLARE cr CURSOR LOCAL FAST_FORWARD FOR SELECT id_recepcion_garantia FROM dbo.msp_garantia_recepciones WHERE estado_recepcion=N'CONFIRMADA';OPEN cr;FETCH NEXT FROM cr INTO @r;WHILE @@FETCH_STATUS=0 BEGIN EXEC dbo.msp_acc_generar_asiento_garantia_recepcion @id_recepcion_garantia=@r;FETCH NEXT FROM cr INTO @r;END;CLOSE cr;DEALLOCATE cr;
+
+
+
+/*
+    Convierte asientos historicos validos de constitucion
+    en recepciones efectivas, incluida su clasificacion contable.
+*/
+DECLARE @id_tipo_garantia_recepcion INT;
+
+SELECT @id_tipo_garantia_recepcion = id_tipo_movimiento
+FROM dbo.msp_acc_tipos_movimiento
+WHERE codigo_movimiento = N'GARANTIA_RECEPCION'
+  AND activo = 1;
+
+IF @id_tipo_garantia_recepcion IS NULL
+    THROW 53510, N'No existe el tipo contable GARANTIA_RECEPCION activo.', 1;
+
+UPDATE a
+SET
+    id_tipo_movimiento = @id_tipo_garantia_recepcion,
+    tabla_origen = N'msp_garantia_recepciones',
+    id_origen = r.id_recepcion_garantia,
+    hash_origen = CONCAT(
+        N'GARANTIA_RECEPCION|msp_garantia_recepciones|',
+        r.id_recepcion_garantia
+    ),
+    glosa = CONCAT(
+        N'Recepcion efectiva garantia #',
+        r.id_garantia,
+        N' / recepcion #',
+        r.id_recepcion_garantia
+    )
+FROM dbo.msp_acc_asientos a
+INNER JOIN dbo.msp_garantia_recepciones r
+    ON r.id_garantia = a.id_origen
+   AND r.estado_recepcion = N'CONFIRMADA'
+WHERE a.hash_origen =
+      CONCAT(N'GARANTIA_CONSTITUCION|msp_garantias|', a.id_origen)
+  AND r.monto_recibido = (
+        SELECT SUM(d.debe)
+        FROM dbo.msp_acc_asientos_detalle d
+        INNER JOIN dbo.msp_acc_plan_cuentas p
+            ON p.id_cuenta_contable = d.id_cuenta_contable
+        WHERE d.id_asiento_contable = a.id_asiento_contable
+          AND p.codigo_cuenta IN (N'1.1.01', N'1.1.02')
+    );
 GO
 
 /* Regulariza devoluciones históricas cuya cuenta contable no coincide con tesorería. */

@@ -40,8 +40,9 @@ if (!in_array($lineasPorPagina, $lineasPermitidas, true)) {
 }
 
 $paginaActual = isset($_GET['pagina']) && is_numeric($_GET['pagina']) ? max(1, (int) $_GET['pagina']) : 1;
-$filtroNombre = msp2NormalizeText($_GET['filtroNombre'] ?? null);
-$filtroRut = msp2NormalizeText($_GET['filtroRut'] ?? null);
+$filtroGeneral = msp2SearchQuery($_GET['filtroGeneral'] ?? null);
+$filtroNombre = msp2SearchQuery($_GET['filtroNombre'] ?? null);
+$filtroRut = msp2SearchQuery($_GET['filtroRut'] ?? null);
 $filtroRutSinFormato = msp2RutSanitize($filtroRut);
 $filtroEstado = trim((string) ($_GET['filtroEstado'] ?? ''));
 $filtroTipo = trim((string) ($_GET['filtroTipo'] ?? ''));
@@ -143,20 +144,54 @@ if ($tablaExiste) {
         $conditions = [];
         $params = [];
 
+        if ($filtroGeneral !== '') {
+            $searchFields = [
+                'a.id_arrendatario',
+                'a.nombre_locatario',
+                'a.nombre_representante',
+                "REPLACE(REPLACE(REPLACE(ISNULL(a.rut,N''),N'.',N''),N'-',N''),N' ',N'')",
+                'a.direccion',
+                "(SELECT csearch.desc_comuna FROM dbo.msp_comunas csearch WHERE csearch.id_comuna = a.id_comuna)",
+                "(SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),acsearch.correo),N' ') FROM dbo.msp_arrendatarios_correos acsearch WHERE acsearch.id_arrendatario = a.id_arrendatario)",
+                "(SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),atsearch.telefono),N' ') FROM dbo.msp_arrendatarios_telefonos atsearch WHERE atsearch.id_arrendatario = a.id_arrendatario)",
+            ];
+            if ($ordenarArrendatariosPorLocalDisponible) {
+                $searchFields[] = "(
+                    SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),CONCAT(ts.nombre_comercial,N' ',cs.id_contrato_arriendo,N' ',ls.cdo_local,N' ',ISNULL(ls.desc_local,N''))),N' ')
+                    FROM dbo.msp_tiendas ts
+                    INNER JOIN dbo.msp_contratos_arriendo cs ON cs.id_tienda = ts.id_tienda
+                    INNER JOIN dbo.msp_contrato_locales cls ON cls.id_contrato_arriendo = cs.id_contrato_arriendo
+                    INNER JOIN dbo.msp_locales ls ON ls.id_local = cls.id_local
+                    WHERE ts.id_arrendatario = a.id_arrendatario
+                )";
+                $searchFields[] = "(
+                    SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),REPLACE(REPLACE(ls.cdo_local,N'-',N''),N'.',N'')),N' ')
+                    FROM dbo.msp_tiendas ts
+                    INNER JOIN dbo.msp_contratos_arriendo cs ON cs.id_tienda = ts.id_tienda
+                    INNER JOIN dbo.msp_contrato_locales cls ON cls.id_contrato_arriendo = cs.id_contrato_arriendo
+                    INNER JOIN dbo.msp_locales ls ON ls.id_local = cls.id_local
+                    WHERE ts.id_arrendatario = a.id_arrendatario
+                )";
+            }
+            $search = msp2BuildSearchCondition($filtroGeneral, $searchFields, 'arrendatario', 'a.id_arrendatario');
+            $conditions[] = $search['sql'];
+            $params = array_merge($params, $search['params']);
+        }
+
         if ($filtroNombre !== '') {
-            $conditions[] = "ISNULL(a.nombre_locatario, '') LIKE :filtro_nombre";
-            $params[':filtro_nombre'] = '%' . $filtroNombre . '%';
+            $legacyNameSearch = msp2BuildSearchCondition($filtroNombre, ['a.nombre_locatario'], 'arr_nombre');
+            $conditions[] = $legacyNameSearch['sql'];
+            $params = array_merge($params, $legacyNameSearch['params']);
         }
 
         if ($filtroRut !== '') {
-            if ($filtroRutSinFormato !== '') {
-                $conditions[] = "(ISNULL(a.rut, '') LIKE :filtro_rut OR REPLACE(ISNULL(a.rut, ''), '-', '') LIKE :filtro_rut_sin_guion)";
-                $params[':filtro_rut'] = '%' . $filtroRut . '%';
-                $params[':filtro_rut_sin_guion'] = '%' . $filtroRutSinFormato . '%';
-            } else {
-                $conditions[] = "ISNULL(a.rut, '') LIKE :filtro_rut";
-                $params[':filtro_rut'] = '%' . $filtroRut . '%';
-            }
+            $legacyRutSearch = msp2BuildSearchCondition(
+                $filtroRutSinFormato !== '' ? $filtroRutSinFormato : $filtroRut,
+                ["REPLACE(REPLACE(REPLACE(ISNULL(a.rut,N''),N'.',N''),N'-',N''),N' ',N'')"],
+                'arr_rut'
+            );
+            $conditions[] = $legacyRutSearch['sql'];
+            $params = array_merge($params, $legacyRutSearch['params']);
         }
 
         if ($filtroEstado !== '' && ctype_digit($filtroEstado)) {
@@ -651,7 +686,7 @@ if ($tablaExiste) {
             }
         }
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar los arrendatarios. Detalle técnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.arrendatarios.index', 'No fue posible cargar los arrendatarios.');
     }
 }
 
@@ -731,26 +766,9 @@ function msp2ContratoEstadoBadge(int $estado): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Arrendatarios</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode((string) filemtime(dirname(__DIR__, 2) . '/styles.css')); ?>">
-    <style>
-        .picker-select-btn {
-            border: 1px solid #ced4da;
-            background-color: #fff;
-            color: #212529;
-        }
-
-        .picker-select-btn:hover,
-        .picker-select-btn:focus,
-        .picker-select-btn:active,
-        .picker-select-btn.show {
-            border-color: #86b7fe;
-            background-color: #fff;
-            color: #212529;
-            box-shadow: 0 0 0 .2rem rgba(13, 110, 253, .25);
-        }
-    </style>
 </head>
 <body class="gp-layout bg-light">
 
@@ -783,16 +801,12 @@ function msp2ContratoEstadoBadge(int $estado): string
                 <?php echo msp2Escape($loadError); ?>
             </div>
         <?php else: ?>
-            <form method="get" class="row g-2 msp-management-filters msp-tenants-filters align-items-end">
-                <div class="col-12 col-sm-6 col-lg-3">
-                    <label for="filtroNombre" class="form-label">Nombre locatario</label>
-                    <input type="text" id="filtroNombre" name="filtroNombre" class="form-control" value="<?php echo msp2Escape($filtroNombre); ?>" placeholder="Buscar por nombre">
+            <form method="get" class="row g-2 msp-management-filters msp-tenants-filters align-items-end gp-filter-bar">
+                <div class="col-12 col-lg-5">
+                    <label for="filtroGeneral" class="form-label">Buscar arrendatario</label>
+                    <input type="search" id="filtroGeneral" name="filtroGeneral" class="form-control" value="<?php echo msp2Escape($filtroGeneral); ?>" placeholder="Nombre, RUT, contacto, tienda, local, contrato o #ID">
                 </div>
-                <div class="col-12 col-sm-6 col-lg-2">
-                    <label for="filtroRut" class="form-label">RUT</label>
-                    <input type="text" id="filtroRut" name="filtroRut" class="form-control" value="<?php echo msp2Escape($filtroRut); ?>" placeholder="Buscar por RUT">
-                </div>
-                <div class="col-12 col-sm-6 col-lg-2">
+                <div class="col-12 col-sm-6 col-lg-2 gp-secondary-filter-field">
                     <label for="filtroTipo" class="form-label">Tipo</label>
                     <select id="filtroTipo" name="filtroTipo" class="form-select">
                         <option value="">(Todos)</option>
@@ -811,9 +825,9 @@ function msp2ContratoEstadoBadge(int $estado): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-4 col-lg-1">
+                <div class="col-4 col-lg-1 gp-secondary-filter-field">
                     <label for="lineas" class="form-label">Líneas</label>
-                    <select id="lineas" name="lineas" class="form-select">
+                    <select id="lineas" name="lineas" class="form-select" data-gp-default="25">
                         <?php foreach ($lineasPermitidas as $lineas): ?>
                             <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                 <?php echo $lineas; ?>
@@ -821,8 +835,11 @@ function msp2ContratoEstadoBadge(int $estado): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-8 col-lg-2 d-grid">
-                    <button type="submit" class="btn btn-primary msp-tenant-filter-submit">Filtrar</button>
+                <div class="col-12 col-lg-4 d-flex gap-2" data-gp-filter-actions>
+                    <button type="submit" class="btn btn-primary flex-grow-1 msp-tenant-filter-submit">Filtrar</button>
+                    <?php if ($filtroGeneral !== '' || $filtroNombre !== '' || $filtroRut !== '' || $filtroEstado !== '' || $filtroTipo !== ''): ?>
+                        <a class="btn btn-outline-secondary" href="index.php" aria-label="Limpiar filtros">Limpiar</a>
+                    <?php endif; ?>
                 </div>
             </form>
 
@@ -841,7 +858,7 @@ function msp2ContratoEstadoBadge(int $estado): string
                         <?php if (empty($arrendatarios)): ?>
                             <tr>
                                 <td colspan="5" class="text-muted">
-                                    <?php echo ($filtroNombre === '' && $filtroRut === '' && $filtroEstado === '' && $filtroTipo === '') ? 'No hay arrendatarios registrados todavía.' : 'Sin resultados para los filtros actuales.'; ?>
+                                    <?php echo ($filtroGeneral === '' && $filtroNombre === '' && $filtroRut === '' && $filtroEstado === '' && $filtroTipo === '') ? 'No hay arrendatarios registrados todavía.' : 'Sin resultados para los filtros actuales.'; ?>
                                 </td>
                             </tr>
                         <?php else: ?>
@@ -934,19 +951,19 @@ function msp2ContratoEstadoBadge(int $estado): string
                     <nav aria-label="Paginación de arrendatarios">
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2ArrendatariosQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>" aria-label="Anterior">&laquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2ArrendatariosQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>" aria-label="Anterior">&laquo;</a>
                             </li>
                             <?php foreach ($paginationItems as $item): ?>
                                 <?php if ($item === 'ellipsis'): ?>
                                     <li class="page-item disabled"><span class="page-link">...</span></li>
                                 <?php else: ?>
                                     <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo buildMsp2ArrendatariosQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(buildMsp2ArrendatariosQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                     </li>
                                 <?php endif; ?>
                             <?php endforeach; ?>
                             <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2ArrendatariosQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>" aria-label="Siguiente">&raquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2ArrendatariosQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>" aria-label="Siguiente">&raquo;</a>
                             </li>
                         </ul>
                     </nav>
@@ -993,7 +1010,7 @@ function msp2ContratoEstadoBadge(int $estado): string
 
 <div class="modal fade msp-tenant-modal" id="modalCrearArrendatario" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable msp-tenant-dialog">
-        <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('arrendatarios/guardar.php')); ?>">
+        <form class="modal-content" id="crear_arrendatario_form" method="post" action="<?php echo msp2Escape(msp2Url('arrendatarios/guardar.php')); ?>">
             <div class="modal-header">
                 <h2 class="modal-title fs-5">Registrar arrendatario</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -1002,8 +1019,8 @@ function msp2ContratoEstadoBadge(int $estado): string
                 <div class="row g-2">
                     <div class="col-12 col-md-4">
                         <label for="crear_rut" class="form-label">RUT</label>
-                        <input type="text" class="form-control" id="crear_rut" name="rut" maxlength="20" required>
-                        <div class="form-text">Se acepta `212179507`, `21217950-7` o `21.217.950-7`.</div>
+                        <input type="text" class="form-control" id="crear_rut" name="rut" maxlength="12" inputmode="text" placeholder="12.345.678-5" aria-describedby="crear_rut_ayuda" required>
+                        <div class="form-text" id="crear_rut_ayuda">Se verificará matemáticamente el dígito verificador.</div>
                     </div>
                     <div class="col-12 col-md-4">
                         <label for="crear_es_empresa" class="form-label">Tipo de arrendatario</label>
@@ -1025,11 +1042,11 @@ function msp2ContratoEstadoBadge(int $estado): string
                     </div>
                     <div class="col-12 col-md-6">
                         <label for="crear_nombre_locatario" class="form-label">Nombre locatario</label>
-                        <input type="text" class="form-control" id="crear_nombre_locatario" name="nombre_locatario" maxlength="200" required>
+                        <input type="text" class="form-control" id="crear_nombre_locatario" name="nombre_locatario" minlength="2" maxlength="200" required>
                     </div>
                     <div class="col-12 col-md-6">
                         <label for="crear_nombre_representante" class="form-label">Nombre representante</label>
-                        <input type="text" class="form-control" id="crear_nombre_representante" name="nombre_representante" maxlength="200">
+                        <input type="text" class="form-control" id="crear_nombre_representante" name="nombre_representante" minlength="2" maxlength="200">
                     </div>
                     <div class="col-12">
                         <hr class="my-1">
@@ -1041,7 +1058,7 @@ function msp2ContratoEstadoBadge(int $estado): string
                         <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="btn_agregar_correo_crear">
                             <i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Agregar correo
                         </button>
-                        <div class="form-text">Puedes registrar múltiples correos y marcar uno como principal.</div>
+                        <div class="form-text">Hasta 5 correos con formato válido; marca uno como principal.</div>
                     </div>
                     <div class="col-12 col-lg-6 msp-tenant-contact-group">
                         <label class="form-label d-block mb-1">Teléfonos</label>
@@ -1049,7 +1066,7 @@ function msp2ContratoEstadoBadge(int $estado): string
                         <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="btn_agregar_telefono_crear">
                             <i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Agregar teléfono
                         </button>
-                        <div class="form-text">Puedes registrar múltiples teléfonos y marcar uno como principal.</div>
+                        <div class="form-text">Hasta 5 teléfonos. Usa 9 dígitos nacionales o +56 seguido de 9 dígitos.</div>
                     </div>
                     <div class="col-12">
                         <hr class="my-1">
@@ -1082,7 +1099,7 @@ function msp2ContratoEstadoBadge(int $estado): string
 
 <div class="modal fade msp-tenant-modal" id="modalEditarArrendatario" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable msp-tenant-dialog">
-        <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('arrendatarios/guardar.php')); ?>">
+        <form class="modal-content" id="editar_arrendatario_form" method="post" action="<?php echo msp2Escape(msp2Url('arrendatarios/guardar.php')); ?>">
             <div class="modal-header">
                 <h2 class="modal-title fs-5">Editar arrendatario</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -1092,8 +1109,8 @@ function msp2ContratoEstadoBadge(int $estado): string
                 <div class="row g-2">
                     <div class="col-12 col-md-4">
                         <label for="edit_rut" class="form-label">RUT</label>
-                        <input type="text" class="form-control" id="edit_rut" name="rut" maxlength="20" required>
-                        <div class="form-text">Al guardar, el sistema normaliza el RUT al formato interno estándar.</div>
+                        <input type="text" class="form-control" id="edit_rut" name="rut" maxlength="12" inputmode="text" placeholder="12.345.678-5" aria-describedby="edit_rut_ayuda" required>
+                        <div class="form-text" id="edit_rut_ayuda">Se verificará matemáticamente el dígito verificador.</div>
                     </div>
                     <div class="col-12 col-md-4">
                         <label for="edit_es_empresa" class="form-label">Tipo de arrendatario</label>
@@ -1115,11 +1132,11 @@ function msp2ContratoEstadoBadge(int $estado): string
                     </div>
                     <div class="col-12 col-md-6">
                         <label for="edit_nombre_locatario" class="form-label">Nombre locatario</label>
-                        <input type="text" class="form-control" id="edit_nombre_locatario" name="nombre_locatario" maxlength="200" required>
+                        <input type="text" class="form-control" id="edit_nombre_locatario" name="nombre_locatario" minlength="2" maxlength="200" required>
                     </div>
                     <div class="col-12 col-md-6">
                         <label for="edit_nombre_representante" class="form-label">Nombre representante</label>
-                        <input type="text" class="form-control" id="edit_nombre_representante" name="nombre_representante" maxlength="200">
+                        <input type="text" class="form-control" id="edit_nombre_representante" name="nombre_representante" minlength="2" maxlength="200">
                     </div>
                     <div class="col-12">
                         <hr class="my-1">
@@ -1131,7 +1148,7 @@ function msp2ContratoEstadoBadge(int $estado): string
                         <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="btn_agregar_correo_editar">
                             <i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Agregar correo
                         </button>
-                        <div class="form-text">Marca un correo principal para usarlo en listados.</div>
+                        <div class="form-text">Hasta 5 correos con formato válido; marca uno como principal.</div>
                     </div>
                     <div class="col-12 col-lg-6 msp-tenant-contact-group">
                         <label class="form-label d-block mb-1">Teléfonos</label>
@@ -1139,7 +1156,7 @@ function msp2ContratoEstadoBadge(int $estado): string
                         <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="btn_agregar_telefono_editar">
                             <i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Agregar teléfono
                         </button>
-                        <div class="form-text">Marca un teléfono principal para usarlo en listados.</div>
+                        <div class="form-text">Hasta 5 teléfonos. Usa 9 dígitos nacionales o +56 seguido de 9 dígitos.</div>
                     </div>
                     <div class="col-12">
                         <hr class="my-1">
@@ -1171,7 +1188,7 @@ function msp2ContratoEstadoBadge(int $estado): string
 </div>
 
 <?php include dirname(__DIR__) . '/templates/components/undo_toast.php'; ?>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const sanitizeRut = (value) => value.toUpperCase().replace(/[^0-9K]/g, '');

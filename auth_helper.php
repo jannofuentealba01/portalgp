@@ -1,11 +1,10 @@
 <?php
 declare(strict_types=1);
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/vendor/autoload.php';
+pgpSecurityStartSession();
 
 function pgpBuildUserSession(array $user, array $roles, string $loginSource = 'local'): array
 {
@@ -24,9 +23,9 @@ function pgpFetchUserRoles(PDO $conn, int $usuarioId): array
 {
     $stmt = $conn->prepare(
         "SELECT r.nombre_rol
-         FROM cr_usuario_roles ur
-         JOIN cr_roles r ON ur.rol_id = r.Id
-         WHERE ur.usuario_id = :usuario_id"
+         FROM cr_usuarios u
+         JOIN cr_roles r ON u.rol_id = r.id
+         WHERE u.id = :usuario_id AND u.estado_id=1"
     );
     $stmt->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
     $stmt->execute();
@@ -37,10 +36,16 @@ function pgpFetchUserRoles(PDO $conn, int $usuarioId): array
 function pgpLoginUserRecord(PDO $conn, array $user, string $loginSource = 'local'): void
 {
     $userId = (int)($user['id'] ?? $user['Id'] ?? 0);
+    $securityUser = pgpSecurityUser($conn, $userId);
+    if (!$securityUser || (int)$securityUser['estado_id'] !== 1) {
+        throw new RuntimeException('La cuenta no está habilitada.');
+    }
     $roles = $userId > 0 ? pgpFetchUserRoles($conn, $userId) : [];
 
     session_regenerate_id(true);
     $_SESSION['usuario'] = pgpBuildUserSession($user, $roles, $loginSource);
+    $_SESSION['pgp_security_version'] = (int)$securityUser['security_version'];
+    unset($_SESSION['pgp_csrf'], $_SESSION['msp2_csrf_token'], $_SESSION['ct_csrf_token']);
 }
 
 function pgpFindUserByUsername(PDO $conn, string $username): ?array
@@ -75,6 +80,7 @@ function pgpFindEnabledUserByEmail(PDO $conn, string $email): ?array
 
 function pgpRedirectToLogin(string $message): void
 {
+    $message = pgpSafePublicMessage($message, 'auth.redirect', 'No fue posible completar el inicio de sesión.');
     header('Location: login.php?login_error=' . rawurlencode($message));
     exit();
 }
@@ -85,12 +91,13 @@ function pgpMicrosoftAuthConfig(): array
         'tenant_id' => getenv('MS_ENTRA_TENANT_ID') ?: '',
         'client_id' => getenv('MS_ENTRA_CLIENT_ID') ?: '',
         'client_secret' => getenv('MS_ENTRA_CLIENT_SECRET') ?: '',
+        'client_secret_previous' => getenv('MS_ENTRA_CLIENT_SECRET_PREVIOUS') ?: '',
         'redirect_uri' => getenv('MS_ENTRA_REDIRECT_URI') ?: '',
         'allowed_domains' => getenv('MS_ENTRA_ALLOWED_DOMAINS') ?: '',
     ];
 
     $fileCfg = [];
-    foreach ([__DIR__ . '/microsoft_auth_config.php', __DIR__ . '/microsoft_auth_config.local.php'] as $file) {
+    foreach ([__DIR__ . '/microsoft_auth_config.php', pgpSecretConfigPath('entra.php')] as $file) {
         $loaded = @include $file;
         if (is_array($loaded)) {
             $fileCfg = array_merge($fileCfg, $loaded);
@@ -108,6 +115,7 @@ function pgpMicrosoftAuthConfig(): array
         'tenant_id' => trim((string)($envCfg['tenant_id'] ?: ($fileCfg['tenant_id'] ?? ''))),
         'client_id' => trim((string)($envCfg['client_id'] ?: ($fileCfg['client_id'] ?? ''))),
         'client_secret' => trim((string)($envCfg['client_secret'] ?: ($fileCfg['client_secret'] ?? ''))),
+        'client_secret_previous' => trim((string)($envCfg['client_secret_previous'] ?: ($fileCfg['client_secret_previous'] ?? ''))),
         'redirect_uri' => trim((string)($envCfg['redirect_uri'] ?: ($fileCfg['redirect_uri'] ?? ''))),
         'allowed_domains' => array_values(array_map(
             static fn(string $domain): string => mb_strtolower(trim($domain), 'UTF-8'),
@@ -156,7 +164,7 @@ function pgpMicrosoftDefaultScopes(): array
     ];
 }
 
-function pgpMicrosoftAuthorizeUrl(array $config, string $state): string
+function pgpMicrosoftAuthorizeUrl(array $config, string $state, string $nonce): string
 {
     $params = [
         'client_id' => (string)$config['client_id'],
@@ -165,6 +173,7 @@ function pgpMicrosoftAuthorizeUrl(array $config, string $state): string
         'response_mode' => 'query',
         'scope' => implode(' ', pgpMicrosoftDefaultScopes()),
         'state' => $state,
+        'nonce' => $nonce,
         'prompt' => 'select_account',
     ];
 
@@ -187,53 +196,96 @@ function pgpClearMicrosoftTokens(): void
     unset($_SESSION['ms_graph_auth']);
 }
 
-function pgpBase64UrlDecode(string $value): string
+function pgpMicrosoftProfileFromVerifiedClaims(array $claims): array
 {
-    $padded = str_pad(strtr($value, '-_', '+/'), strlen($value) % 4 === 0 ? strlen($value) : strlen($value) + 4 - strlen($value) % 4, '=', STR_PAD_RIGHT);
-    $decoded = base64_decode($padded, true);
-    return $decoded === false ? '' : $decoded;
-}
-
-function pgpDecodeMicrosoftIdToken(string $idToken): array
-{
-    $parts = explode('.', $idToken);
-    if (count($parts) < 2) {
-        return [];
-    }
-
-    $payload = json_decode(pgpBase64UrlDecode($parts[1]), true);
-    return is_array($payload) ? $payload : [];
-}
-
-function pgpMicrosoftProfileFromIdToken(array $tokenJson, array $config): array
-{
-    $claims = pgpDecodeMicrosoftIdToken((string)($tokenJson['id_token'] ?? ''));
-    if ($claims === []) {
-        return [];
-    }
-
-    $audience = (string)($claims['aud'] ?? '');
-    $tenantId = (string)($claims['tid'] ?? '');
-    $expiresAt = (int)($claims['exp'] ?? 0);
-
-    if ($audience !== (string)$config['client_id']) {
-        return [];
-    }
-
-    if ($tenantId !== '' && strcasecmp($tenantId, (string)$config['tenant_id']) !== 0) {
-        return [];
-    }
-
-    if ($expiresAt > 0 && $expiresAt < (time() - 300)) {
-        return [];
-    }
-
     return [
         'mail' => trim((string)($claims['email'] ?? '')),
         'userPrincipalName' => trim((string)($claims['preferred_username'] ?? $claims['upn'] ?? '')),
         'displayName' => trim((string)($claims['name'] ?? '')),
         'id' => trim((string)($claims['oid'] ?? $claims['sub'] ?? '')),
     ];
+}
+
+function pgpMicrosoftJwks(array $config, bool $forceRefresh = false): array
+{
+    $tenantId = trim((string)($config['tenant_id'] ?? ''));
+    if ($tenantId === '') {
+        throw new RuntimeException('Tenant Microsoft no configurado.');
+    }
+    $cachePath = pgpSecretsDirectory() . DIRECTORY_SEPARATOR . 'entra_jwks_cache.json';
+    if (!$forceRefresh && is_file($cachePath) && (time() - (int)filemtime($cachePath)) < 21600) {
+        $cached = json_decode((string)file_get_contents($cachePath), true);
+        if (is_array($cached) && isset($cached['keys']) && is_array($cached['keys'])) {
+            return $cached;
+        }
+    }
+
+    $url = 'https://login.microsoftonline.com/' . rawurlencode($tenantId) . '/discovery/v2.0/keys';
+    [$status, $body] = pgpHttpGetPublicJson($url);
+    $jwks = json_decode($body, true);
+    if ($status < 200 || $status >= 300 || !is_array($jwks) || !isset($jwks['keys']) || !is_array($jwks['keys'])) {
+        throw new RuntimeException('Microsoft no entregó claves públicas válidas.');
+    }
+    $temporary = $cachePath . '.' . bin2hex(random_bytes(6)) . '.tmp';
+    if (file_put_contents($temporary, json_encode($jwks, JSON_UNESCAPED_SLASHES), LOCK_EX) !== false) {
+        @chmod($temporary, 0600);
+        @rename($temporary, $cachePath);
+    }
+    if (is_file($temporary)) {
+        @unlink($temporary);
+    }
+    return $jwks;
+}
+
+function pgpValidateMicrosoftIdToken(string $idToken, array $config, string $expectedNonce): array
+{
+    if ($idToken === '' || $expectedNonce === '' || substr_count($idToken, '.') !== 2) {
+        throw new RuntimeException('Token de identidad incompleto.');
+    }
+    $segments = explode('.', $idToken);
+    $header = json_decode(\Firebase\JWT\JWT::urlsafeB64Decode($segments[0]), true);
+    if (!is_array($header)
+        || !hash_equals('RS256', (string)($header['alg'] ?? ''))
+        || trim((string)($header['kid'] ?? '')) === '') {
+        throw new RuntimeException('Algoritmo o clave de firma Microsoft no permitidos.');
+    }
+
+    $decode = static function (array $jwks) use ($idToken): array {
+        \Firebase\JWT\JWT::$leeway = 300;
+        $keys = \Firebase\JWT\JWK::parseKeySet($jwks, 'RS256');
+        return (array)\Firebase\JWT\JWT::decode($idToken, $keys);
+    };
+
+    try {
+        $claims = $decode(pgpMicrosoftJwks($config));
+    } catch (Throwable) {
+        // Microsoft rotates signing keys. Refresh once before failing closed.
+        $claims = $decode(pgpMicrosoftJwks($config, true));
+    }
+
+    pgpValidateMicrosoftClaims($claims, $config, $expectedNonce);
+    return $claims;
+}
+
+function pgpValidateMicrosoftClaims(array $claims, array $config, string $expectedNonce): void
+{
+    $tenantId = trim((string)($config['tenant_id'] ?? ''));
+    $clientId = trim((string)($config['client_id'] ?? ''));
+    $issuer = 'https://login.microsoftonline.com/' . strtolower($tenantId) . '/v2.0';
+    $actualIssuer = strtolower(rtrim(trim((string)($claims['iss'] ?? '')), '/'));
+    $audience = $claims['aud'] ?? '';
+    $audienceValid = is_array($audience)
+        ? in_array($clientId, array_map('strval', $audience), true)
+        : hash_equals($clientId, (string)$audience);
+
+    if ($actualIssuer !== strtolower($issuer)
+        || !hash_equals(strtolower($tenantId), strtolower(trim((string)($claims['tid'] ?? ''))))
+        || !$audienceValid
+        || !isset($claims['exp'])
+        || !hash_equals($expectedNonce, (string)($claims['nonce'] ?? ''))
+        || trim((string)($claims['oid'] ?? $claims['sub'] ?? '')) === '') {
+        throw new RuntimeException('Las declaraciones del token Microsoft no son válidas.');
+    }
 }
 
 function pgpMicrosoftProfileEmail(array $profile): string
@@ -258,20 +310,22 @@ function pgpCleanupMicrosoftOauthStates(): void
 
         $value = trim((string)($entry['value'] ?? ''));
         $createdAt = (int)($entry['created_at'] ?? 0);
-        if ($value === '' || $createdAt <= 0 || ($now - $createdAt) > 900) {
+        $nonce = trim((string)($entry['nonce'] ?? ''));
+        if ($value === '' || $nonce === '' || $createdAt <= 0 || ($now - $createdAt) > 900) {
             continue;
         }
 
         $validStates[] = [
             'value' => $value,
             'created_at' => $createdAt,
+            'nonce' => $nonce,
         ];
     }
 
     $_SESSION['ms_oauth_states'] = array_slice($validStates, -5);
 }
 
-function pgpPushMicrosoftOauthState(string $state): void
+function pgpPushMicrosoftOauthState(string $state, string $nonce): void
 {
     pgpCleanupMicrosoftOauthStates();
 
@@ -283,17 +337,19 @@ function pgpPushMicrosoftOauthState(string $state): void
     $states[] = [
         'value' => $state,
         'created_at' => time(),
+        'nonce' => $nonce,
     ];
 
     $_SESSION['ms_oauth_states'] = array_slice($states, -5);
-    $_SESSION['ms_oauth_state'] = $state;
+    unset($_SESSION['ms_oauth_state']);
 }
 
-function pgpConsumeMicrosoftOauthState(string $state): bool
+/** @return array{state:string,nonce:string}|null */
+function pgpConsumeMicrosoftOauthRequest(string $state): ?array
 {
     $candidate = trim($state);
     if ($candidate === '') {
-        return false;
+        return null;
     }
 
     pgpCleanupMicrosoftOauthStates();
@@ -306,18 +362,13 @@ function pgpConsumeMicrosoftOauthState(string $state): bool
                 unset($states[$index]);
                 $_SESSION['ms_oauth_states'] = array_values($states);
                 unset($_SESSION['ms_oauth_state']);
-                return true;
+                return ['state' => $candidate, 'nonce' => (string)($entry['nonce'] ?? '')];
             }
         }
     }
 
-    $legacyState = (string)($_SESSION['ms_oauth_state'] ?? '');
-    if ($legacyState !== '' && hash_equals($legacyState, $candidate)) {
-        unset($_SESSION['ms_oauth_state']);
-        return true;
-    }
-
-    return false;
+    unset($_SESSION['ms_oauth_state']);
+    return null;
 }
 
 function pgpEmailDomain(string $email): string
@@ -387,7 +438,14 @@ function pgpMsHttpRequestFallback(string $url, string $method, array $headers, ?
         $httpOptions['content'] = $body;
     }
 
-    $context = stream_context_create(['http' => $httpOptions]);
+    $context = stream_context_create([
+        'http' => $httpOptions,
+        'ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+            'allow_self_signed' => false,
+        ],
+    ]);
     $response = @file_get_contents($url, false, $context);
     $statusLine = $http_response_header[0] ?? '';
     preg_match('/\s(\d{3})\s/', $statusLine, $matches);
@@ -454,12 +512,31 @@ function pgpHttpPostForm(string $url, array $data): array
             CURLOPT_POSTFIELDS => $body,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_TIMEOUT => pgpMsHttpTimeoutSeconds(),
             CURLOPT_CONNECTTIMEOUT => pgpMsHttpConnectTimeoutSeconds(),
         ], 'POST', $headers, $body, 'No fue posible contactar a Microsoft.');
     }
 
     return pgpMsHttpRequestFallback($url, 'POST', $headers, $body);
+}
+
+function pgpHttpGetPublicJson(string $url): array
+{
+    $headers = ['Accept: application/json'];
+    if (function_exists('curl_init')) {
+        return pgpMsCurlRequestWithFallback($url, [
+            CURLOPT_HTTPGET => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_TIMEOUT => pgpMsHttpTimeoutSeconds(),
+            CURLOPT_CONNECTTIMEOUT => pgpMsHttpConnectTimeoutSeconds(),
+        ], 'GET', $headers, null, 'No fue posible consultar las claves de Microsoft.');
+    }
+    return pgpMsHttpRequestFallback($url, 'GET', $headers, null);
 }
 
 function pgpHttpGetJson(string $url, string $bearerToken): array
@@ -474,6 +551,8 @@ function pgpHttpGetJson(string $url, string $bearerToken): array
             CURLOPT_HTTPGET => true,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_TIMEOUT => pgpMsHttpTimeoutSeconds(),
             CURLOPT_CONNECTTIMEOUT => pgpMsHttpConnectTimeoutSeconds(),
         ], 'GET', $headers, null, 'No fue posible consultar Microsoft Graph.');

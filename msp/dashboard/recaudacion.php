@@ -133,7 +133,7 @@ try {
         $totalRecaudado += (float) ($filaFecha['monto_recaudado'] ?? 0);
     }
 } catch (Throwable $exception) {
-    $error = $exception->getMessage();
+    $error = pgpPublicException($exception, 'msp.dashboard.recaudacion', 'No fue posible cargar la recaudación.');
 }
 ?>
 <!doctype html>
@@ -142,7 +142,7 @@ try {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Recaudación | MSP</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>

@@ -16,7 +16,7 @@ $loadError = null;
 $tablaExiste = false;
 $bancos = [];
 
-$filtroTexto = msp2NormalizeText($_GET['filtroTexto'] ?? null);
+$filtroTexto = msp2SearchQuery($_GET['filtroTexto'] ?? '');
 $mostrarInactivos = isset($_GET['mostrar_inactivos']) && $_GET['mostrar_inactivos'] === '1';
 $editarId = filter_input(INPUT_GET, 'editar', FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
@@ -171,8 +171,11 @@ if ($tablaExiste) {
             $where[] = 'activo = 1';
         }
         if ($filtroTexto !== '') {
-            $where[] = '(nombre_banco LIKE :filtro OR ISNULL(codigo_banco, \'\') LIKE :filtro)';
-            $params[':filtro'] = '%' . $filtroTexto . '%';
+            $search = msp2BuildSearchCondition($filtroTexto, [
+                'id_banco', 'nombre_banco', 'codigo_banco',
+            ], 'bancos_buscar', 'id_banco');
+            $where[] = $search['sql'];
+            $params = array_merge($params, $search['params']);
         }
 
         $stmt = $conn->prepare(
@@ -182,7 +185,7 @@ if ($tablaExiste) {
              ORDER BY nombre_banco ASC'
         );
         foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value, PDO::PARAM_STR);
+            $stmt->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
         }
         $stmt->execute();
         $bancos = $stmt->fetchAll();
@@ -198,7 +201,7 @@ if ($tablaExiste) {
             $bancoEdit = $editStmt->fetch() ?: null;
         }
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar bancos. Detalle técnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.catalogos.bancos', 'No fue posible cargar bancos.');
     }
 }
 ?>
@@ -208,8 +211,8 @@ if ($tablaExiste) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Bancos</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -275,7 +278,7 @@ if ($tablaExiste) {
                         <div class="row g-2">
                             <div class="col-12 col-md-8">
                                 <label class="form-label">Buscar</label>
-                                <input type="text" class="form-control" name="filtroTexto" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Nombre o código">
+                                <input type="search" class="form-control" name="filtroTexto" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Nombre, código o #ID">
                             </div>
                             <div class="col-12 col-md-4 d-flex align-items-end">
                                 <div class="form-check">
@@ -285,7 +288,8 @@ if ($tablaExiste) {
                             </div>
                         </div>
                         <div class="mt-3">
-                            <button type="submit" class="btn btn-outline-primary btn-sm">Aplicar filtros</button>
+                            <button type="submit" class="btn btn-outline-primary btn-sm">Buscar</button>
+                            <?php if ($filtroTexto !== '' || $mostrarInactivos): ?><a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('catalogos/bancos.php')); ?>">Limpiar</a><?php endif; ?>
                         </div>
                     </form>
                 </div>
@@ -347,7 +351,7 @@ if ($tablaExiste) {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__) . '/templates/components/confirm_action_modal.php'; ?>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>

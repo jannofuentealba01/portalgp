@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/permission_service.php';
 require_once __DIR__ . '/../../templates/components/section_header.php';
 require_once __DIR__ . '/../../templates/components/crud_table.php';
 require_once __DIR__ . '/../../templates/components/searchable_multiselect.php';
@@ -157,56 +158,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($action === 'save_role_permissions') {
-            $roleId = (int) ($_POST['id'] ?? 0);
-            $permissionIds = gpGestionRolesParsePermissionIds((string) ($_POST['permiso_ids'] ?? ''));
-
-            if ($roleId <= 0) {
-                throw new RuntimeException('Rol inválido para actualizar permisos.');
+            $roleId = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+            if (!$roleId || ($_POST['_permissions_complete'] ?? '') !== '1') {
+                throw new InvalidArgumentException('El formulario está incompleto. Recarga antes de guardar.');
             }
-
-            $roleExistsStmt = $conn->prepare('SELECT COUNT(*) FROM cr_roles WHERE id = :id');
-            $roleExistsStmt->execute([':id' => $roleId]);
-            if ((int) $roleExistsStmt->fetchColumn() <= 0) {
-                throw new RuntimeException('El rol seleccionado no existe.');
-            }
-
-            $availablePermissionMap = [];
-            $availablePermissionStmt = $conn->query('SELECT id FROM cr_permisos');
-            foreach (($availablePermissionStmt ? $availablePermissionStmt->fetchAll(PDO::FETCH_COLUMN) : []) as $permissionId) {
-                $id = (int) $permissionId;
-                if ($id > 0) {
-                    $availablePermissionMap[(string) $id] = true;
-                }
-            }
-
-            foreach ($permissionIds as $permissionId) {
-                if (!isset($availablePermissionMap[$permissionId])) {
-                    throw new RuntimeException('Uno de los permisos seleccionados no existe.');
-                }
-            }
-
-            $conn->beginTransaction();
-            $conn->prepare('DELETE FROM cr_rol_permisos WHERE rol_id = :rol_id')->execute([':rol_id' => $roleId]);
-
-            if ($permissionIds !== []) {
-                $insertStmt = $conn->prepare('INSERT INTO cr_rol_permisos (rol_id, permiso_id) VALUES (:rol_id, :permiso_id)');
-                foreach ($permissionIds as $permissionId) {
-                    $insertStmt->execute([
-                        ':rol_id' => $roleId,
-                        ':permiso_id' => (int) $permissionId,
-                    ]);
-                }
-            }
-
-            $conn->commit();
-            gpGestionSetFlash('success', 'Permisos del rol actualizados correctamente.');
+            pgpReplaceRolePermissions($conn, gpGestionUserId(), (int)$roleId, $_POST['acciones'] ?? []);
+            gpGestionSetFlash('success', 'Permisos de lectura, escritura y eliminación guardados correctamente.');
             gpGestionRedirect('roles.php');
         }
     } catch (Throwable $e) {
         if ($conn->inTransaction()) {
             $conn->rollBack();
         }
-        gpGestionSetFlash('danger', $e->getMessage());
+        gpGestionSetFlash('danger', pgpPublicOrBusinessException($e, 'gestion.roles', 'No fue posible procesar la solicitud de roles.'));
         gpGestionRedirect('roles.php');
     }
 }
@@ -265,6 +229,7 @@ $permissionSelectOptions = array_map(
 );
 
 $rolePermissionMap = [];
+$roleActionMap = [];
 if ($roles !== []) {
     $roleIds = array_values(array_filter(array_map(static fn (array $role): int => (int) ($role['id'] ?? 0), $roles)));
     if ($roleIds !== []) {
@@ -277,7 +242,7 @@ if ($roles !== []) {
         }
 
         $rolePermissionStmt = $conn->prepare('
-            SELECT rol_id, permiso_id
+            SELECT rol_id, permiso_id, lectura, escritura, eliminacion
             FROM cr_rol_permisos
             WHERE rol_id IN (' . implode(', ', $placeholders) . ')
             ORDER BY rol_id ASC, permiso_id ASC
@@ -290,6 +255,7 @@ if ($roles !== []) {
                 continue;
             }
             $rolePermissionMap[$roleId][] = (string) $permissionId;
+            $roleActionMap[$roleId][$permissionId] = ['lectura'=>(int)$linkRow['lectura'], 'escritura'=>(int)$linkRow['escritura'], 'eliminacion'=>(int)$linkRow['eliminacion']];
         }
     }
 }
@@ -297,6 +263,7 @@ if ($roles !== []) {
 foreach ($roles as &$role) {
     $roleId = (int) ($role['id'] ?? 0);
     $role['permiso_ids'] = implode(';', $rolePermissionMap[$roleId] ?? []);
+    $role['permission_actions'] = $roleActionMap[$roleId] ?? [];
 }
 unset($role);
 $queryBase = [
@@ -311,8 +278,8 @@ $paginationItems = gpGestionRolesBuildPaginationItems($currentPage, $totalPages)
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Roles</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
     <style>
         .gp-table-meta {
@@ -442,6 +409,7 @@ $paginationItems = gpGestionRolesBuildPaginationItems($currentPage, $totalPages)
                                             'onsubmit' => "return confirm('¿Eliminar este rol?');",
                                         ],
                                         'fields' => [
+                                            '_pgp_csrf' => pgpCsrfToken(),
                                             'action' => 'delete_role',
                                             'id' => (string) ($role['id'] ?? ''),
                                         ],
@@ -474,6 +442,7 @@ $paginationItems = gpGestionRolesBuildPaginationItems($currentPage, $totalPages)
 <div class="modal fade" id="createRoleModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <form method="POST" class="modal-content">
+            <?php pgpCsrfField(); ?>
             <input type="hidden" name="action" value="create_role">
             <div class="modal-header">
                 <h5 class="modal-title">Nuevo rol</h5>
@@ -494,6 +463,7 @@ $paginationItems = gpGestionRolesBuildPaginationItems($currentPage, $totalPages)
 <div class="modal fade" id="editRoleModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <form method="POST" class="modal-content">
+            <?php pgpCsrfField(); ?>
             <input type="hidden" name="action" value="update_role">
             <input type="hidden" name="id" id="edit_role_id">
             <div class="modal-header">
@@ -515,6 +485,7 @@ $paginationItems = gpGestionRolesBuildPaginationItems($currentPage, $totalPages)
 <div class="modal fade" id="assignPermissionsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <form method="POST" class="modal-content" id="assignPermissionsForm" style="border-radius: var(--radius-lg);">
+            <?php pgpCsrfField(); ?>
             <input type="hidden" name="action" value="save_role_permissions">
             <input type="hidden" name="id" id="assign_permissions_role_id">
             <div class="modal-header">
@@ -529,27 +500,28 @@ $paginationItems = gpGestionRolesBuildPaginationItems($currentPage, $totalPages)
                     <label class="form-label mb-1">Rol</label>
                     <div class="form-control" id="assign_permissions_role_name" style="background:#f8fafc;">-</div>
                 </div>
-                <?php
-                gpRenderSearchableMultiSelectField([
-                    'wrapper_class' => 'col-12',
-                    'label' => 'Permisos',
-                    'input_name' => 'permiso_ids',
-                    'input_id' => 'assign_permiso_ids',
-                    'picker_id' => 'assign_permiso_ids_picker',
-                    'button_id' => 'assign_permiso_ids_btn',
-                    'search_id' => 'assign_permiso_ids_search',
-                    'list_id' => 'assign_permiso_ids_list',
-                    'selected_container_id' => 'assign_permiso_ids_selected',
-                    'button_placeholder' => 'Selecciona uno o varios permisos',
-                    'search_placeholder' => 'Buscar permiso...',
-                    'empty_selected_message' => 'Sin permisos seleccionados.',
-                    'hide_selected_options' => true,
-                    'selected_view' => 'table',
-                    'table_show_principal' => false,
-                    'close_on_select' => true,
-                    'options' => $permissionSelectOptions,
-                ]);
-                ?>
+                <label class="form-label" for="permission_action_search">Buscar permiso</label>
+                <input type="search" class="form-control mb-2" id="permission_action_search" placeholder="Escribe para filtrar...">
+                <p class="small text-muted">Escritura permite cambios. Eliminación requiere lectura y escritura. Desmarca las tres para retirar el permiso. No puedes reducir los permisos de tu propio rol.</p>
+                <div class="table-responsive" style="max-height:420px;overflow:auto">
+                    <table class="table table-sm align-middle" id="permission_actions_table">
+                        <thead><tr><th>Permiso</th><th>Lectura</th><th>Escritura</th><th>Eliminación</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($permissionCatalog as $permission): ?>
+                            <tr data-permission-row>
+                                <td><?php echo gpGestionH($permission['nombre_permiso']); ?></td>
+                                <?php foreach (['lectura','escritura','eliminacion'] as $permissionAction): ?>
+                                    <td><input type="checkbox" class="form-check-input" value="1"
+                                        name="acciones[<?php echo (int)$permission['id']; ?>][<?php echo $permissionAction; ?>]"
+                                        data-permission="<?php echo (int)$permission['id']; ?>" data-action="<?php echo $permissionAction; ?>"
+                                        aria-label="<?php echo gpGestionH($permissionAction . ': ' . $permission['nombre_permiso']); ?>"></td>
+                                <?php endforeach; ?>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <input type="hidden" name="_permissions_complete" value="1">
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -559,7 +531,7 @@ $paginationItems = gpGestionRolesBuildPaginationItems($currentPage, $totalPages)
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php gpRenderSearchableMultiSelectAssets(); ?>
 <script>
 document.getElementById('editRoleModal').addEventListener('show.bs.modal', function (event) {
@@ -595,9 +567,32 @@ if (assignPermissionsModal) {
         var role = JSON.parse(payload);
         document.getElementById('assign_permissions_role_id').value = role.id || '';
         document.getElementById('assign_permissions_role_name').textContent = role.nombre_rol || '-';
-        setSearchableMultiSelectValue('assign_permiso_ids_picker', role.permiso_ids || '');
+        document.getElementById('permission_action_search').value = '';
+        document.querySelectorAll('[data-permission-row]').forEach(function (row) { row.hidden = false; });
+        document.querySelectorAll('#permission_actions_table input[data-action]').forEach(function (input) {
+            var flags = (role.permission_actions || {})[input.dataset.permission] || {};
+            input.checked = Number(flags[input.dataset.action] || 0) === 1;
+        });
     });
 }
+document.getElementById('permission_action_search').addEventListener('input', function () {
+    var query = this.value.toLocaleLowerCase();
+    document.querySelectorAll('[data-permission-row]').forEach(function (row) {
+        row.hidden = !row.textContent.toLocaleLowerCase().includes(query);
+    });
+});
+document.getElementById('permission_actions_table').addEventListener('change', function (event) {
+    var input = event.target;
+    if (!input.matches('input[data-action]')) return;
+    var row = input.closest('tr');
+    var read = row.querySelector('[data-action="lectura"]');
+    var write = row.querySelector('[data-action="escritura"]');
+    var remove = row.querySelector('[data-action="eliminacion"]');
+    if (input.checked && input === remove) { write.checked = true; read.checked = true; }
+    if (input.checked && input === write) read.checked = true;
+    if (!input.checked && input === read) { write.checked = false; remove.checked = false; }
+    if (!input.checked && input === write) remove.checked = false;
+});
 </script>
 <?php include __DIR__ . '/../../templates/footer.php'; ?>
 </body>

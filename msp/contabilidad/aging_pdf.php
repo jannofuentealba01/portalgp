@@ -373,5 +373,5 @@ try {
     exit();
 } catch (Throwable $e) {
     http_response_code(500);
-    echo 'No fue posible generar Aging PDF. Detalle: ' . msp2Escape($e->getMessage());
+    echo msp2Escape(pgpPublicException($e, 'msp.contabilidad.aging_pdf', 'No fue posible generar Aging PDF.'));
 }

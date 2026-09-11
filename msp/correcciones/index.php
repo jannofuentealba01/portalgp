@@ -53,7 +53,7 @@ if (($idContrato === false || $idContrato === null) && $buscarContrato !== '') {
             $errorBusquedaContrato = 'No se encontraron contratos para la búsqueda indicada.';
         }
     } catch (Throwable $e) {
-        error_log('[MSP][Correcciones][buscar_contrato] '.$e->getMessage());
+        pgpLogException($e, 'msp.correcciones.buscar_contrato');
         $errorBusquedaContrato = 'No fue posible buscar contratos en este momento.';
     }
 }
@@ -81,7 +81,7 @@ if ($idContrato !== false && $idContrato !== null) {
         $stmtPeriodos = $conn->prepare("SELECT DISTINCT CONVERT(char(7),lm.periodo_facturacion,126) periodo FROM dbo.msp_lecturas_medidores lm INNER JOIN dbo.msp_medidores m ON m.id_medidor=lm.id_medidor INNER JOIN dbo.msp_contrato_locales cl ON cl.id_local=m.id_local WHERE cl.id_contrato_arriendo=:id ORDER BY periodo DESC");
         $stmtPeriodos->execute([':id' => (int) $idContrato]);
         $periodosDisponibles = array_values(array_filter(array_map(static fn(array $r): string => (string) $r['periodo'], $stmtPeriodos->fetchAll(PDO::FETCH_ASSOC))));
-    } catch (Throwable $e) { error_log('[MSP][Correcciones][periodos] '.$e->getMessage()); $periodosDisponibles = []; $cargaOpcionesError = 'No fue posible cargar los períodos disponibles.'; }
+    } catch (Throwable $e) { pgpLogException($e, 'msp.correcciones.periodos'); $periodosDisponibles = []; $cargaOpcionesError = 'No fue posible cargar los períodos disponibles.'; }
 
     try {
         $stmtLecturas = $conn->prepare(
@@ -100,7 +100,7 @@ if ($idContrato !== false && $idContrato !== null) {
         );
         $stmtLecturas->execute([':id' => (int) $idContrato]);
         $lecturasDisponibles = $stmtLecturas->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    } catch (Throwable $e) { error_log('[MSP][Correcciones][lecturas] '.$e->getMessage()); $lecturasDisponibles = []; $cargaOpcionesError = 'No fue posible cargar las lecturas disponibles.'; }
+    } catch (Throwable $e) { pgpLogException($e, 'msp.correcciones.lecturas'); $lecturasDisponibles = []; $cargaOpcionesError = 'No fue posible cargar las lecturas disponibles.'; }
 
     if (msp2TableExists($conn, 'msp_arriendo_local_snapshot_periodo')) {
         try {
@@ -116,7 +116,7 @@ if ($idContrato !== false && $idContrato !== null) {
             );
             $stmtArriendos->execute([':id' => (int) $idContrato]);
             $arriendosDisponibles = $stmtArriendos->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $e) { error_log('[MSP][Correcciones][arriendos] '.$e->getMessage()); $arriendosDisponibles = []; $cargaOpcionesError = 'No fue posible cargar los arriendos mensuales.'; }
+        } catch (Throwable $e) { pgpLogException($e, 'msp.correcciones.arriendos'); $arriendosDisponibles = []; $cargaOpcionesError = 'No fue posible cargar los arriendos mensuales.'; }
     }
 }
 
@@ -125,8 +125,8 @@ if ($idContrato !== false && $idContrato !== null) {
         require_once dirname(__DIR__) . '/services/CorreccionesService.php';
         $resultado = CorreccionesService::analizarPorContrato($conn, (int) $idContrato);
     } catch (Throwable $e) {
-        error_log('[MSP][Correcciones][analisis] '.$e->getMessage());
-        $error = $e instanceof RuntimeException ? $e->getMessage() : 'No fue posible analizar la corrección.';
+        pgpLogException($e, 'msp.correcciones.analisis');
+        $error = pgpPublicOrBusinessException($e, 'msp.correcciones.analizar', 'No fue posible analizar la corrección.');
     }
 }
 
@@ -139,8 +139,8 @@ if (isset($_GET['listar']) && $_GET['listar'] === '1') {
             'codigo_operacion' => (string) ($_GET['codigo'] ?? ''),
         ]);
     } catch (Throwable $e) {
-        error_log('[MSP][Correcciones][listado] '.$e->getMessage());
-        $error = $e instanceof RuntimeException ? $e->getMessage() : 'No fue posible listar las correcciones.';
+        pgpLogException($e, 'msp.correcciones.listado');
+        $error = pgpPublicOrBusinessException($e, 'msp.correcciones.listar', 'No fue posible listar las correcciones.');
     }
 }
 
@@ -149,8 +149,8 @@ if ($idCorreccion !== false && $idCorreccion !== null) {
         require_once dirname(__DIR__) . '/services/CorreccionesService.php';
         $correccion = CorreccionesService::obtener($conn, (int) $idCorreccion);
     } catch (Throwable $e) {
-        error_log('[MSP][Correcciones][detalle] '.$e->getMessage());
-        $error = $e instanceof RuntimeException ? $e->getMessage() : 'No fue posible abrir la corrección.';
+        pgpLogException($e, 'msp.correcciones.detalle');
+        $error = pgpPublicOrBusinessException($e, 'msp.correcciones.detalle', 'No fue posible abrir la corrección.');
     }
 }
 
@@ -165,7 +165,7 @@ function corrMonto(mixed $value): string
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Correcciones | MSP</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -179,7 +179,8 @@ function corrMonto(mixed $value): string
         <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>">Volver al menú MSP</a>
     </div>
 
-    <div class="card shadow-sm mb-3">
+    <?php if ($idContrato === false || $idContrato === null): ?>
+    <section class="card shadow-sm mb-3" data-corr-stage="contrato">
         <div class="card-header bg-white fw-semibold">1. Seleccionar contrato</div>
         <div class="card-body">
             <form class="row g-2 align-items-end" method="get">
@@ -207,36 +208,8 @@ function corrMonto(mixed $value): string
                 </div>
             <?php endif; ?>
         </div>
-    </div>
-
-    <div class="card shadow-sm mb-3" id="corrBuscarSolicitudesCard">
-        <div class="card-header bg-white fw-semibold">Buscar solicitudes registradas</div>
-        <div class="card-body">
-            <form class="row g-2 align-items-end" method="get">
-                <input type="hidden" name="listar" value="1">
-                <div class="col-lg-3">
-                    <label class="form-label">Estado</label>
-                    <select class="form-select" name="estado">
-                        <option value="">Todos</option>
-                        <?php foreach (['BORRADOR','ANALIZADA','PENDIENTE_APROBACION','APROBADA','EJECUTANDO','EJECUTADA','RECHAZADA','CANCELADA','ERROR'] as $estadoOpt): ?>
-                            <option value="<?php echo msp2Escape($estadoOpt); ?>" <?php echo ((string) ($_GET['estado'] ?? '') === $estadoOpt) ? 'selected' : ''; ?>><?php echo msp2Escape($estadoOpt); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-lg-3">
-                    <label class="form-label">Contrato</label>
-                    <input type="number" class="form-control" name="filtro_contrato" value="<?php echo msp2Escape((string) ($_GET['filtro_contrato'] ?? '')); ?>" min="1">
-                </div>
-                <div class="col-lg-3">
-                    <label class="form-label">Código</label>
-                    <input type="text" class="form-control" name="codigo" value="<?php echo msp2Escape((string) ($_GET['codigo'] ?? '')); ?>" placeholder="UUID">
-                </div>
-                <div class="col-lg-3 d-grid">
-                    <button class="btn btn-outline-dark">Listar solicitudes</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    </section>
+    <?php endif; ?>
 
     <?php if ($error !== null): ?>
         <div class="alert alert-danger"><?php echo msp2Escape($error); ?></div>
@@ -275,66 +248,28 @@ function corrMonto(mixed $value): string
             if ($idLocalForm > 0) { $localesFormulario[$idLocalForm] = (string) ($localDep['cdo_local'] ?? ''); }
         }
         ?>
-        <div class="row g-3 mb-3" id="corrResumenContrato">
-            <div class="col-lg-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Contrato</div><div class="fw-semibold">#<?php echo (int) ($contrato['id_contrato_arriendo'] ?? 0); ?></div><div class="small text-muted"><?php echo msp2Escape((string) ($contrato['nombre_locatario'] ?? '-')); ?></div><div class="small text-muted">RUT <?php echo msp2Escape((string) ($contrato['rut'] ?? '-')); ?></div></div></div></div>
-            <div class="col-lg-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Contexto general</div><div class="fw-semibold">Evaluación preliminar</div><div class="small text-muted">La clasificación definitiva se calculará usando únicamente el registro que selecciones, no todos los pagos del contrato.</div></div></div></div>
-            <div class="col-lg-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Estado contrato</div><div class="fw-semibold">#<?php echo (int) ($contrato['estado_contrato'] ?? 0); ?></div><div class="small text-muted">Tienda <?php echo msp2Escape((string) ($contrato['nombre_comercial'] ?? '-')); ?></div></div></div></div>
-        </div>
-
-        <div class="row g-3 mb-3" id="corrContextoTecnico">
-            <div class="col-lg-6">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-white fw-semibold">Contexto del contrato</div>
-                    <div class="card-body">
-                        <ul class="mb-0">
-                            <li>Locales activos: <?php echo count($dep['locales'] ?? []); ?></li>
-                            <li>Documentos: <?php echo count($dep['documentos'] ?? []); ?></li>
-                            <li>Pagos: <?php echo count($dep['pagos'] ?? []); ?></li>
-                            <li>Garantías: <?php echo count($dep['garantias'] ?? []); ?></li>
-                            <li>Cargos: <?php echo count($dep['cargos'] ?? []); ?></li>
-                            <li>Tesorería: <?php echo count($dep['tesoreria'] ?? []); ?></li>
-                            <li>Contabilidad: <?php echo count($dep['contabilidad'] ?? []); ?></li>
-                        </ul>
-                    </div>
-                </div>
+        <section class="gp-indicator-strip corr-contract-strip mb-3" id="corrResumenContrato" data-corr-stage="contexto" aria-label="Contrato seleccionado">
+            <div class="gp-indicator">
+                <span class="gp-indicator-label">Contrato</span>
+                <strong class="gp-indicator-value">#<?php echo (int) ($contrato['id_contrato_arriendo'] ?? 0); ?> · <?php echo msp2Escape((string) ($contrato['nombre_locatario'] ?? '-')); ?></strong>
+                <span class="gp-indicator-note">RUT <?php echo msp2Escape((string) ($contrato['rut'] ?? '-')); ?></span>
             </div>
-            <div class="col-lg-6">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-white fw-semibold">Qué no modificaría una corrección simple</div>
-                    <div class="card-body">
-                        <p class="mb-2">Este análisis es de solo lectura. Los elementos que ya existen y deben preservarse son:</p>
-                        <ul class="mb-0">
-                            <li>Pagos reales</li>
-                            <li>Conciliaciones</li>
-                            <li>Asientos contables</li>
-                            <li>Garantías recibidas o aplicadas</li>
-                            <li>Cierres mensuales</li>
-                        </ul>
-                    </div>
-                </div>
+            <div class="gp-indicator">
+                <span class="gp-indicator-label">Estado y tienda</span>
+                <strong class="gp-indicator-value">Estado #<?php echo (int) ($contrato['estado_contrato'] ?? 0); ?></strong>
+                <span class="gp-indicator-note"><?php echo msp2Escape((string) ($contrato['nombre_comercial'] ?? '-')); ?></span>
             </div>
-        </div>
+        </section>
 
-        <div class="card shadow-sm mb-3" id="corrDetalleResumenCard">
-            <div class="card-header bg-white fw-semibold">Detalle resumido</div>
-            <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-md-4"><div class="border rounded p-3 h-100"><div class="small text-muted">Locales</div><div class="fw-semibold"><?php echo count($dep['locales'] ?? []); ?></div><div class="small text-muted">Historial de ocupación y relación contractual.</div></div></div>
-                    <div class="col-md-4"><div class="border rounded p-3 h-100"><div class="small text-muted">Documentos</div><div class="fw-semibold"><?php echo count($dep['documentos'] ?? []); ?></div><div class="small text-muted">Base para decidir si existe regeneración controlada.</div></div></div>
-                    <div class="col-md-4"><div class="border rounded p-3 h-100"><div class="small text-muted">Pagos / garantía / tesorería</div><div class="fw-semibold"><?php echo count($dep['pagos'] ?? []); ?> / <?php echo count($dep['garantias'] ?? []); ?> / <?php echo count($dep['tesoreria'] ?? []); ?></div><div class="small text-muted">Si hay efectos reales, la corrección deja de ser simple.</div></div></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card shadow-sm mb-3" id="corrFormularioCard">
+        <section class="card shadow-sm mb-3 corr-form-card" id="corrFormularioCard" data-corr-stage="registro">
             <div class="card-header bg-white fw-semibold">2. Seleccionar el registro y su valor correcto</div>
             <div class="card-body">
                 <?php if ($cargaOpcionesError !== null): ?><div class="alert alert-danger"><?php echo msp2Escape($cargaOpcionesError); ?></div><?php endif; ?>
-                <form class="row g-3" method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>">
+                <form class="row g-2 align-items-start" method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>">
                     <?php msp2CsrfField(); ?>
                     <input type="hidden" name="id_contrato_arriendo" value="<?php echo (int) ($contrato['id_contrato_arriendo'] ?? 0); ?>">
                     <input type="hidden" name="modulo_origen" value="correcciones/index.php">
-                    <div class="col-lg-6">
+                    <div class="col-12 col-lg-6">
                         <label class="form-label">¿Qué quieres corregir?</label>
                         <select class="form-select" name="entidad_afectada" id="corrEntidad" required>
                             <option value="lectura">Lectura o consumo de servicio</option>
@@ -342,7 +277,7 @@ function corrMonto(mixed $value): string
                             <option value="arriendo">Arriendo de un período</option>
                         </select>
                     </div>
-                    <div class="col-lg-6" id="corrServicioGrupo">
+                    <div class="col-12 col-lg-6" id="corrServicioGrupo">
                         <label class="form-label">Servicio</label>
                         <select class="form-select" name="servicio" id="corrServicio">
                             <option value="">Selecciona el servicio</option>
@@ -351,7 +286,7 @@ function corrMonto(mixed $value): string
                             <option value="GAS" <?php echo $prefillServicio === 'GAS' ? 'selected' : ''; ?> <?php echo isset($serviciosLecturaDisponibles['GAS']) ? '' : 'disabled'; ?>>Gas<?php echo isset($serviciosLecturaDisponibles['GAS']) ? '' : ' · sin lecturas'; ?></option>
                         </select>
                     </div>
-                    <div class="col-lg-4">
+                    <div class="col-12 col-md-4">
                         <label class="form-label">Período</label>
                         <select class="form-select" name="periodo_facturacion" id="corrPeriodo" required>
                             <option value="">Selecciona un período disponible</option>
@@ -364,7 +299,7 @@ function corrMonto(mixed $value): string
                         </select>
                         <div class="form-text" id="corrPeriodoAyuda">Solo se habilitan meses que contienen registros corregibles.</div>
                     </div>
-                    <div class="col-lg-4">
+                    <div class="col-12 col-md-4">
                         <label class="form-label">Local</label>
                         <select class="form-select" name="id_local" id="corrLocal">
                             <option value="">-</option>
@@ -373,7 +308,7 @@ function corrMonto(mixed $value): string
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="col-lg-4">
+                    <div class="col-12 col-md-4">
                         <label class="form-label" id="corrRegistroLabel">Lectura a corregir</label>
                         <select class="form-select" name="id_registro_origen" id="corrRegistro" required>
                             <option value="">Selecciona local, período y servicio</option>
@@ -412,16 +347,16 @@ function corrMonto(mixed $value): string
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="col-lg-6">
+                    <div class="col-12 col-lg-6">
                         <label class="form-label">Valor registrado actualmente</label>
                         <textarea class="form-control" name="valor_anterior" id="corrValorAnterior" rows="3" readonly placeholder="Se completará al seleccionar el registro"><?php echo $prefillLectura ? msp2Escape('Lectura actual registrada: '.(string) $prefillLectura['lectura_actual']) : ''; ?></textarea>
                     </div>
-                    <div class="col-lg-6">
+                    <div class="col-12 col-lg-6">
                         <label class="form-label" id="corrValorNuevoLabel">Nueva lectura correcta</label>
                         <input class="form-control" type="number" min="0" step="0.0001" name="valor_nuevo" id="corrValorNuevo" required placeholder="Ingresa el valor correcto">
                         <div class="form-text" id="corrValorNuevoAyuda">Ingresa la lectura acumulada que debería haber quedado registrada.</div>
                     </div>
-                    <div class="col-lg-12">
+                    <div class="col-12">
                         <label class="form-label">Motivo</label>
                         <input type="text" class="form-control" name="motivo" maxlength="500" required placeholder="Describe la corrección requerida">
                     </div>
@@ -430,17 +365,56 @@ function corrMonto(mixed $value): string
                     </div>
                 </form>
             </div>
-        </div>
+        </section>
 
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <div class="fw-semibold mb-2">Acciones de corrección</div>
-                <div class="d-flex flex-wrap gap-2">
-                    <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('correcciones/index.php?listar=1')); ?>">Ver solicitudes</a>
-                    <a class="btn btn-outline-dark btn-sm" href="<?php echo msp2Escape(msp2Url('correcciones/index.php?listar=1&estado=BORRADOR')); ?>">Borradores</a>
+        <details class="gp-disclosure corr-impact mb-3" id="corrContextoTecnico" data-corr-stage="impacto">
+            <summary><span>3. Impacto y dependencias del contrato</span></summary>
+            <div class="gp-disclosure__body">
+                <div class="gp-indicator-strip mb-2" aria-label="Dependencias de la corrección">
+                    <?php foreach ([
+                        'Locales' => count($dep['locales'] ?? []),
+                        'Documentos' => count($dep['documentos'] ?? []),
+                        'Pagos' => count($dep['pagos'] ?? []),
+                        'Garantías' => count($dep['garantias'] ?? []),
+                        'Cargos' => count($dep['cargos'] ?? []),
+                        'Tesorería' => count($dep['tesoreria'] ?? []),
+                        'Contabilidad' => count($dep['contabilidad'] ?? []),
+                    ] as $dependenciaLabel => $dependenciaTotal): ?>
+                        <div class="gp-indicator">
+                            <span class="gp-indicator-label"><?php echo msp2Escape($dependenciaLabel); ?></span>
+                            <strong class="gp-indicator-value"><?php echo (int) $dependenciaTotal; ?></strong>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="corr-impact-grid">
+                    <section>
+                        <div class="fw-semibold mb-1">Qué se preserva</div>
+                        <p class="small text-muted mb-1">El análisis es de solo lectura y una corrección simple no modifica estos registros:</p>
+                        <ul class="corr-preserved-list small mb-0">
+                            <li>Pagos reales</li>
+                            <li>Conciliaciones</li>
+                            <li>Asientos contables</li>
+                            <li>Garantías recibidas o aplicadas</li>
+                            <li>Cierres mensuales</li>
+                        </ul>
+                    </section>
+                    <section>
+                        <div class="fw-semibold mb-1">Criterio de clasificación</div>
+                        <p class="small text-muted mb-0">Los documentos determinan si corresponde regeneración controlada. Si existen pagos, garantía o tesorería relacionados, la corrección deja de ser simple.</p>
+                    </section>
                 </div>
             </div>
-        </div>
+        </details>
+
+        <details class="gp-disclosure corr-actions" data-corr-stage="acciones">
+            <summary><span>4. Acciones de corrección</span></summary>
+            <div class="gp-disclosure__body">
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('correcciones/index.php?listar=1')); ?>">Ver solicitudes</a>
+                    <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('correcciones/index.php?listar=1&estado=BORRADOR')); ?>">Borradores</a>
+                </div>
+            </div>
+        </details>
     <?php elseif ($correccion !== null): ?>
         <?php
         $estadoCorreccion = strtoupper((string) ($correccion['estado_correccion'] ?? ''));
@@ -481,7 +455,7 @@ function corrMonto(mixed $value): string
                             <?php msp2CsrfField(); ?>
                             <input type="hidden" name="accion" value="ejecutar">
                             <input type="hidden" name="id_correccion" value="<?php echo (int) ($correccion['id_correccion'] ?? 0); ?>">
-                            <button class="btn btn-dark btn-sm">Confirmar corrección</button>
+                            <button class="btn btn-primary btn-sm">Confirmar corrección</button>
                         </form><?php endif; ?>
                     </div>
                 </div>
@@ -555,12 +529,6 @@ function corrMonto(mixed $value): string
 </main>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const main=document.querySelector('main.gp-main'), formularioCard=document.getElementById('corrFormularioCard');
-    const resumenContrato=document.getElementById('corrResumenContrato'), contextoTecnico=document.getElementById('corrContextoTecnico');
-    const buscarSolicitudes=document.getElementById('corrBuscarSolicitudesCard');
-    if(formularioCard&&resumenContrato) resumenContrato.insertAdjacentElement('afterend',formularioCard);
-    if(main&&contextoTecnico) main.appendChild(contextoTecnico);
-    if(main&&buscarSolicitudes) main.appendChild(buscarSolicitudes);
     const entidad=document.getElementById('corrEntidad');
     const servicio=document.getElementById('corrServicio'), servicioGrupo=document.getElementById('corrServicioGrupo');
     const periodo=document.getElementById('corrPeriodo'), local=document.getElementById('corrLocal');

@@ -5,6 +5,14 @@
 */
 :ON ERROR EXIT
 :setvar MSP_DB_DIR "msp\db"
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET ARITHABORT ON;
+SET NUMERIC_ROUNDABORT OFF;
+GO
 PRINT '==== MSP migracion incremental: inicio ====';
 IF OBJECT_ID(N'dbo.msp_contratos_arriendo', N'U') IS NULL OR OBJECT_ID(N'dbo.msp_documentos_cobro', N'U') IS NULL
 BEGIN
@@ -12,8 +20,11 @@ BEGIN
 END;
 GO
 
+:r $(MSP_DB_DIR)\patch_schema_migrations.sql
+
 PRINT '==== Documentos, pagos y saldos ====';
 :r $(MSP_DB_DIR)\patch_pagos_por_concepto.sql
+:r $(MSP_DB_DIR)\patch_prioridad_imputacion_pagos.sql
 :r $(MSP_DB_DIR)\patch_documentos_cobro_uuid.sql
 :r $(MSP_DB_DIR)\patch_documentos_por_contrato.sql
 :r $(MSP_DB_DIR)\patch_saldo_favor_tienda.sql
@@ -39,6 +50,7 @@ PRINT '==== Contratos, arriendos y cierre ====';
 :r $(MSP_DB_DIR)\patch_arriendo_inicio_prorrata.sql
 :r $(MSP_DB_DIR)\patch_arriendo_termino_prorrata.sql
 :r $(MSP_DB_DIR)\patch_clp_fijo_contrato.sql
+:r $(MSP_DB_DIR)\patch_cierre_mensual_transiciones.sql
 
 PRINT '==== Operacion mensual y envios ====';
 :r $(MSP_DB_DIR)\patch_catalogo_bancos.sql
@@ -51,8 +63,9 @@ PRINT '==== Operacion mensual y envios ====';
 
 PRINT '==== Garantias y tesoreria ====';
 :r $(MSP_DB_DIR)\patch_garantias_tesoreria_base.sql
-:r $(MSP_DB_DIR)\patch_garantias_etapa1_operativa.sql
 :r $(MSP_DB_DIR)\patch_garantias_devolucion_operativa.sql
+:r $(MSP_DB_DIR)\patch_garantias_etapa1_operativa.sql
+:r $(MSP_DB_DIR)\patch_garantias_resumen_recepcion_real.sql
 :r $(MSP_DB_DIR)\patch_garantias_archivos_respaldo.sql
 :r $(MSP_DB_DIR)\patch_garantias_reporte_control.sql
 :r $(MSP_DB_DIR)\patch_tesoreria_conciliacion_cierre.sql
@@ -66,14 +79,43 @@ PRINT '==== Contabilidad ====';
 
 PRINT '==== Cobranza, correcciones y soporte ====';
 :r $(MSP_DB_DIR)\patch_gestion_cobranza_operacional.sql
-:r \patch_convenios_pago_cuotas.sql
+:r $(MSP_DB_DIR)\patch_convenios_pago_cuotas.sql
 :r $(MSP_DB_DIR)\patch_correcciones_selectivas.sql
+:r $(MSP_DB_DIR)\patch_correcciones_selectivas_v2.sql
 :r $(MSP_DB_DIR)\patch_tipo_cargo_obsoletos.sql
+:r $(MSP_DB_DIR)\patch_multa_por_tienda.sql
 :r $(MSP_DB_DIR)\patch_bandeja_pendientes_gestion.sql
 :r $(MSP_DB_DIR)\patch_pago_contrato_archivos.sql
 :r $(MSP_DB_DIR)\patch_pago_contrato_operacion_general.sql
 :r $(MSP_DB_DIR)\patch_archivos_pdf_generalizacion.sql
 :r $(MSP_DB_DIR)\patch_configuracion_correo.sql
+:r $(MSP_DB_DIR)\patch_documentos_tienda_carga_masiva.sql
+:r $(MSP_DB_DIR)\patch_documentos_tienda_etapa2.sql
+
+PRINT '==== Cierre, vacancias y trazabilidad final ====';
+:r $(MSP_DB_DIR)\patch_liquidacion_final.sql
+:r $(MSP_DB_DIR)\patch_cierre_deuda_historica.sql
+:r $(MSP_DB_DIR)\patch_comercial_vacancia_documentos.sql
+:r $(MSP_DB_DIR)\patch_cierre_integracion_final.sql
+
+PRINT '==== Permisos MSP ====';
+:r $(MSP_DB_DIR)\patch_permisos_msp_por_funcion.sql
+
+:r $(MSP_DB_DIR)\patch_seguridad_acceso_etapa1.sql
+:r $(MSP_DB_DIR)\patch_seguridad_acceso_etapa2.sql
+:r $(MSP_DB_DIR)\patch_seguridad_financiera_etapa2.sql
+
+PRINT '==== MSP migrate: seguridad financiera etapa 4 puntos 1 a 3 ====';
+:r $(MSP_DB_DIR)\patch_seguridad_financiera_etapa4_puntos1_3.sql
+
+PRINT '==== MSP migrate: regularizacion documental y financiera historica ====';
+:r $(MSP_DB_DIR)\patch_documentos_cobro_flujo_integral.sql
+
+PRINT '==== MSP migrate: auditoria historica de saldo a favor ====';
+:r $(MSP_DB_DIR)\patch_auditoria_saldo_favor_historico.sql
+
+PRINT '==== MSP migrate: seguridad financiera etapa 4 eliminacion, regeneracion y reapertura ====';
+:r $(MSP_DB_DIR)\patch_seguridad_financiera_etapa4_eliminacion_regeneracion_rollback.sql
 
 PRINT '==== MSP migracion incremental: completada ====';
 PRINT 'El Job de SQL Agent requiere ejecucion separada con permisos sysadmin.';

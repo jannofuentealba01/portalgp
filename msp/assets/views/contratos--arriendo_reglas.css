@@ -1,0 +1,44 @@
+/* Page-specific screen layout. Source: msp/contratos/arriendo_reglas.php */
+
+.msp2-kpi {
+            border: 1px solid var(--color-border);
+            border-radius: .6rem;
+            background: var(--color-surface-soft);
+            padding: .75rem .9rem;
+            height: 100%;
+        }
+        .msp2-kpi-label {
+            display: block;
+            font-size: .75rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: var(--color-text-muted);
+            margin-bottom: .25rem;
+        }
+        .msp2-kpi-value {
+            font-size: 1.15rem;
+            font-weight: 600;
+            line-height: 1.2;
+            color: var(--color-text);
+        }
+        .msp2-descuento-option {
+            display: flex;
+            gap: .55rem;
+            align-items: flex-start;
+            border: 1px solid var(--color-border);
+            border-radius: .5rem;
+            padding: .55rem .65rem;
+            background: var(--color-surface-soft);
+        }
+        .msp2-descuento-option:hover {
+            border-color: var(--color-info-border);
+            background: var(--color-surface-soft);
+        }
+        .msp2-descuento-option .form-check-input {
+            margin-top: .15rem;
+        }
+        .msp2-history-controls {
+            border-top: 1px solid var(--color-surface-soft);
+            border-bottom: 1px solid var(--color-surface-soft);
+            background: var(--color-surface-soft);
+        }

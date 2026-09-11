@@ -315,7 +315,7 @@ if ($tablaExiste) {
             $reglaEdicion = $editStmt->fetch() ?: null;
         }
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar las reglas automaticas. Detalle tecnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.cobros.reglas', 'No fue posible cargar las reglas automáticas.');
     }
 }
 
@@ -347,8 +347,8 @@ $totalInactivas = $totalReglas - $totalActivas;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Reglas de Cobro Automatico</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -572,7 +572,7 @@ $totalInactivas = $totalReglas - $totalActivas;
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const shouldOpenForm = <?php echo $formData['id_regla_cobro_auto'] > 0 ? 'true' : 'false'; ?>;

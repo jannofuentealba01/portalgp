@@ -261,6 +261,17 @@ BEGIN
         BEGIN
             IF OBJECT_ID(N'dbo.msp_pagos', N'U') IS NOT NULL
             BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM dbo.msp_pagos p
+                    INNER JOIN dbo.msp_documentos_cobro dc
+                        ON dc.id_documento_cobro=p.id_documento_cobro
+                    WHERE dc.periodo_facturacion=@periodo_facturacion
+                )
+                BEGIN
+                    THROW 50097, 'Los pagos del periodo no se eliminan fisicamente. Anula cada pago para conservar su trazabilidad.', 1;
+                END;
+
                 IF OBJECT_ID(N'dbo.msp_movimientos_garantia', N'U') IS NOT NULL
                    AND EXISTS (
                         SELECT 1
@@ -315,12 +326,7 @@ BEGIN
                     END;
                 END;
 
-                DELETE p
-                FROM dbo.msp_pagos p
-                INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro = p.id_documento_cobro
-                WHERE dc.periodo_facturacion = @periodo_facturacion;
-
-                SET @pagos_borrados = @@ROWCOUNT;
+                SET @pagos_borrados = 0;
             END;
         END;
 
@@ -380,21 +386,36 @@ BEGIN
                 THROW 50094, 'No se pueden borrar documentos del periodo porque existen movimientos de garantia asociados.', 1;
             END;
 
-            IF OBJECT_ID(N'dbo.msp_documentos_cobro_detalle', N'U') IS NOT NULL
+            IF OBJECT_ID(N'dbo.msp_documento_preparar_regeneracion',N'P') IS NULL
+                THROW 53516, 'Falta instalar la regeneracion segura de documentos.', 1;
+
+            SELECT @items_borrados=COUNT(*)
+            FROM dbo.msp_documentos_cobro_detalle dcd
+            INNER JOIN dbo.msp_documentos_cobro dc
+                ON dc.id_documento_cobro=dcd.id_documento_cobro
+            WHERE dc.periodo_facturacion=@periodo_facturacion;
+
+            DECLARE @documentos_borrar TABLE(id_documento_cobro INT NOT NULL PRIMARY KEY);
+            DECLARE @id_documento_borrar INT;
+            INSERT @documentos_borrar(id_documento_cobro)
+            SELECT id_documento_cobro
+            FROM dbo.msp_documentos_cobro WITH(UPDLOCK,HOLDLOCK)
+            WHERE periodo_facturacion=@periodo_facturacion;
+            SET @docs_borrados=@@ROWCOUNT;
+
+            WHILE EXISTS(SELECT 1 FROM @documentos_borrar)
             BEGIN
-                DELETE dcd
-                FROM dbo.msp_documentos_cobro_detalle dcd
-                INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro = dcd.id_documento_cobro
-                WHERE dc.periodo_facturacion = @periodo_facturacion;
+                SELECT TOP(1) @id_documento_borrar=id_documento_cobro
+                FROM @documentos_borrar ORDER BY id_documento_cobro;
 
-                SET @items_borrados = @@ROWCOUNT;
+                EXEC dbo.msp_documento_preparar_regeneracion
+                    @id_documento_cobro=@id_documento_borrar,
+                    @motivo=N'Eliminacion controlada de generacion mensual',
+                    @id_usuario=NULL;
+
+                DELETE FROM @documentos_borrar
+                WHERE id_documento_cobro=@id_documento_borrar;
             END;
-
-            DELETE dc
-            FROM dbo.msp_documentos_cobro dc
-            WHERE dc.periodo_facturacion = @periodo_facturacion;
-
-            SET @docs_borrados = @@ROWCOUNT;
         END;
 
         IF @del_cobros = 1

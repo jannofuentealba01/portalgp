@@ -1,0 +1,271 @@
+/* Page-specific screen layout. Source: msp/contratos/ficha.php */
+
+.msp-contract-sheet .btn:not(.btn-close) {
+            display: inline-flex;
+            width: auto;
+            min-width: 0;
+            max-width: 100%;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+
+        .msp-contract-actions,
+        .msp-summary-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .msp-contract-actions {
+            justify-content: flex-end;
+        }
+
+        .msp-timeline {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 0.7rem;
+        }
+
+        .msp-timeline-item {
+            position: relative;
+            padding-left: 2.6rem;
+        }
+
+        .msp-timeline-item::before {
+            content: "";
+            position: absolute;
+            left: 1.15rem;
+            top: 0.25rem;
+            bottom: -0.65rem;
+            width: 2px;
+            background: linear-gradient(180deg, var(--color-border) 0%, var(--color-border) 100%);
+        }
+
+        .msp-timeline-item:last-child::before {
+            bottom: 1.3rem;
+        }
+
+        .msp-timeline-dot {
+            position: absolute;
+            left: 0.58rem;
+            top: 0.15rem;
+            width: 1.2rem;
+            height: 1.2rem;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.66rem;
+            color: var(--color-surface);
+            box-shadow: 0 0 0 3px var(--color-surface-soft);
+        }
+
+        .msp-tl-contrato { background-color: var(--color-primary); }
+        .msp-tl-documento { background-color: var(--color-info); color: var(--color-primary); }
+        .msp-tl-pago { background-color: var(--color-success); }
+        .msp-tl-garantia { background-color: var(--color-info); }
+        .msp-tl-cargo { background-color: var(--color-warning); color: var(--color-warning); }
+        .msp-tl-envio { background-color: var(--color-text-muted); }
+        .msp-tl-contable { background-color: var(--color-text); }
+        .msp-tl-default { background-color: var(--color-text-muted); color: var(--color-text); }
+
+        .msp-timeline-card {
+            border: 1.5px solid var(--color-text-muted);
+            border-radius: 0.6rem;
+            background: var(--color-surface);
+            box-shadow: 0 2px 5px rgba(var(--color-shadow-rgb), 0.09);
+            padding: 0.6rem 0.75rem !important;
+        }
+
+        .msp-timeline-heading {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem;
+            min-height: 1.5rem;
+        }
+
+        .msp-timeline-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .msp-timeline-ref {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            border: 1px solid var(--color-border);
+            border-radius: 999px;
+            padding: 0.05rem 0.4rem;
+            background: var(--color-surface-soft);
+            font-size: 0.77rem;
+            color: var(--color-text-muted);
+        }
+
+        .msp-timeline-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            color: var(--color-text-muted);
+            margin-top: 0.35rem;
+        }
+
+        .msp-timeline-meta > span,
+        .msp-timeline-field {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid var(--color-border);
+            border-radius: 0.4rem;
+            background: var(--color-surface-soft);
+            padding: 0.3rem 0.5rem;
+        }
+
+        .msp-timeline-meta > span {
+            flex: 1 1 160px;
+        }
+
+        .msp-timeline-detail-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 0.35rem;
+            margin: 0.35rem 0 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .msp-timeline-detail-list li {
+            margin: 0;
+        }
+
+        .msp-summary-panel {
+            height: auto;
+            border: 1px solid var(--color-border);
+            border-radius: 0.55rem;
+            background: var(--color-surface);
+            padding: 0.7rem 0.8rem;
+        }
+
+        .msp-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.5rem 0.8rem;
+        }
+
+        .msp-summary-grid .msp-summary-wide {
+            grid-column: 1 / -1;
+        }
+
+        .msp-contract-overview-row > [class*="col-"] {
+            display: flex;
+        }
+
+        .msp-contract-overview-row .msp-summary-panel {
+            width: 100%;
+        }
+
+        .msp-contract-financial-row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0;
+            overflow: hidden;
+            margin: 0;
+            border: 1px solid var(--color-border);
+            border-radius: .55rem;
+            background: var(--color-surface);
+        }
+
+        .msp-contract-financial-row > [class*="col-"] {
+            width: auto;
+            padding: 0;
+        }
+
+        .msp-contract-financial-row .msp-summary-panel {
+            height: 100%;
+            border: 0;
+            border-left: 1px solid var(--color-border);
+            border-radius: 0;
+            box-shadow: none;
+        }
+
+        .msp-contract-financial-row > [class*="col-"]:first-child .msp-summary-panel {
+            border-left: 0;
+        }
+
+        .msp-contract-data-lines {
+            display: grid;
+            gap: 0.65rem;
+            text-align: center;
+        }
+
+        .msp-contract-data-line {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: baseline;
+            gap: 0.25rem 0.55rem;
+            min-width: 0;
+        }
+
+        .msp-contract-tenant-name {
+            max-width: 100%;
+            overflow-wrap: anywhere;
+        }
+
+        @media (max-width: 576px) {
+            .msp-timeline-item {
+                padding-left: 2.5rem;
+            }
+
+            .msp-timeline-item::before {
+                left: 1.15rem;
+            }
+
+            .msp-timeline-dot {
+                left: 0.52rem;
+            }
+
+            .msp-timeline-meta,
+            .msp-summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .msp-summary-grid .msp-summary-wide {
+                grid-column: auto;
+            }
+
+            .msp-timeline-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .msp-contract-sheet .btn:not(.btn-close) {
+                white-space: normal;
+            }
+
+            .msp-contract-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 991.98px) {
+            .msp-contract-financial-row {
+                grid-template-columns: 1fr;
+            }
+
+            .msp-contract-financial-row .msp-summary-panel {
+                border-top: 1px solid var(--color-border);
+                border-left: 0;
+            }
+
+            .msp-contract-financial-row > [class*="col-"]:first-child .msp-summary-panel {
+                border-top: 0;
+            }
+        }

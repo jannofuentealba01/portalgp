@@ -265,6 +265,7 @@ if (!function_exists('gpRenderCrudActionsMenu')) {
                             $fields = is_array($item['fields'] ?? null) ? $item['fields'] : [];
                             ?>
                             <form class="m-0"<?php echo gpComponentAttrs($formAttrs); ?>>
+                                <?php if (strtoupper((string)($formAttrs['method'] ?? 'POST')) === 'POST' && !array_key_exists('_pgp_csrf', $fields) && function_exists('pgpCsrfField')) { pgpCsrfField(); } ?>
                                 <?php foreach ($fields as $fieldName => $fieldValue): ?>
                                     <input type="hidden" name="<?php echo gpComponentEscape((string) $fieldName); ?>" value="<?php echo gpComponentEscape((string) $fieldValue); ?>">
                                 <?php endforeach; ?>

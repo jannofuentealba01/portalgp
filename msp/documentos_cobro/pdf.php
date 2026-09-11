@@ -62,6 +62,18 @@ function msp2BuildDompdfDebugInfo(string $autoloadPath): string
     return implode(PHP_EOL, $lines);
 }
 
+function msp2DompdfUnavailable(string $reason, string $autoloadPath, ?Throwable $exception = null): never
+{
+    $detail = $reason . PHP_EOL . msp2BuildDompdfDebugInfo($autoloadPath);
+    if ($exception !== null) {
+        $detail .= PHP_EOL . get_class($exception) . ': ' . $exception->getMessage();
+    }
+    error_log('[PortalGP][msp.documentos_cobro.pdf] ' . pgpRedactLogMessage($detail));
+    http_response_code(500);
+    echo 'No fue posible generar el documento PDF. Revisa el registro privado del servidor.';
+    exit();
+}
+
 function msp2RegisterDompdfFallbackAutoloader(): bool
 {
     static $registered = false;
@@ -114,10 +126,7 @@ function msp2RegisterDompdfFallbackAutoloader(): bool
 
 $autoloadPath = dirname(__DIR__, 2) . '/vendor/autoload.php';
 if (!is_file($autoloadPath)) {
-    http_response_code(500);
-    echo 'No se encontro vendor/autoload.php para cargar Dompdf.' . PHP_EOL
-        . msp2BuildDompdfDebugInfo($autoloadPath);
-    exit();
+    msp2DompdfUnavailable('No se encontró vendor/autoload.php.', $autoloadPath);
 }
 
 require_once $autoloadPath;
@@ -127,19 +136,12 @@ if (!class_exists(\Dompdf\Dompdf::class)) {
     if ($fallbackRegistered && class_exists(\Dompdf\Dompdf::class)) {
         // Composer no resolvio Dompdf, pero el fallback de namespaces si.
     } else {
-        http_response_code(500);
-        echo 'Dompdf no esta disponible en el proyecto.' . PHP_EOL
-            . msp2BuildDompdfDebugInfo($autoloadPath) . PHP_EOL
-            . '- fallback autoloader Dompdf: ' . ($fallbackRegistered ? 'registrado' : 'no registrado');
-        exit();
+        msp2DompdfUnavailable('Dompdf no está disponible; fallback=' . ($fallbackRegistered ? 'registrado' : 'no registrado'), $autoloadPath);
     }
 }
 
 if (!class_exists(\Dompdf\Dompdf::class)) {
-    http_response_code(500);
-    echo 'Dompdf no esta disponible en el proyecto.' . PHP_EOL
-        . msp2BuildDompdfDebugInfo($autoloadPath);
-    exit();
+    msp2DompdfUnavailable('Dompdf no está disponible.', $autoloadPath);
 }
 
 try {
@@ -147,18 +149,10 @@ try {
     $dompdfClassPath = realpath((string) $dompdfReflection->getFileName()) ?: (string) $dompdfReflection->getFileName();
     $expectedVendorRoot = realpath(dirname(__DIR__, 2) . '/vendor');
     if ($expectedVendorRoot !== false && strpos($dompdfClassPath, $expectedVendorRoot . DIRECTORY_SEPARATOR) !== 0) {
-        http_response_code(500);
-        echo 'Se detecto una carga de Dompdf desde una ruta distinta al vendor esperado.' . PHP_EOL
-            . msp2BuildDompdfDebugInfo($autoloadPath) . PHP_EOL
-            . 'Esto suele ocurrir cuando otra version de Dompdf se carga antes en el servidor.';
-        exit();
+        msp2DompdfUnavailable('Dompdf fue cargado desde una ruta distinta al vendor esperado.', $autoloadPath);
     }
 } catch (Throwable $dompdfCheckError) {
-    http_response_code(500);
-    echo 'No fue posible validar la clase Dompdf cargada.' . PHP_EOL
-        . msp2BuildDompdfDebugInfo($autoloadPath) . PHP_EOL
-        . 'Detalle tecnico: ' . $dompdfCheckError->getMessage();
-    exit();
+    msp2DompdfUnavailable('No fue posible validar la clase Dompdf.', $autoloadPath, $dompdfCheckError);
 }
 
 $idDocumento = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, [
@@ -650,7 +644,7 @@ try {
     }
 } catch (Throwable $e) {
     http_response_code(500);
-    echo msp2Escape($e->getMessage());
+    echo msp2Escape(pgpPublicOrBusinessException($e, 'msp.documentos_cobro.pdf_data', 'No fue posible cargar el documento de cobro.'));
     exit();
 }
 
@@ -1301,9 +1295,5 @@ try {
     $dompdf->stream($filename, ['Attachment' => false]);
     exit();
 } catch (Throwable $e) {
-    http_response_code(500);
-    echo 'Error al generar PDF con Dompdf.' . PHP_EOL
-        . msp2BuildDompdfDebugInfo($autoloadPath) . PHP_EOL
-        . 'Detalle tecnico: ' . $e->getMessage();
-    exit();
+    msp2DompdfUnavailable('Error al renderizar el PDF con Dompdf.', $autoloadPath, $e);
 }

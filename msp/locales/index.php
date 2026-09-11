@@ -37,8 +37,11 @@ if (!in_array($lineasPorPagina, $lineasPermitidas, true)) {
 }
 
 $paginaActual = isset($_GET['pagina']) && is_numeric($_GET['pagina']) ? max(1, (int) $_GET['pagina']) : 1;
-$filtroTexto = msp2NormalizeText($_GET['filtroTexto'] ?? null);
+$filtroTexto = msp2SearchQuery($_GET['filtroTexto'] ?? '');
 $filtroEstado = trim((string) ($_GET['filtroEstado'] ?? ''));
+$idLocalFiltro = filter_input(INPUT_GET, 'id_local', FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1],
+]) ?: 0;
 
 try {
     $requiredTables = ['msp_locales', 'msp_estado_locales'];
@@ -69,13 +72,53 @@ if ($tablaExiste) {
         $params = [];
 
         if ($filtroTexto !== '') {
-            $conditions[] = "ISNULL(l.cdo_local, '') LIKE :filtro_codigo";
-            $params[':filtro_codigo'] = '%' . $filtroTexto . '%';
+            $searchFields = [
+                'l.cdo_local',
+                "REPLACE(REPLACE(l.cdo_local,N'-',N''),N'.',N'')",
+                'l.desc_local',
+                'e.desc_estado',
+                'l.id_local',
+            ];
+            if (msp2TableExists($conn, 'msp_medidores') && msp2TableExists($conn, 'msp_tipos_servicio')) {
+                $searchFields[] = "(
+                    SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),CONCAT(mq.codigo_medidor,N' ',mq.alias_medidor,N' ',mq.numero_serie,N' ',tsq.codigo_servicio,N' ',tsq.nombre_servicio)),N' ')
+                    FROM dbo.msp_medidores mq
+                    INNER JOIN dbo.msp_tipos_servicio tsq ON tsq.id_tipo_servicio=mq.id_tipo_servicio
+                    WHERE mq.id_local=l.id_local
+                )";
+            }
+            if (
+                msp2TableExists($conn, 'msp_contrato_locales')
+                && msp2TableExists($conn, 'msp_contratos_arriendo')
+                && msp2TableExists($conn, 'msp_tiendas')
+                && msp2TableExists($conn, 'msp_arrendatarios')
+            ) {
+                $searchFields[] = "(
+                    SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),CONCAT(tq.nombre_comercial,N' ',aq.nombre_locatario,N' ',aq.rut,N' ',cq.id_contrato_arriendo)),N' ')
+                    FROM dbo.msp_contrato_locales clq
+                    INNER JOIN dbo.msp_contratos_arriendo cq ON cq.id_contrato_arriendo=clq.id_contrato_arriendo
+                    INNER JOIN dbo.msp_tiendas tq ON tq.id_tienda=cq.id_tienda
+                    INNER JOIN dbo.msp_arrendatarios aq ON aq.id_arrendatario=cq.id_arrendatario
+                    WHERE clq.id_local=l.id_local
+                )";
+            }
+            $search = msp2BuildSearchCondition(
+                $filtroTexto,
+                $searchFields,
+                'locales_buscar',
+                'l.id_local'
+            );
+            $conditions[] = $search['sql'];
+            $params = array_merge($params, $search['params']);
         }
 
         if ($filtroEstado !== '' && ctype_digit($filtroEstado)) {
             $conditions[] = 'l.id_estado_local = :filtro_estado';
             $params[':filtro_estado'] = (int) $filtroEstado;
+        }
+        if ($idLocalFiltro > 0) {
+            $conditions[] = 'l.id_local = :id_local';
+            $params[':id_local'] = $idLocalFiltro;
         }
 
         $whereClause = $conditions === [] ? '1=1' : implode(' AND ', $conditions);
@@ -284,7 +327,7 @@ if ($tablaExiste) {
             }
         }
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar los locales. Detalle técnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.locales.index', 'No fue posible cargar los locales.');
     }
 }
 
@@ -370,8 +413,8 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Locales</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode((string) filemtime(dirname(__DIR__, 2) . '/styles.css')); ?>">
 </head>
 <body class="gp-layout bg-light">
@@ -392,15 +435,9 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                 <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalImportarLocales">
                     <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>Importar locales
                 </button>
-                <button
-                    type="button"
-                    class="btn btn-success btn-sm"
-                    data-bs-toggle="modal"
-                    data-bs-target="#modalImportarMedidores"
-                    <?php echo ($gestionMedidoresDisponible && $medidoresTieneValorInicial) ? '' : 'disabled'; ?>
-                    title="<?php echo ($gestionMedidoresDisponible && $medidoresTieneValorInicial) ? 'Cargar medidores en bloque por local' : 'Requiere gestión de medidores disponible y columna valor_inicial en msp_medidores'; ?>">
-                    <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>Importar medidores
-                </button>
+                <a href="<?php echo msp2Escape(msp2Url('catalogos/medidores.php')); ?>" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>Gestionar medidores
+                </a>
                 <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalCrearLocal">
                     <i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Agregar local
                 </button>
@@ -420,12 +457,12 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                 </div>
             <?php endif; ?>
 
-            <form method="get" class="row g-2 msp-management-filters msp-locals-filters align-items-end">
-                <div class="col-12 col-md-5">
-                    <label for="filtroTexto" class="form-label">Código</label>
-                    <input type="text" id="filtroTexto" name="filtroTexto" class="form-control" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Buscar por código">
+            <form method="get" class="row g-2 msp-management-filters msp-locals-filters align-items-end gp-filter-bar">
+                <div class="col-12 col-lg-6">
+                    <label for="filtroTexto" class="form-label">Local, tienda, arrendatario o medidor</label>
+                    <input type="search" id="filtroTexto" name="filtroTexto" class="form-control" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Ej.: A-4 agua, nombre de tienda o #7">
                 </div>
-                <div class="col-12 col-md-3">
+                <div class="col-12 col-lg-2">
                     <label for="filtroEstado" class="form-label">Estado</label>
                     <select id="filtroEstado" name="filtroEstado" class="form-select">
                         <option value="">(Todos)</option>
@@ -436,9 +473,9 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="col-12 col-md-2 gp-secondary-filter-field">
                     <label for="lineas" class="form-label">Líneas</label>
-                    <select id="lineas" name="lineas" class="form-select">
+                    <select id="lineas" name="lineas" class="form-select" data-gp-default="25">
                         <?php foreach ($lineasPermitidas as $lineas): ?>
                             <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                 <?php echo $lineas; ?>
@@ -446,13 +483,14 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-12 col-md-2 d-grid">
-                    <button type="submit" class="btn btn-primary msp-local-filter-submit">Filtrar</button>
+                <div class="col-12 col-lg-4 d-flex gap-2" data-gp-filter-actions>
+                    <button type="submit" class="btn btn-primary flex-grow-1 msp-local-filter-submit">Buscar</button>
+                    <?php if ($filtroTexto !== '' || $filtroEstado !== '' || $idLocalFiltro > 0): ?><a class="btn btn-outline-secondary" href="<?php echo msp2Escape(msp2Url('locales/index.php')); ?>" title="Limpiar filtros" aria-label="Limpiar filtros"><i class="bi bi-x-lg"></i></a><?php endif; ?>
                 </div>
             </form>
 
-            <div class="msp-management-table-responsive">
-                <table class="table table-hover align-middle text-center msp-management-table msp-locals-table">
+            <div class="msp-management-table-responsive gp-table-shell">
+                <table class="table table-hover align-middle text-center msp-management-table msp-locals-table gp-table-compact gp-table-mobile-cards mb-0">
                     <thead class="table-light">
                         <tr>
                             <th class="local-number">#</th>
@@ -460,14 +498,14 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                             <th class="local-area">m²</th>
                             <th class="local-rent">Arriendo UF ref. (legado)</th>
                             <th class="local-state">Estado</th>
-                            <th class="local-meters">Medidores</th>
+                            <th class="local-meters">Medidores activos</th>
                             <th class="local-actions">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($locales)): ?>
                             <tr>
-                                <td colspan="7" class="text-muted">
+                                <td colspan="7" class="text-muted gp-table-empty-cell">
                                     <?php echo ($filtroTexto === '' && $filtroEstado === '') ? 'No hay locales registrados todavía.' : 'Sin resultados para los filtros actuales.'; ?>
                                 </td>
                             </tr>
@@ -476,6 +514,10 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                                 <?php
                                 $idLocalActual = (int) ($local['id_local'] ?? 0);
                                 $medidoresLocal = $medidoresPorLocal[$idLocalActual] ?? [];
+                                $medidoresActivosLocal = array_values(array_filter(
+                                    $medidoresLocal,
+                                    static fn(array $medidor): bool => (int) ($medidor['estado_medidor'] ?? 0) === 1
+                                ));
 
                                 $serviciosMedidoresLocal = [];
                                 foreach ($medidoresLocal as $medidorLocal) {
@@ -504,17 +546,34 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                                     $medidoresLocalJson = '[]';
                                 }
                                 ?>
-                                <tr>
-                                    <td class="local-number"><?php echo (($paginaActual - 1) * $lineasPorPagina) + $index + 1; ?></td>
-                                    <td class="local-code fw-semibold"><?php echo msp2Escape($local['cdo_local']); ?></td>
-                                    <td class="local-area"><?php echo msp2Escape(msp2FormatoDecimal($local['metros_cuadrados'])); ?></td>
-                                    <td class="local-rent"><?php echo msp2Escape(msp2FormatoDecimal($local['valor_arriendo_uf'], 2)); ?></td>
-                                    <td class="local-state">
+                                <tr id="local-<?php echo $idLocalActual; ?>" class="<?php echo $idLocalFiltro === $idLocalActual ? 'table-warning' : ''; ?>">
+                                    <td data-gp-label="#" class="local-number"><?php echo (($paginaActual - 1) * $lineasPorPagina) + $index + 1; ?></td>
+                                    <td data-gp-label="Código" class="local-code fw-semibold"><?php echo msp2Escape($local['cdo_local']); ?></td>
+                                    <td data-gp-label="m²" class="local-area"><?php echo msp2Escape(msp2FormatoDecimal($local['metros_cuadrados'])); ?></td>
+                                    <td data-gp-label="Arriendo UF ref. (legado)" class="local-rent"><?php echo msp2Escape(msp2FormatoDecimal($local['valor_arriendo_uf'], 2)); ?></td>
+                                    <td data-gp-label="Estado" class="local-state">
                                         <span class="badge <?php echo msp2LocalEstadoBadge($local['desc_estado']); ?>">
                                             <?php echo msp2Escape($local['desc_estado']); ?>
                                         </span>
                                     </td>
-                                    <td class="text-start local-meters">
+                                    <td data-gp-label="Medidores activos" class="text-start local-meters">
+                                        <?php if ($medidoresActivosLocal === []): ?>
+                                            <span class="text-muted">—</span>
+                                        <?php else: ?>
+                                            <div class="d-flex flex-column gap-1">
+                                                <?php foreach ($medidoresActivosLocal as $medidorActivo): ?>
+                                                    <?php
+                                                    $nombreServicioActivo = msp2NormalizeText((string) ($medidorActivo['nombre_servicio'] ?? ''));
+                                                    $codigoServicioActivo = strtoupper(msp2NormalizeText((string) ($medidorActivo['codigo_servicio'] ?? '')));
+                                                    $codigoMedidorActivo = msp2NormalizeText((string) ($medidorActivo['codigo_medidor'] ?? ''));
+                                                    $etiquetaServicioActivo = $nombreServicioActivo !== '' ? $nombreServicioActivo : $codigoServicioActivo;
+                                                    ?>
+                                                    <span><?php echo msp2Escape(trim($etiquetaServicioActivo . ' ' . $codigoMedidorActivo)); ?></span>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="text-start local-meters d-none">
                                         <?php if ($medidoresLocal === []): ?>
                                             <div class="msp-local-meter-empty">
                                                 <span class="text-muted small">Sin medidores registrados.</span>
@@ -568,7 +627,7 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                                             </div>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="local-actions">
+                                    <td data-gp-label="Acciones" class="local-actions gp-cell-actions">
                                         <div class="table-actions">
                                             <button
                                                 type="button"
@@ -618,19 +677,19 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
                     <nav aria-label="Paginación de locales">
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2LocalesQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>" aria-label="Anterior">&laquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2LocalesQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>" aria-label="Anterior">&laquo;</a>
                             </li>
                             <?php foreach ($paginationItems as $item): ?>
                                 <?php if ($item === 'ellipsis'): ?>
                                     <li class="page-item disabled"><span class="page-link">...</span></li>
                                 <?php else: ?>
                                     <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                        <a class="page-link" href="?<?php echo buildMsp2LocalesQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                        <a class="page-link" href="?<?php echo msp2Escape(buildMsp2LocalesQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                     </li>
                                 <?php endif; ?>
                             <?php endforeach; ?>
                             <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?<?php echo buildMsp2LocalesQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>" aria-label="Siguiente">&raquo;</a>
+                                <a class="page-link" href="?<?php echo msp2Escape(buildMsp2LocalesQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>" aria-label="Siguiente">&raquo;</a>
                             </li>
                         </ul>
                     </nav>
@@ -917,7 +976,7 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
     <input type="hidden" name="id_medidor" id="delete_medidor_local_id">
 </form>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const parseJsonArray = (raw) => {

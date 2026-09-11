@@ -1,0 +1,56 @@
+/* Page-specific screen layout. Source: msp/reportes/trazabilidad.php */
+
+.trazabilidad-table-wrap { width: 100%; overflow-x: visible; }
+        .trazabilidad-table { width: 100%; table-layout: fixed; font-size: .82rem; }
+        .trazabilidad-table th,
+        .trazabilidad-table td { padding: .45rem .4rem; white-space: normal; overflow-wrap: anywhere; vertical-align: middle; }
+        .trazabilidad-table .trace-primary { color: var(--color-primary); font-weight: 600; line-height: 1.25; }
+        .trazabilidad-table .trace-secondary { color: var(--color-text-muted); font-size: .75rem; line-height: 1.25; }
+        .trazabilidad-table .trace-value-pair { display: grid; gap: .2rem; }
+        .trazabilidad-table .trace-value-pair > span { display: flex; justify-content: space-between; gap: .35rem; }
+        .trazabilidad-table .trace-value-pair small { color: var(--color-text-muted); }
+        .trazabilidad-table .badge { max-width: 100%; white-space: normal; line-height: 1.15; }
+
+        @media (max-width: 1199.98px) {
+            .trazabilidad-table { font-size: .76rem; }
+            .trazabilidad-table th,
+            .trazabilidad-table td { padding: .35rem .28rem; }
+        }
+
+        @media (max-width: 767.98px) {
+            .trazabilidad-table,
+            .trazabilidad-table tbody,
+            .trazabilidad-table tr,
+            .trazabilidad-table td { display: block; width: 100%; }
+            .trazabilidad-table thead {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
+            .trazabilidad-table tbody tr {
+                margin-bottom: .85rem;
+                border: 1px solid var(--color-border);
+                border-radius: .65rem;
+                background: var(--color-surface);
+                overflow: hidden;
+            }
+            .trazabilidad-table tbody td {
+                display: grid;
+                grid-template-columns: minmax(7.5rem, 38%) minmax(0, 1fr);
+                gap: .65rem;
+                padding: .55rem .7rem;
+                border: 0;
+                border-bottom: 1px solid var(--color-border);
+                text-align: left !important;
+            }
+            .trazabilidad-table tbody td:last-child { border-bottom: 0; }
+            .trazabilidad-table tbody td::before { content: attr(data-label); color: var(--color-text); font-weight: 700; }
+            .trazabilidad-table tbody td.trace-empty { display: block; text-align: center !important; }
+            .trazabilidad-table tbody td.trace-empty::before { content: none; }
+        }

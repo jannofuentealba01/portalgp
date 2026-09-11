@@ -2,8 +2,9 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/DocumentoCobroTrazabilidadService.php';
 
-msp2RequireAccess();
+msp2RequireAccess('MSP Cobranza', 'eliminacion');
 
 function msp2ResolvePagoAnularRedirect(): string
 {
@@ -49,6 +50,14 @@ if (mb_strlen($motivoAnulacion) > 500) {
 }
 
 try {
+    $conn->beginTransaction();
+    $stmtPago = $conn->prepare(
+        'SELECT id_documento_cobro, monto_pagado
+         FROM dbo.msp_pagos WITH (UPDLOCK, ROWLOCK)
+         WHERE id_pago = :id_pago'
+    );
+    $stmtPago->execute([':id_pago' => (int) $idPago]);
+    $pagoAnterior = $stmtPago->fetch() ?: null;
     $fechaAnulacion = date('Y-m-d');
     $stmt = $conn->prepare(
         'EXEC dbo.msp_anular_pago_documento
@@ -60,9 +69,23 @@ try {
     $stmt->bindValue(':fecha_anulacion', $fechaAnulacion, PDO::PARAM_STR);
     $stmt->bindValue(':motivo_anulacion', $motivoAnulacion, PDO::PARAM_STR);
     $stmt->execute();
+    if ($pagoAnterior !== null) {
+        DocumentoCobroTrazabilidadService::registrar(
+            $conn,
+            (int) $pagoAnterior['id_documento_cobro'],
+            'PAGO_ANULADO',
+            'PAGO',
+            isset($_SESSION['usuario']['id']) ? (int) $_SESSION['usuario']['id'] : null,
+            ['id_pago' => (int) $idPago, 'monto' => (float) $pagoAnterior['monto_pagado'], 'motivo' => $motivoAnulacion]
+        );
+    }
+    $conn->commit();
 
     msp2SetFlash('success', 'El pago fue anulado correctamente.');
 } catch (PDOException $exception) {
+    if ($conn->inTransaction()) {
+        $conn->rollBack();
+    }
     $message = $exception->getMessage();
 
     if (str_contains($message, '50071')) {

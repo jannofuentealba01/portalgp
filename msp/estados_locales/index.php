@@ -28,7 +28,7 @@ if (!in_array($lineasPorPagina, $lineasPermitidas, true)) {
 }
 
 $paginaActual = isset($_GET['pagina']) && is_numeric($_GET['pagina']) ? max(1, (int) $_GET['pagina']) : 1;
-$filtroTexto = msp2NormalizeText($_GET['filtroTexto'] ?? null);
+$filtroTexto = msp2SearchQuery($_GET['filtroTexto'] ?? '');
 
 /**
  * @return array<int, array{page:int|null,label:string,active?:bool}>
@@ -76,8 +76,9 @@ if ($tablaExiste) {
         $params = [];
 
         if ($filtroTexto !== '') {
-            $conditions[] = "(ISNULL(desc_estado, '') LIKE :filtro OR CAST(id_estado_local AS NVARCHAR(10)) LIKE :filtro)";
-            $params[':filtro'] = '%' . $filtroTexto . '%';
+            $search = msp2BuildSearchCondition($filtroTexto, ['desc_estado', 'id_estado_local'], 'estado_local_buscar', 'id_estado_local');
+            $conditions[] = $search['sql'];
+            $params = array_merge($params, $search['params']);
         }
 
         $whereClause = $conditions === [] ? '1=1' : implode(' AND ', $conditions);
@@ -109,7 +110,7 @@ if ($tablaExiste) {
         $stmt->execute();
         $estados = $stmt->fetchAll();
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar los estados de locales. Detalle técnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.estados_locales.index', 'No fue posible cargar los estados de locales.');
     }
 }
 
@@ -139,8 +140,8 @@ function buildMsp2EstadosLocalesQuery(array $base, array $override = []): string
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Estados de Locales</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="gp-layout bg-light">
@@ -172,7 +173,7 @@ function buildMsp2EstadosLocalesQuery(array $base, array $override = []): string
             <form method="get" class="row g-2 mb-3 align-items-end">
                 <div class="col-12 col-md-6">
                     <label for="filtroTexto" class="form-label">Buscar estado</label>
-                    <input type="text" id="filtroTexto" name="filtroTexto" class="form-control" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Buscar por descripción">
+                    <input type="search" id="filtroTexto" name="filtroTexto" class="form-control" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Descripción o #ID">
                 </div>
                 <div class="col-12 col-md-2">
                     <label for="lineas" class="form-label">Líneas</label>
@@ -184,8 +185,9 @@ function buildMsp2EstadosLocalesQuery(array $base, array $override = []): string
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-12 col-md-2 d-grid">
-                    <button type="submit" class="btn btn-primary">Filtrar</button>
+                <div class="col-12 col-md-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-grow-1">Buscar</button>
+                    <?php if ($filtroTexto !== ''): ?><a class="btn btn-outline-secondary" href="<?php echo msp2Escape(msp2Url('estados_locales/index.php')); ?>" title="Limpiar" aria-label="Limpiar"><i class="bi bi-x-lg"></i></a><?php endif; ?>
                 </div>
             </form>
 
@@ -331,7 +333,7 @@ function buildMsp2EstadosLocalesQuery(array $base, array $override = []): string
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     document.querySelectorAll('.js-edit-estado').forEach((button) => {

@@ -5,7 +5,7 @@
 - Business modules are folder-based (for example `contratos/`, `cobros/`, `tiendas/`, `pagos/`), typically with `index.php`, `guardar.php`, `eliminar.php`, and import helpers.
 - Shared UI fragments are in `templates/` and `templates/components/`; client-side helpers are in `assets/`.
 - Database schema and incremental updates are in `db/` (`msp_instalar_core.sql`, `patch_*.sql`).
-- Configuration templates are in `config/` (`mail.example.php`, `holidays/`). Do not commit local secrets in `config/mail.php`.
+- Configuration templates are in `config/` (`mail.example.php`, `holidays/`). Runtime secrets are loaded from the external `portalgp_secrets` directory; never place them under the web root.
 
 ## Build, Test, and Development Commands
 - `php -l <file.php>`: lint a single PHP file.

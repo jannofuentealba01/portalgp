@@ -22,6 +22,9 @@ if (!function_exists('msp2RenderSearchableMultiSelectAssets')) {
             return;
         }
         $assetsRendered = true;
+        if (function_exists('msp2RenderSearchAssets')) {
+            msp2RenderSearchAssets();
+        }
         ?>
         <script>
         (() => {
@@ -212,13 +215,15 @@ if (!function_exists('msp2RenderSearchableMultiSelectAssets')) {
                 };
 
                 const applyFilterAndAvailability = () => {
-                    const term = searchInput.value.trim().toLowerCase();
+                    const term = searchInput.value;
                     options.forEach((option) => {
                         const optionCode = normalizeLocalCode(option.dataset.code || '');
                         const isSelected = selected.some((item) => codeKey(item) === codeKey(optionCode));
-                        const search = String(option.dataset.search || '').toLowerCase();
-                        const label = String(option.dataset.label || '').toLowerCase();
-                        const matches = term === '' || search.includes(term) || label.includes(term) || optionCode.toLowerCase().includes(term);
+                        const search = String(option.dataset.search || '');
+                        const label = String(option.dataset.label || '');
+                        const matches = window.mspSearch
+                            ? window.mspSearch.matches(term, search, label, optionCode)
+                            : search.toLowerCase().includes(term.trim().toLowerCase());
                         option.disabled = false;
                         option.classList.toggle('d-none', !matches || isSelected);
                     });

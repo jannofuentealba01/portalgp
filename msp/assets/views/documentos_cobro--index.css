@@ -1,0 +1,220 @@
+/* Page-specific screen layout. Source: msp/documentos_cobro/index.php */
+
+.doc-card {
+            border-color: var(--color-border);
+        }
+        .doc-card.doc-target {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 .2rem rgba(var(--color-info-rgb), .14);
+        }
+        .doc-card .doc-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.15rem;
+        }
+        .doc-card .doc-subtitle {
+            color: var(--color-text-muted);
+            font-size: 0.84rem;
+        }
+        .doc-kpi {
+            border: 1px solid var(--color-border);
+            border-radius: 0.55rem;
+            background: var(--color-surface-soft);
+            padding: 0.7rem 0.8rem;
+            height: 100%;
+        }
+        .doc-kpi .label {
+            color: var(--color-text-muted);
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            margin-bottom: 0.2rem;
+        }
+        .doc-kpi .value {
+            font-size: 1.03rem;
+            font-weight: 600;
+            color: var(--color-text);
+            margin: 0;
+            line-height: 1.2;
+        }
+        .doc-detail-box {
+            border: 1px solid var(--color-border);
+            border-radius: 0.55rem;
+            background: var(--color-surface);
+            padding: 0.9rem;
+            height: 100%;
+        }
+        .timeline-scroll {
+            max-height: none;
+            overflow: visible;
+            padding-right: 0;
+        }
+        .timeline-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .timeline-item {
+            position: relative;
+            padding-left: 2.45rem;
+            padding-bottom: 1rem;
+        }
+        .timeline-item:last-child {
+            padding-bottom: 0;
+        }
+        .timeline-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            left: 0.95rem;
+            top: 1.65rem;
+            bottom: 0.15rem;
+            width: 2px;
+            background: var(--color-border);
+        }
+        .timeline-marker {
+            position: absolute;
+            left: 0.35rem;
+            top: 0.15rem;
+            width: 1.2rem;
+            height: 1.2rem;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: var(--color-surface);
+            border: 2px solid var(--color-surface);
+            box-shadow: 0 0 0 1px rgba(var(--color-shadow-rgb), 0.06);
+        }
+        .timeline-item-operativa .timeline-marker {
+            background: var(--color-success);
+        }
+        .timeline-item-sistema .timeline-marker {
+            background: var(--color-text-muted);
+        }
+        .timeline-content {
+            border: 1px solid var(--color-border);
+            border-radius: 0.5rem;
+            padding: 0.65rem 0.75rem;
+            background: var(--color-surface);
+        }
+        .msp-documents-index {
+            width: 100%;
+            max-width: none;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        }
+        .msp-documents-page-header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: .8rem;
+        }
+        .msp-documents-page-header .msp-documents-back {
+            grid-column: 1;
+            justify-self: start;
+        }
+        .msp-documents-page-header h1 {
+            grid-column: 2;
+            margin: 0;
+            color: var(--color-primary);
+            font-size: 1.75rem;
+            line-height: 1.2;
+        }
+        .msp-documents-section {
+            margin-bottom: .75rem;
+            border: 0;
+            border-radius: .65rem;
+            background: var(--color-surface);
+            box-shadow: 0 1px 5px rgba(var(--color-primary-rgb), .09);
+        }
+        .msp-documents-section > .card-body {
+            padding: .8rem .9rem;
+        }
+        .msp-documents-section h2 {
+            color: var(--color-text);
+            font-size: 1rem;
+            font-weight: 700;
+        }
+        .msp-documents-index .form-label {
+            margin-bottom: .22rem;
+            font-size: .84rem;
+            font-weight: 600;
+        }
+        .msp-documents-index .form-control,
+        .msp-documents-index .form-select,
+        .msp-documents-index .msp-searchable-select-toggle {
+            min-height: 36px;
+            padding-top: .35rem;
+            padding-bottom: .35rem;
+            font-size: .88rem;
+        }
+        .msp-documents-index .btn {
+            min-height: 34px;
+            padding: .32rem .65rem;
+            font-size: .84rem;
+        }
+        .msp-documents-summary .border.rounded {
+            padding: .65rem .75rem !important;
+            border-color: var(--color-border) !important;
+            background: var(--color-surface-soft) !important;
+        }
+        .msp-documents-summary .h5 {
+            font-size: 1rem;
+        }
+        .msp-documents-detail > .card-body {
+            padding: .8rem;
+        }
+        .msp-documents-detail .doc-card {
+            border: 1px solid var(--color-border);
+            border-radius: .55rem;
+            box-shadow: none !important;
+        }
+        .msp-documents-detail .doc-card > .card-body {
+            padding: .75rem .8rem;
+        }
+        .msp-documents-detail .doc-detail-box {
+            padding: .7rem;
+        }
+        .doc-section-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .35rem;
+            margin-bottom: .65rem;
+            padding: .25rem;
+            border: 1px solid var(--color-border);
+            border-radius: .5rem;
+            background: var(--color-surface-soft);
+        }
+        .doc-section-tabs .btn {
+            min-height: 30px;
+            padding: .25rem .55rem;
+        }
+        .doc-section-tabs .btn.active {
+            color: var(--color-surface);
+            border-color: var(--color-primary);
+            background: var(--color-primary);
+        }
+        [data-doc-section][hidden] { display: none !important; }
+        @media (max-width: 767.98px) {
+            .msp-documents-page-header {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: space-between;
+            }
+            .msp-documents-page-header h1 {
+                order: -1;
+                width: 100%;
+                text-align: center;
+                font-size: 1.55rem;
+            }
+            .msp-documents-section > .card-body,
+            .msp-documents-detail > .card-body {
+                padding: .7rem;
+            }
+        }

@@ -14,7 +14,8 @@ if ($config['tenant_id'] === '' || $config['client_id'] === '' || $config['clien
 }
 
 $state = bin2hex(random_bytes(16));
-$_SESSION['ms_oauth_state'] = $state;
+$nonce = bin2hex(random_bytes(24));
+pgpPushMicrosoftOauthState($state, $nonce);
 
-header('Location: ' . pgpMicrosoftAuthorizeUrl($config, $state));
+header('Location: ' . pgpMicrosoftAuthorizeUrl($config, $state, $nonce));
 exit();

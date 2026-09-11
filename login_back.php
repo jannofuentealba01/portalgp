@@ -1,3 +1,8 @@
+<?php
+declare(strict_types=1);
+header('Location: /portalgp/login.php', true, 301);
+exit;
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>

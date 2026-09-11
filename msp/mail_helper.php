@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once dirname(__DIR__) . '/secret_paths.php';
+
 /**
  * Helper compartido de correo para el módulo MSP.
  *
@@ -43,13 +45,8 @@ function mspMailConfig(): array
         ],
     ];
 
-    $configPath = __DIR__ . '/config/mail.php';
-    if (!is_file($configPath)) {
-        return $config;
-    }
-
-    $loaded = require $configPath;
-    if (!is_array($loaded)) {
+    $loaded = pgpLoadSecretConfig('msp_mail.php');
+    if ($loaded === []) {
         return $config;
     }
 
@@ -127,7 +124,7 @@ function mspMailBuildSmtp(): \PHPMailer\PHPMailer\PHPMailer
     $fromName    = trim((string) ($smtpConfig['from_name'] ?? ''));
 
     if ($host === '' || $username === '' || $password === '') {
-        throw new RuntimeException('Falta configuración SMTP. Revisa msp/config/mail.php (o variables MAIL_SMTP_*).');
+        throw new RuntimeException('Falta configuración SMTP. Revisa el almacén externo o las variables MAIL_SMTP_*.');
     }
 
     $encryption = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;

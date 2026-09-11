@@ -22,7 +22,7 @@ $stmt->execute([':periodo' => $periodoFuturo]);
 $assert((int) $stmt->fetchColumn() === 0, 'El período de prueba no existe');
 $assert(msp2PagoPeriodoPermiteRegistroManualSaldoFavor($conn, $periodoFuturo), 'Se permite registrar saldo manual para un período aún no creado');
 $assert(!msp2PagoPeriodoPermiteAsignacionSaldoFavor($conn, $periodoFuturo), 'El excedente automático no se asigna a un período inexistente');
-$assert(msp2PagoPeriodoPermiteRegistroManualSaldoFavor($conn, '2026-02-01'), 'Se permite registrar saldo manual en Borrador');
+$assert(msp2PagoPeriodoPermiteRegistroManualSaldoFavor($conn, '2026-05-01'), 'Se permite registrar saldo manual en Borrador');
 $assert(!msp2PagoPeriodoPermiteRegistroManualSaldoFavor($conn, '2026-06-01'), 'Se bloquea registrar saldo manual en período Cerrado');
 $assert(!msp2PagoPeriodoPermiteRegistroManualSaldoFavor($conn, '2026-04-01'), 'Se bloquea registrar saldo manual en período Anulado');
 

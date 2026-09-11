@@ -91,7 +91,7 @@ BEGIN TRY
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
-        SET @sql = N'DBCC CHECKIDENT (' + N'''' + @full_name + N'''' + N', RESEED, 0) WITH NO_INFOMSGS;';
+        SET @sql = N'DBCC CHECKIDENT (' + N'''' + REPLACE(@full_name, N'''', N'''''') + N'''' + N', RESEED, 0) WITH NO_INFOMSGS;';
         EXEC sp_executesql @sql;
         FETCH NEXT FROM cur_reseed INTO @full_name;
     END;

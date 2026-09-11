@@ -425,7 +425,7 @@ if ($periodoValido) {
         ];
         $chartTendencia = reBuildTrendSeries($conn, $periodoYm, 6, 24);
     } catch (Throwable $e) {
-        $resumenError = $e->getMessage();
+        $resumenError = pgpPublicException($e, 'msp.reportes.consumo_electrico', 'No fue posible cargar el reporte eléctrico.');
     }
 }
 ?>
@@ -435,35 +435,10 @@ if ($periodoValido) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Reporte Consumo Eléctrico</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode((string) filemtime(dirname(__DIR__, 2) . '/styles.css')); ?>">
     <?php msp2RenderSearchableSelectAssets(); ?>
-    <style>
-        .gas-report-shell{max-width:1640px;width:100%;margin:0 auto;font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif}
-        .gas-report-header{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:1rem;margin-bottom:.85rem}
-        .gas-report-header h1{grid-column:2;grid-row:1;justify-self:center;margin:0;color:#003399;font-size:1.75rem;font-weight:600;line-height:1.2}
-        .gas-report-back{grid-column:1;grid-row:1;justify-self:start}
-        .gas-report-actions{grid-column:3;grid-row:1;justify-self:end;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.5rem}
-        .gas-report-header .btn{min-height:34px;padding:.35rem .65rem;font-size:.825rem;line-height:1.2}
-        .gas-report-filter{margin-bottom:.85rem}.gas-report-filter .form-label{margin-bottom:.25rem;font-size:.88rem}.gas-report-filter .btn{min-height:38px;padding-top:.38rem;padding-bottom:.38rem}
-        .gas-report-kpi{height:100%;border:1px solid #dce5ef;border-radius:8px;background:#fff;padding:.65rem .75rem}.gas-report-kpi .small{font-size:.72rem}.gas-report-kpi .h4{color:#123f72;font-size:1.08rem;line-height:1.25}
-        .gas-report-section{margin-top:.85rem;padding-top:.7rem;border-top:1px solid #dbe3ec}
-        .gas-report-panel{height:100%;border:1px solid #dce5ef;border-radius:8px;background:#fff;padding:.65rem .75rem}.gas-report-panel h2,.gas-report-panel h3{margin-bottom:.45rem}.gas-report-panel .table>:not(caption)>*>*{padding:.38rem .45rem;font-size:.82rem}
-        .msp-report-chart-box {
-            position: relative;
-            height: 220px;
-            min-height: 220px;
-        }
-
-        .msp-report-chart-box canvas {
-            display: block;
-            width: 100% !important;
-            height: 100% !important;
-        }
-        .gas-report-main-chart{height:320px;min-height:320px}
-        @media(max-width:700px){.gas-report-header{display:flex;flex-direction:column;align-items:stretch}.gas-report-header h1{order:1;align-self:center;text-align:center}.gas-report-back{order:2}.gas-report-actions{order:3;justify-content:flex-start}.gas-report-actions .btn{flex:1 1 auto}.msp-report-chart-box,.gas-report-main-chart{height:240px;min-height:240px}}
-    </style>
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
@@ -605,8 +580,8 @@ if ($periodoValido) {
                 <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
 <script>
 (() => {
     const form = document.getElementById('form_reporte_consumo_periodo');
@@ -622,7 +597,7 @@ if ($periodoValido) {
         }
     });
 
-    const chartTendenciaData = <?php echo json_encode($chartTendencia, JSON_UNESCAPED_UNICODE); ?>;
+    const chartTendenciaData = <?php echo pgpJsonForHtml($chartTendencia, '[]'); ?>;
     if (typeof window.Chart !== 'function') {
         return;
     }

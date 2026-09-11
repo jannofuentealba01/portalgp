@@ -15,7 +15,7 @@ if (is_array($flash)) {
 }
 $loadError = null;
 
-$filtroTexto = msp2NormalizeText((string) ($_GET['filtroTexto'] ?? ''));
+$filtroTexto = msp2SearchQuery($_GET['filtroTexto'] ?? '');
 $filtroEstadoRaw = trim((string) ($_GET['filtroEstado'] ?? ''));
 $filtroEstado = ctype_digit($filtroEstadoRaw) ? (int) $filtroEstadoRaw : 0;
 $lineasPermitidas = [10, 25, 50, 100];
@@ -135,21 +135,32 @@ try {
         ];
     }
 
+    $fromSql =
+        'FROM dbo.msp_contratos_arriendo c
+         INNER JOIN dbo.msp_tiendas t ON t.id_tienda = c.id_tienda
+         INNER JOIN dbo.msp_arrendatarios a ON a.id_arrendatario = c.id_arrendatario
+         OUTER APPLY (
+            SELECT STRING_AGG(CONVERT(NVARCHAR(MAX),CONCAT(lq.cdo_local,N\' \',ISNULL(lq.desc_local,N\'\'))),N\' \') AS texto_locales
+            FROM dbo.msp_contrato_locales clq
+            INNER JOIN dbo.msp_locales lq ON lq.id_local=clq.id_local
+            WHERE clq.id_contrato_arriendo=c.id_contrato_arriendo
+         ) busqueda_locales';
+
     $conditions = [];
     $params = [];
 
     if ($filtroTexto !== '') {
-        $filtroTextoLike = '%' . $filtroTexto . '%';
-        $conditions[] = '(
-            ISNULL(t.nombre_comercial, \'\') LIKE :filtro_texto_tienda
-            OR ISNULL(a.nombre_locatario, \'\') LIKE :filtro_texto_arrendatario
-            OR ISNULL(a.rut, \'\') LIKE :filtro_texto_rut
-            OR CAST(c.id_contrato_arriendo AS NVARCHAR(20)) LIKE :filtro_texto_contrato
-        )';
-        $params[':filtro_texto_tienda'] = $filtroTextoLike;
-        $params[':filtro_texto_arrendatario'] = $filtroTextoLike;
-        $params[':filtro_texto_rut'] = $filtroTextoLike;
-        $params[':filtro_texto_contrato'] = $filtroTextoLike;
+        $search = msp2BuildSearchCondition($filtroTexto, [
+            't.nombre_comercial',
+            'a.nombre_locatario',
+            'a.rut',
+            "REPLACE(REPLACE(REPLACE(a.rut,N'.',N''),N'-',N''),N' ',N'')",
+            'c.id_contrato_arriendo',
+            'busqueda_locales.texto_locales',
+            "REPLACE(REPLACE(busqueda_locales.texto_locales,N'-',N''),N'.',N'')",
+        ], 'contratos_buscar', 'c.id_contrato_arriendo');
+        $conditions[] = $search['sql'];
+        $params = array_merge($params, $search['params']);
     }
 
     if ($filtroEstado > 0) {
@@ -159,10 +170,6 @@ try {
 
     $whereSql = $conditions === [] ? '1=1' : implode(' AND ', $conditions);
 
-    $fromSql =
-        'FROM dbo.msp_contratos_arriendo c
-         INNER JOIN dbo.msp_tiendas t ON t.id_tienda = c.id_tienda
-         INNER JOIN dbo.msp_arrendatarios a ON a.id_arrendatario = c.id_arrendatario';
     $whereClauseSql = ' WHERE ' . $whereSql;
 
     $countStmt = $conn->prepare('SELECT COUNT(*) ' . $fromSql . $whereClauseSql);
@@ -506,10 +513,7 @@ try {
     $loadError = 'No fue posible cargar el módulo de contratos.';
 }
 
-$localCatalogArriendoJson = json_encode($localCatalogArriendoMap, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-if (!is_string($localCatalogArriendoJson)) {
-    $localCatalogArriendoJson = '{}';
-}
+$localCatalogArriendoJson = pgpJsonForHtml($localCatalogArriendoMap, '{}');
 
 if ($loadError === null && $totalPaginas > 1) {
     $pages = [1];
@@ -559,8 +563,8 @@ $fmtFecha = static function (mixed $value): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Contratos</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode((string) filemtime(dirname(__DIR__, 2) . '/styles.css')); ?>">
     <?php msp2RenderSearchableSelectAssets(); ?>
     <?php msp2RenderSearchableMultiSelectAssets(); ?>
@@ -594,10 +598,10 @@ $fmtFecha = static function (mixed $value): string {
         <div class="alert alert-danger"><?php echo msp2Escape($loadError); ?></div>
     <?php else: ?>
         <div class="msp-management-filters msp-contracts-filters">
-            <form method="get" class="row g-2 align-items-end">
-                    <div class="col-12 col-lg-6">
-                        <label for="filtroTexto" class="form-label">Contrato, tienda, arrendatario o RUT</label>
-                        <input type="text" class="form-control" id="filtroTexto" name="filtroTexto" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Buscar...">
+            <form method="get" class="row g-2 align-items-end gp-filter-bar">
+                    <div class="col-12 col-lg-5">
+                        <label for="filtroTexto" class="form-label">Contrato, tienda, arrendatario, RUT o local</label>
+                        <input type="search" class="form-control" id="filtroTexto" name="filtroTexto" value="<?php echo msp2Escape($filtroTexto); ?>" placeholder="Ej.: comercial ivon A-1 o #7">
                     </div>
                     <div class="col-12 col-sm-6 col-lg-2">
                         <label for="filtroEstado" class="form-label">Estado</label>
@@ -610,9 +614,9 @@ $fmtFecha = static function (mixed $value): string {
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="col-6 col-sm-3 col-lg-2">
+                    <div class="col-6 col-sm-3 col-lg-1 gp-secondary-filter-field">
                         <label for="lineas" class="form-label">Líneas</label>
-                        <select class="form-select" id="lineas" name="lineas">
+                        <select class="form-select" id="lineas" name="lineas" data-gp-default="25">
                             <?php foreach ($lineasPermitidas as $lineas): ?>
                                 <option value="<?php echo $lineas; ?>" <?php echo $lineasPorPagina === $lineas ? 'selected' : ''; ?>>
                                     <?php echo $lineas; ?>
@@ -620,8 +624,9 @@ $fmtFecha = static function (mixed $value): string {
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="col-6 col-sm-3 col-lg-2 d-grid">
-                        <button type="submit" class="btn btn-primary msp-contract-filter-submit">Filtrar</button>
+                    <div class="col-12 col-lg-4 d-flex gap-2" data-gp-filter-actions>
+                        <button type="submit" class="btn btn-primary flex-grow-1 msp-contract-filter-submit">Buscar</button>
+                        <?php if ($filtroTexto !== '' || $filtroEstado > 0): ?><a class="btn btn-outline-secondary" href="<?php echo msp2Escape(msp2Url('contratos/index.php')); ?>" title="Limpiar filtros" aria-label="Limpiar filtros"><i class="bi bi-x-lg"></i></a><?php endif; ?>
                     </div>
             </form>
         </div>
@@ -756,8 +761,10 @@ $fmtFecha = static function (mixed $value): string {
                                     <div class="d-flex gap-1 justify-content-center">
                                         <a
                                             href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?id_contrato_arriendo=' . $idContrato)); ?>"
-                                            class="btn btn-outline-secondary btn-sm">
-                                            <i class="bi bi-journal-text me-1" aria-hidden="true"></i>Ver ficha
+                                            class="btn btn-outline-secondary btn-sm"
+                                            title="Ver ficha del contrato"
+                                            aria-label="Ver ficha del contrato #<?php echo $idContrato; ?>">
+                                            <i class="bi bi-journal-text" aria-hidden="true"></i>
                                         </a>
                                         <button
                                             type="button"
@@ -773,8 +780,10 @@ $fmtFecha = static function (mixed $value): string {
                                             data-locales="<?php echo msp2Escape(implode(';', $locales)); ?>"
                                             data-arriendo-config="<?php echo msp2Escape($arriendoConfigJson); ?>"
                                             data-garantia-config="<?php echo msp2Escape($garantiaConfigJson); ?>"
-                                            data-garantia-medio="<?php echo msp2Escape((string) ($garantiaMeta['medio_recepcion'] ?? '')); ?>">
-                                            <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Editar
+                                            data-garantia-medio="<?php echo msp2Escape((string) ($garantiaMeta['medio_recepcion'] ?? '')); ?>"
+                                            title="Editar contrato"
+                                            aria-label="Editar contrato #<?php echo $idContrato; ?>">
+                                            <i class="bi bi-pencil-square" aria-hidden="true"></i><span class="visually-hidden">Editar contrato #<?php echo $idContrato; ?></span>
                                         </button>
                                     </div>
                                 </td>
@@ -795,19 +804,19 @@ $fmtFecha = static function (mixed $value): string {
                 <nav aria-label="Paginación de contratos">
                     <ul class="pagination pagination-sm mb-0">
                         <li class="page-item <?php echo $paginaActual <= 1 ? 'disabled' : ''; ?>">
-                            <a class="page-link" href="?<?php echo buildMsp2ContratosQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)]); ?>" aria-label="Anterior">&laquo;</a>
+                            <a class="page-link" href="?<?php echo msp2Escape(buildMsp2ContratosQuery($queryBase, ['pagina' => max(1, $paginaActual - 1)])); ?>" aria-label="Anterior">&laquo;</a>
                         </li>
                         <?php foreach ($paginationItems as $item): ?>
                             <?php if ($item === 'ellipsis'): ?>
                                 <li class="page-item disabled"><span class="page-link">...</span></li>
                             <?php else: ?>
                                 <li class="page-item <?php echo (int) $item === $paginaActual ? 'active' : ''; ?>">
-                                    <a class="page-link" href="?<?php echo buildMsp2ContratosQuery($queryBase, ['pagina' => $item]); ?>"><?php echo $item; ?></a>
+                                    <a class="page-link" href="?<?php echo msp2Escape(buildMsp2ContratosQuery($queryBase, ['pagina' => $item])); ?>"><?php echo $item; ?></a>
                                 </li>
                             <?php endif; ?>
                         <?php endforeach; ?>
                         <li class="page-item <?php echo $paginaActual >= $totalPaginas ? 'disabled' : ''; ?>">
-                            <a class="page-link" href="?<?php echo buildMsp2ContratosQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)]); ?>" aria-label="Siguiente">&raquo;</a>
+                            <a class="page-link" href="?<?php echo msp2Escape(buildMsp2ContratosQuery($queryBase, ['pagina' => min($totalPaginas, $paginaActual + 1)])); ?>" aria-label="Siguiente">&raquo;</a>
                         </li>
                     </ul>
                 </nav>
@@ -1382,7 +1391,7 @@ $fmtFecha = static function (mixed $value): string {
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-dark">Confirmar cierre definitivo</button>
+                    <button type="submit" class="btn btn-warning">Confirmar cierre definitivo</button>
                 </div>
             </form>
         </div>
@@ -1413,7 +1422,7 @@ $fmtFecha = static function (mixed $value): string {
         </form>
     </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 (() => {
     const currentLocalDate = () => new Date();

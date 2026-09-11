@@ -342,7 +342,7 @@ function ctComercialHandlePost(PDO $conn, array $post, array $queryBase): never
         ctSetFlash('warning', 'Acción no reconocida.');
         ctComercialRedirectAfterPost($queryBase);
     } catch (Throwable $exception) {
-        ctSetFlash('warning', $exception->getMessage());
+        ctSetFlash('warning', pgpPublicOrBusinessException($exception, 'ct.contabilidad.comercial', 'No fue posible procesar la operación comercial.'));
         ctComercialRedirectAfterPost($queryBase);
     }
 }

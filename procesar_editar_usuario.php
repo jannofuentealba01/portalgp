@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     } catch (PDOException $e) {
         // Manejo de errores
-        error_log("Error al actualizar el usuario: " . $e->getMessage());
+        pgpLogException($e, 'legacy_user_update');
         echo "<script>alert('Error: Ocurrió un error al actualizar el usuario.'); window.history.back();</script>";
         exit();
     }

@@ -1,6 +1,12 @@
 {
+    "name": "grupopatagual/portalgp",
+    "description": "Portal interno de gestión de Grupo Patagual.",
+    "type": "project",
+    "license": "proprietary",
     "require": {
         "phpmailer/phpmailer": "^6.10",
-        "phpoffice/phpspreadsheet": "^1.8"
+        "phpoffice/phpspreadsheet": "^5.9",
+        "dompdf/dompdf": "^3.1.6",
+        "firebase/php-jwt": "^7.1"
     }
 }

@@ -1215,33 +1215,22 @@ BEGIN
 END;
 GO
 
-IF OBJECT_ID(N'dbo.msp_garantias', N'U') IS NOT NULL
-EXEC(N'
-CREATE OR ALTER TRIGGER dbo.TR_msp_acc_garantias
-ON dbo.msp_garantias
-AFTER INSERT
-AS
+/*
+    Modelo vigente de garantias:
+    crear/pactar una garantia NO representa ingreso efectivo de dinero.
+
+    El reconocimiento contable se realiza solamente al registrar
+    una recepcion efectiva mediante msp_garantia_recepciones
+    y su movimiento de tesoreria.
+
+    El procedimiento legacy de constitucion puede conservarse
+    para trazabilidad historica, pero no debe ejecutarse
+    automaticamente.
+*/
+IF OBJECT_ID(N'dbo.TR_msp_acc_garantias', N'TR') IS NOT NULL
 BEGIN
-    SET NOCOUNT ON;
-
-    DECLARE @id INT;
-
-    DECLARE cur CURSOR LOCAL FAST_FORWARD FOR
-        SELECT id_garantia
-        FROM inserted
-        WHERE estado_garantia <> 6;
-
-    OPEN cur;
-    FETCH NEXT FROM cur INTO @id;
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-        EXEC dbo.msp_acc_generar_asiento_garantia_constitucion @id_garantia = @id;
-        FETCH NEXT FROM cur INTO @id;
-    END;
-    CLOSE cur;
-    DEALLOCATE cur;
+    DISABLE TRIGGER dbo.TR_msp_acc_garantias ON dbo.msp_garantias;
 END;
-');
 GO
 
 IF OBJECT_ID(N'dbo.msp_movimientos_garantia', N'U') IS NOT NULL

@@ -10,7 +10,6 @@ final class OperacionMensualService
         if ($idCierre <= 0) {
             throw new RuntimeException('El cierre mensual indicado no existe.');
         }
-
         $servicios = [];
         foreach ($selectedServices as $service) {
             $code = strtoupper(trim((string) $service));
@@ -105,56 +104,102 @@ final class OperacionMensualService
         if ($idCierre <= 0) {
             throw new RuntimeException('El cierre mensual indicado no existe.');
         }
+        $ownsTransaction = !$conn->inTransaction();
+        try {
+            if ($ownsTransaction) {
+                $conn->beginTransaction();
+            }
+            if ($borrarPagos || $borrarDocumentos) {
+                self::assertNoProtectedFinancialHistory($conn, $idCierre);
+            }
 
-        $saldoFavorAplicacionesDesvinculadas = 0;
-        if ($borrarDocumentos || $borrarPagos) {
-            $saldoFavorAplicacionesDesvinculadas = self::detachSaldoFavorAplicacionesByCierre($conn, $idCierre);
-        }
+            $stmt = $conn->prepare(
+                'EXEC dbo.msp_borrar_generacion_periodo
+                    @id_cierre = :id_cierre,
+                    @del_docs = :del_docs,
+                    @del_cobros = :del_cobros,
+                    @del_pagos = :del_pagos,
+                    @del_cargos_salida_asociados = :del_cargos_salida_asociados'
+            );
+            $stmt->bindValue(':id_cierre', $idCierre, PDO::PARAM_INT);
+            $stmt->bindValue(':del_docs', $borrarDocumentos ? 1 : 0, PDO::PARAM_INT);
+            $stmt->bindValue(':del_cobros', $borrarCobros ? 1 : 0, PDO::PARAM_INT);
+            $stmt->bindValue(':del_pagos', $borrarPagos ? 1 : 0, PDO::PARAM_INT);
+            $stmt->bindValue(':del_cargos_salida_asociados', $borrarCargosSalidaAsociados ? 1 : 0, PDO::PARAM_INT);
+            $stmt->execute();
+            $row = self::fetchFirstRowsetRow($stmt);
+            $stmt->closeCursor();
 
-        if ($borrarDocumentos) {
-            self::detachLoteDocumentLinksByCierre($conn, $idCierre);
-            self::detachPoolDocumentLinksByCierre($conn, $idCierre);
+            if ($ownsTransaction) {
+                $conn->commit();
+            }
+
+            return [
+                'docs_borrados' => (int) ($row['docs_borrados'] ?? 0),
+                'items_borrados' => (int) ($row['items_borrados'] ?? 0),
+                'cobros_borrados' => (int) ($row['cobros_borrados'] ?? 0),
+                'pagos_borrados' => (int) ($row['pagos_borrados'] ?? 0),
+                'cargos_salida_desvinculados' => (int) ($row['cargos_salida_desvinculados'] ?? 0),
+                'saldo_favor_aplicaciones_desvinculadas' => 0,
+                'pago_contrato_detalle_borrado' => 0,
+                'archivos_pdf_borrados' => 0,
+            ];
+        } catch (Throwable $exception) {
+            if ($ownsTransaction && $conn->inTransaction()) {
+                $conn->rollBack();
+            }
+            throw $exception;
         }
-        $pagoContratoDetalleBorrado = 0;
-        if ($borrarPagos) {
-            $pagoContratoDetalleBorrado = self::detachPagoContratoOperacionDetalleByCierre($conn, $idCierre);
-        }
-        $archivosPdfBorrados = 0;
-        if ($borrarPagos || $borrarDocumentos) {
-            $archivosPdfBorrados = self::detachPagoContratoArchivosByCierre(
-                $conn,
-                $idCierre,
-                $borrarDocumentos,
-                $borrarPagos
+    }
+
+    private static function assertNoProtectedFinancialHistory(PDO $conn, int $idCierre): void
+    {
+        $stmt = $conn->prepare(
+            "DECLARE @periodo DATE;
+             SELECT @periodo = periodo_facturacion
+             FROM dbo.msp_cierre_mensual
+             WHERE id_cierre_mensual = :id_cierre;
+
+             SELECT
+                (SELECT COUNT(*)
+                 FROM dbo.msp_pagos p
+                 INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro = p.id_documento_cobro
+                 WHERE dc.periodo_facturacion = @periodo) AS pagos,
+                (SELECT COUNT(*)
+                 FROM dbo.msp_envio_lote_documentos eld
+                 INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro = eld.id_documento_cobro
+                 WHERE dc.periodo_facturacion = @periodo) AS envios,
+                (SELECT COUNT(*)
+                 FROM dbo.msp_documentos_cobro_eventos ev
+                 INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro = ev.id_documento_cobro
+                 WHERE dc.periodo_facturacion = @periodo
+                   AND ev.tipo_evento <> N'EMISION') AS eventos_operativos,
+                (SELECT COUNT(*)
+                 FROM dbo.msp_garantia_documento_aplicaciones a
+                 INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro=a.id_documento_cobro
+                 WHERE dc.periodo_facturacion=@periodo) AS aplicaciones_garantia,
+                (SELECT COUNT(*)
+                 FROM dbo.msp_saldo_favor_periodo_aplicaciones a
+                 WHERE a.periodo_facturacion=@periodo) AS aplicaciones_saldo,
+                (SELECT COUNT(*)
+                 FROM dbo.msp_pago_contrato_archivos a
+                 INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro=a.id_documento_cobro
+                 WHERE dc.periodo_facturacion=@periodo) AS respaldos"
+        );
+        $stmt->execute([':id_cierre' => $idCierre]);
+        $row = $stmt->fetch() ?: [];
+        $pagos = (int) ($row['pagos'] ?? 0);
+        $envios = (int) ($row['envios'] ?? 0);
+        $eventos = (int) ($row['eventos_operativos'] ?? 0);
+        $garantias = (int) ($row['aplicaciones_garantia'] ?? 0);
+        $saldos = (int) ($row['aplicaciones_saldo'] ?? 0);
+        $respaldos = (int) ($row['respaldos'] ?? 0);
+        if ($pagos > 0 || $envios > 0 || $eventos > 0 || $garantias > 0 || $saldos > 0 || $respaldos > 0) {
+            throw new RuntimeException(
+                'No se puede borrar la generación porque el período ya tiene pagos, envíos, aplicaciones, respaldos o eventos financieros. '
+                . 'Usa anulación, reapertura o correcciones para conservar la trazabilidad.'
             );
         }
-
-        $stmt = $conn->prepare(
-            'EXEC dbo.msp_borrar_generacion_periodo
-                @id_cierre = :id_cierre,
-                @del_docs = :del_docs,
-                @del_cobros = :del_cobros,
-                @del_pagos = :del_pagos,
-                @del_cargos_salida_asociados = :del_cargos_salida_asociados'
-        );
-        $stmt->bindValue(':id_cierre', $idCierre, PDO::PARAM_INT);
-        $stmt->bindValue(':del_docs', $borrarDocumentos ? 1 : 0, PDO::PARAM_INT);
-        $stmt->bindValue(':del_cobros', $borrarCobros ? 1 : 0, PDO::PARAM_INT);
-        $stmt->bindValue(':del_pagos', $borrarPagos ? 1 : 0, PDO::PARAM_INT);
-        $stmt->bindValue(':del_cargos_salida_asociados', $borrarCargosSalidaAsociados ? 1 : 0, PDO::PARAM_INT);
-        $stmt->execute();
-
-        $row = self::fetchFirstRowsetRow($stmt);
-        return [
-            'docs_borrados' => (int) ($row['docs_borrados'] ?? 0),
-            'items_borrados' => (int) ($row['items_borrados'] ?? 0),
-            'cobros_borrados' => (int) ($row['cobros_borrados'] ?? 0),
-            'pagos_borrados' => (int) ($row['pagos_borrados'] ?? 0),
-            'cargos_salida_desvinculados' => (int) ($row['cargos_salida_desvinculados'] ?? 0),
-            'saldo_favor_aplicaciones_desvinculadas' => $saldoFavorAplicacionesDesvinculadas,
-            'pago_contrato_detalle_borrado' => $pagoContratoDetalleBorrado,
-            'archivos_pdf_borrados' => $archivosPdfBorrados,
-        ];
     }
 
     private static function detachSaldoFavorAplicacionesByCierre(PDO $conn, int $idCierre): int

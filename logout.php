@@ -1,6 +1,11 @@
 <?php
-session_start();
-session_destroy();
-header('Location: login.php');
-exit();
-?>
+declare(strict_types=1);
+
+require_once __DIR__ . '/security.php';
+pgpApplySecurityHeaders();
+
+pgpSecurityStartSession();
+pgpSecurityDestroySession();
+
+header('Location: login.php', true, 303);
+exit;

@@ -95,7 +95,7 @@ function omSelfRoute(): string
 
 function omRedirectPeriodo(string $periodo): never
 {
-    msp2Redirect(omSelfRoute() . '?periodo=' . urlencode($periodo));
+    msp2Redirect(msp2WithPendingReturn(omSelfRoute() . '?periodo=' . urlencode($periodo), $_POST['return_to'] ?? $_GET['return_to'] ?? ''));
 }
 
 function omRedirectPeriodoConFoco(string $periodo, ?string $focusAnchor = null): never
@@ -107,7 +107,7 @@ function omRedirectPeriodoConFoco(string $periodo, ?string $focusAnchor = null):
         $fragment = '#' . $focusAnchor;
     }
 
-    msp2Redirect(omSelfRoute() . '?' . http_build_query($params) . $fragment);
+    msp2Redirect(msp2WithPendingReturn(omSelfRoute() . '?' . http_build_query($params) . $fragment, $_POST['return_to'] ?? $_GET['return_to'] ?? ''));
 }
 
 function omRedirectManualAdjustTab(string $periodo, string $tab = 'cargo_extra'): never
@@ -119,7 +119,7 @@ function omRedirectManualAdjustTab(string $periodo, string $tab = 'cargo_extra')
         'focus' => 'paso-5',
         'manual_tab' => $tabSafe,
     ];
-    msp2Redirect(omSelfRoute() . '?' . http_build_query($params) . '#paso-5');
+    msp2Redirect(msp2WithPendingReturn(omSelfRoute() . '?' . http_build_query($params) . '#paso-5', $_POST['return_to'] ?? $_GET['return_to'] ?? ''));
 }
 
 function omServiceAnchor(string $codigoServicio): string
@@ -1390,7 +1390,11 @@ function omApplySaldoFavorPeriodoAuto(
                 $omitidosSinSaldo++;
                 continue;
             }
-            $errores[] = '#' . $idDocumento . ': ' . $itemEx->getMessage();
+            $errores[] = '#' . $idDocumento . ': ' . pgpPublicOrBusinessException(
+                $itemEx,
+                'msp.operacion_mensual.saldo_favor_automatico',
+                'No fue posible aplicar el saldo a favor a este documento.'
+            );
         }
     }
 
@@ -2607,7 +2611,11 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if ($conn->inTransaction()) {
                 $conn->rollBack();
             }
-            $saveMessage = $e instanceof RuntimeException ? $e->getMessage() : 'No fue posible guardar el servicio.';
+            $saveMessage = pgpPublicOrBusinessException(
+                $e,
+                'msp.operacion_mensual.guardar_servicio',
+                'No fue posible guardar el servicio.'
+            );
             if (!$isAjaxRequest) {
                 msp2SetFlash('danger', $saveMessage);
             }
@@ -5478,7 +5486,11 @@ if ($tablaExiste && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
             omJsonResponse([
                 'ok' => false,
-                'message' => $e instanceof RuntimeException ? $e->getMessage() : 'No fue posible ejecutar el envio demo de correos.',
+                'message' => pgpPublicOrBusinessException(
+                    $e,
+                    'msp.operacion_mensual.envio_demo_batch',
+                    'No fue posible ejecutar el envio demo de correos.'
+                ),
             ], 422);
         }
     }
@@ -6671,7 +6683,7 @@ if ($tablaExiste) {
             $status['saldo_favor_label'] = (string) ((int) ($saldoFavorFlow['docs_sugeridos'] ?? 0));
         }
     } catch (PDOException $e) {
-        $loadError = 'No fue posible cargar el flujo mensual. Detalle tecnico: ' . $e->getMessage();
+        $loadError = pgpPublicException($e, 'msp.cobros.operacion_mensual', 'No fue posible cargar el flujo mensual.');
     }
 }
 
@@ -6844,736 +6856,10 @@ if (is_array($stageGenerationSnapshot)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Generar Facturación</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .omw-shell {
-            background: radial-gradient(circle at 85% 10%, rgba(11, 58, 110, 0.08), transparent 38%),
-                        linear-gradient(180deg, #f8fbff 0%, #eef2f7 100%);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-md);
-            padding: 1.25rem;
-        }
-
-        .omw-header {
-            border-radius: var(--radius-md);
-            background: linear-gradient(120deg, #0b3a6e 0%, #1f4f85 50%, #2d648f 100%);
-            color: #fff;
-            padding: 1.1rem;
-        }
-
-        .omw-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            color: #fff;
-            font-size: 0.78rem;
-            padding: 0.2rem 0.6rem;
-        }
-
-        .omw-step-list {
-            display: flex;
-            align-items: flex-start;
-            overflow-x: auto;
-            padding: 0.15rem 0.1rem 0.35rem;
-            gap: 0;
-            scrollbar-width: thin;
-        }
-
-        .omw-step-btn {
-            position: relative;
-            flex: 1 0 135px;
-            min-width: 135px;
-            border: 0;
-            background: transparent;
-            color: #4b5b6f;
-            text-align: center;
-            padding: 0 0.35rem;
-            transition: color 0.2s ease;
-        }
-
-        .omw-step-btn::after {
-            content: "";
-            position: absolute;
-            top: 1.1rem;
-            left: calc(50% + 1.15rem);
-            width: calc(100% - 2.3rem);
-            height: 2px;
-            background: #d5dfec;
-            transition: background-color 0.2s ease;
-        }
-
-        .omw-step-btn:last-child::after {
-            display: none;
-        }
-
-        .omw-step-dot {
-            width: 2.3rem;
-            height: 2.3rem;
-            border-radius: 999px;
-            border: 2px solid #9cb1cc;
-            background: #fff;
-            color: #5f6f83;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            transition: all 0.2s ease;
-            margin-bottom: 0.45rem;
-        }
-
-        .omw-step-dot i {
-            font-size: 0.95rem;
-            transition: color 0.2s ease;
-        }
-
-        .omw-step-meta {
-            display: block;
-            line-height: 1.25;
-        }
-
-        .omw-step-title {
-            display: block;
-            font-size: 0.79rem;
-            font-weight: 700;
-            letter-spacing: 0.01em;
-        }
-
-        .omw-step-subtitle {
-            display: block;
-            color: #7a8798;
-            font-size: 0.69rem;
-            margin-top: 0.1rem;
-        }
-
-        .omw-step-btn.is-active {
-            color: #0b3a6e;
-        }
-
-        .omw-step-btn.is-active .omw-step-dot {
-            border-color: #0b3a6e;
-            background: #0b3a6e;
-            color: #fff;
-            box-shadow: 0 0 0 4px rgba(11, 58, 110, 0.18);
-        }
-
-        .omw-step-btn.is-active .omw-step-subtitle {
-            color: #0b3a6e;
-        }
-
-        .omw-step-btn.is-done {
-            color: #146c43;
-        }
-
-        .omw-step-btn.is-done .omw-step-dot {
-            border-color: #198754;
-            background: #e9f7ef;
-            color: #198754;
-        }
-
-        .omw-step-btn.is-done .omw-step-dot::after {
-            content: "\F26E";
-            font-family: "bootstrap-icons";
-            position: absolute;
-            right: -0.35rem;
-            bottom: -0.32rem;
-            width: 1rem;
-            height: 1rem;
-            border-radius: 999px;
-            background: #198754;
-            color: #fff;
-            border: 2px solid #fff;
-            font-size: 0.6rem;
-            line-height: 1;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 1px 4px rgba(25, 135, 84, 0.35);
-        }
-
-        .omw-step-btn.is-done::after {
-            background: #198754;
-        }
-
-        .omw-step-btn.is-done .omw-step-subtitle {
-            color: #146c43;
-        }
-
-        .omw-step-pane {
-            display: none;
-        }
-
-        .omw-step-pane.is-active {
-            display: block;
-            animation: omwFade 0.25s ease;
-        }
-
-        .omw-footer-nav {
-            border-top: 1px dashed #c7d3e1;
-            padding-top: 0.9rem;
-            margin-top: 0.9rem;
-        }
-
-        .omw-confirm-shell {
-            border: 1px solid #d5dfec;
-            border-radius: var(--radius-md);
-            background: #fff;
-            box-shadow: var(--shadow-sm);
-            padding: 1rem;
-        }
-
-        .omw-confirm-shell-head {
-            margin-bottom: 0.8rem;
-            padding-bottom: 0.6rem;
-            border-bottom: 1px solid #e6edf6;
-        }
-
-        .omw-confirm-layout {
-            display: grid;
-            grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr);
-            gap: 1rem;
-            align-items: start;
-        }
-
-        .omw-confirm-main {
-            min-width: 0;
-        }
-
-        .omw-confirm-side {
-            min-width: 0;
-            border-left: 1px solid #e1e9f4;
-            padding-left: 0.95rem;
-        }
-
-        .omw-service-grid {
-            display: grid;
-            gap: 0.7rem;
-            margin-bottom: 1rem;
-        }
-
-        .omw-process-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            border: 1px solid #d4dce8;
-            border-radius: 999px;
-            padding: 0.16rem 0.56rem;
-            background: #f7f9fc;
-            color: #4f6077;
-            font-weight: 600;
-            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-        }
-
-        .omw-process-pill-dot {
-            width: 0.5rem;
-            height: 0.5rem;
-            border-radius: 999px;
-            background: #8b99ae;
-            flex-shrink: 0;
-        }
-
-        .omw-process-pill.is-ready {
-            border-color: #a8d9ba;
-            background: #e8f8ee;
-            color: #146c43;
-        }
-
-        .omw-process-pill.is-ready .omw-process-pill-dot {
-            background: #198754;
-            box-shadow: 0 0 0 2px rgba(25, 135, 84, 0.15);
-        }
-
-        .omw-readings-panel {
-            transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .omw-readings-panel.is-locked {
-            position: relative;
-            overflow: hidden;
-            background: #e6ebf2 !important;
-            border-color: #9aa8bc !important;
-            box-shadow: inset 0 0 0 1px rgba(82, 99, 123, 0.2);
-        }
-
-        .omw-readings-panel.is-locked > :not([data-process-panel-head]):not(.omw-readings-lock) {
-            filter: grayscale(0.35);
-            opacity: 0.24;
-            pointer-events: none;
-            user-select: none;
-        }
-
-        .omw-readings-lock {
-            display: none;
-            position: absolute;
-            inset: 0;
-            align-items: center;
-            justify-content: center;
-            z-index: 2;
-            pointer-events: none;
-        }
-
-        .omw-readings-lock-card {
-            min-width: 280px;
-            max-width: 92%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.45rem;
-            text-align: center;
-            border: 1px solid #c6d2e2;
-            border-radius: 1rem;
-            background: rgba(255, 255, 255, 0.94);
-            box-shadow: 0 12px 24px rgba(31, 50, 76, 0.18);
-            padding: 1.05rem 1.3rem;
-        }
-
-        .omw-readings-lock-icon {
-            width: 3.15rem;
-            height: 3.15rem;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid #9fb3cc;
-            background: linear-gradient(180deg, #f3f7fd 0%, #e3ebf6 100%);
-            color: #3d4f67;
-        }
-
-        .omw-readings-lock-icon i {
-            font-size: 1.65rem;
-            line-height: 1;
-        }
-
-        .omw-readings-lock-label {
-            font-size: 0.8rem;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            color: #2b3f59;
-        }
-
-        .omw-readings-lock-help {
-            font-size: 0.8rem;
-            color: #586a83;
-            margin: 0;
-        }
-
-        .omw-readings-panel.is-locked .omw-readings-lock {
-            display: flex;
-        }
-
-        .omw-readings-panel.is-ready {
-            border-color: #c9d9f4 !important;
-            background: #f8fbff !important;
-        }
-
-        .omw-select-card {
-            display: block;
-            cursor: pointer;
-            margin: 0;
-        }
-
-        .omw-select-card-input {
-            position: absolute;
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .omw-select-card-ui {
-            border: 1px solid #d0dced;
-            border-radius: 0.8rem;
-            background: #fff;
-            padding: 0.78rem 0.82rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.8rem;
-            transition: all 0.2s ease;
-        }
-
-        .omw-select-card-input:checked + .omw-select-card-ui {
-            border-color: #2a64d6;
-            box-shadow: 0 0 0 2px rgba(42, 100, 214, 0.16);
-            background: #f3f7ff;
-        }
-
-        .omw-select-card-input:disabled + .omw-select-card-ui {
-            opacity: 0.62;
-            background: #f7f9fc;
-            cursor: not-allowed;
-        }
-
-        .omw-select-card-input:focus-visible + .omw-select-card-ui {
-            outline: 2px solid #2a64d6;
-            outline-offset: 1px;
-        }
-
-        .omw-select-card-left {
-            display: flex;
-            align-items: center;
-            gap: 0.72rem;
-            min-width: 0;
-        }
-
-        .omw-select-check {
-            width: 1.28rem;
-            height: 1.28rem;
-            border: 2px solid #c0cedf;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            color: transparent;
-            background: #fff;
-            transition: all 0.2s ease;
-            flex-shrink: 0;
-        }
-
-        .omw-select-card-input:checked + .omw-select-card-ui .omw-select-check {
-            border-color: #2a64d6;
-            background: #2a64d6;
-            color: #fff;
-        }
-
-        .omw-select-service-icon {
-            width: 2rem;
-            height: 2rem;
-            border-radius: 0.55rem;
-            background: #eff4fc;
-            color: #3b5b86;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1rem;
-            flex-shrink: 0;
-        }
-
-        .omw-select-service-info {
-            min-width: 0;
-        }
-
-        .omw-select-service-title {
-            font-size: 0.98rem;
-            font-weight: 700;
-            color: #20324b;
-            margin: 0;
-            line-height: 1.2;
-        }
-
-        .omw-select-service-sub {
-            margin: 0.16rem 0 0;
-            color: #728196;
-            font-size: 0.81rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .omw-select-state {
-            border-radius: 999px;
-            font-size: 0.72rem;
-            padding: 0.2rem 0.48rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.22rem;
-            flex-shrink: 0;
-        }
-
-        .omw-select-state.is-ready {
-            background: #dff4e8;
-            color: #146c43;
-        }
-
-        .omw-select-state.is-pending {
-            background: #fff4d9;
-            color: #8a5a00;
-        }
-
-        .omw-confirm-options {
-            border: 1px solid #d5dfec;
-            border-radius: 0.75rem;
-            background: #f8fbff;
-            padding: 0.82rem;
-        }
-
-        .omw-confirm-side-title {
-            margin-bottom: 0.75rem;
-            font-weight: 700;
-            color: #283b57;
-        }
-
-        .omw-confirm-kpi {
-            border: 1px solid #d5dfec;
-            background: #f7faff;
-            border-radius: 0.7rem;
-            padding: 0.65rem 0.72rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.65rem;
-            margin-bottom: 0.55rem;
-        }
-
-        .omw-confirm-kpi .label {
-            color: #6f8098;
-            font-size: 0.77rem;
-            margin: 0;
-        }
-
-        .omw-confirm-kpi .value {
-            color: #20324b;
-            font-weight: 700;
-            font-size: 1.03rem;
-            margin: 0;
-        }
-
-        .omw-confirm-selected-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.35rem;
-        }
-
-        .omw-confirm-checklist {
-            display: grid;
-            gap: 0.45rem;
-            margin-bottom: 0.75rem;
-        }
-
-        .omw-confirm-check-item {
-            border: 1px solid #d5dfec;
-            border-radius: 0.65rem;
-            background: #fbfdff;
-            padding: 0.5rem 0.58rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.5rem;
-        }
-
-        .omw-confirm-check-item.is-ok {
-            border-color: #b9e5c8;
-            background: #ecf9f1;
-        }
-
-        .omw-confirm-check-item.is-pending {
-            border-color: #ecd9ad;
-            background: #fff8e8;
-        }
-
-        .omw-confirm-check-left {
-            display: flex;
-            align-items: center;
-            gap: 0.45rem;
-            min-width: 0;
-        }
-
-        .omw-confirm-check-icon {
-            width: 1.25rem;
-            height: 1.25rem;
-            border-radius: 999px;
-            background: #e8eef8;
-            color: #3d5b86;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.72rem;
-            flex-shrink: 0;
-        }
-
-        .omw-confirm-check-item.is-ok .omw-confirm-check-icon {
-            background: #198754;
-            color: #fff;
-        }
-
-        .omw-confirm-check-item.is-pending .omw-confirm-check-icon {
-            background: #e3b04f;
-            color: #fff;
-        }
-
-        .omw-confirm-check-label {
-            color: #53657f;
-            font-size: 0.76rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .omw-confirm-check-value {
-            color: #22344e;
-            font-size: 0.82rem;
-            font-weight: 700;
-            margin-left: 0.5rem;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .omw-confirm-results-title {
-            margin: 0.65rem 0 0.45rem;
-            font-size: 0.78rem;
-            color: #6f8098;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            font-weight: 700;
-        }
-
-        .omw-confirm-results-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 0.45rem;
-        }
-
-        .omw-confirm-result-item {
-            border: 1px solid #d5dfec;
-            border-radius: 0.65rem;
-            background: #f7faff;
-            padding: 0.5rem 0.58rem;
-        }
-
-        .omw-confirm-result-label {
-            margin: 0;
-            color: #6f8098;
-            font-size: 0.74rem;
-        }
-
-        .omw-confirm-result-value {
-            margin: 0.12rem 0 0;
-            color: #22344e;
-            font-size: 0.95rem;
-            font-weight: 800;
-            line-height: 1.15;
-        }
-
-        .omw-confirm-cta {
-            width: 100%;
-            min-height: 5rem;
-            padding: 1.1rem 1.8rem;
-            font-size: 1.3rem;
-            font-weight: 800;
-            letter-spacing: 0.015em;
-            border-radius: 0.95rem;
-            background: linear-gradient(135deg, #2a64d6 0%, #0b3a6e 100%);
-            border-color: #0b3a6e;
-            box-shadow: 0 18px 36px rgba(11, 58, 110, 0.34);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.55rem;
-        }
-
-        .omw-confirm-cta-label {
-            display: inline-flex;
-            flex-direction: column;
-            align-items: center;
-            line-height: 1.05;
-            text-transform: uppercase;
-        }
-
-        .omw-confirm-cta-line-main {
-            font-size: 1.05em;
-        }
-
-        .omw-confirm-cta-line-sub {
-            font-size: 0.82em;
-            opacity: 0.96;
-            letter-spacing: 0.06em;
-            margin-top: 0.08rem;
-        }
-
-        .omw-confirm-cta:hover,
-        .omw-confirm-cta:focus {
-            background: linear-gradient(135deg, #255bc6 0%, #082f5a 100%);
-            border-color: #082f5a;
-            box-shadow: 0 20px 40px rgba(8, 47, 90, 0.38);
-        }
-
-        .omw-confirm-cta:disabled {
-            background: #8fa5c4;
-            border-color: #8fa5c4;
-            box-shadow: none;
-        }
-
-        @keyframes omwFade {
-            from { opacity: 0; transform: translateY(4px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .omw-picker-btn {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            padding-right: 2rem;
-        }
-
-        .omw-date-range-hint {
-            font-size: 0.72rem;
-            line-height: 1.15;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .omw-required-mark {
-            color: #dc3545;
-            margin-left: 0.2rem;
-        }
-
-        .omw-optional-mark {
-            color: #7a8798;
-            font-size: 0.78rem;
-            margin-left: 0.35rem;
-            font-weight: 500;
-        }
-
-        @media (max-width: 991px) {
-            .omw-shell {
-                padding: 0.85rem;
-            }
-
-            .omw-step-btn {
-                flex-basis: 122px;
-                min-width: 122px;
-            }
-
-            .omw-confirm-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .omw-confirm-side {
-                border-left: 0;
-                border-top: 1px solid #e1e9f4;
-                padding-left: 0;
-                padding-top: 0.85rem;
-            }
-
-            .omw-confirm-cta {
-                min-height: 4.4rem;
-                font-size: 1.18rem;
-            }
-        }
-
-        @media (max-width: 575px) {
-            .omw-step-btn {
-                flex-basis: 106px;
-                min-width: 106px;
-                padding: 0 0.2rem;
-            }
-
-            .omw-step-title {
-                font-size: 0.72rem;
-            }
-
-            .omw-step-subtitle {
-                display: none;
-            }
-        }
-    </style>
-    <?php msp2RenderMontoClpAssets(); ?>
+<?php msp2RenderMontoClpAssets(); ?>
     <?php msp2RenderSearchableSelectAssets(); ?>
 </head>
 <body class="gp-layout bg-light">
@@ -7582,7 +6868,7 @@ if (is_array($stageGenerationSnapshot)) {
 <main class="gp-main d-flex align-items-center justify-content-center p-4">
     <div class="box-container-wide">
         <div class="omw-shell">
-            <div class="omw-header mb-3">
+            <div class="omw-header">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2" data-gp-commandbar>
                     <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                         <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
@@ -7594,7 +6880,7 @@ if (is_array($stageGenerationSnapshot)) {
                 </div>
             </div>
 
-            <div class="omw-step-list mb-3" role="tablist" aria-label="Pasos wizard">
+            <div class="omw-step-list mb-2" role="tablist" aria-label="Pasos de generación mensual">
                 <?php foreach ($steps as $index => $step): ?>
                     <?php
                     $isActive = $index === $activeStep;
@@ -7635,7 +6921,7 @@ if (is_array($stageGenerationSnapshot)) {
                     </button>
                 <?php endforeach; ?>
             </div>
-            <div class="small text-muted mb-3"><span class="text-danger">*</span> Campo obligatorio <span class="mx-1">|</span> <span class="omw-optional-mark">(opcional)</span> Campo no obligatorio</div>
+            <div class="small text-muted mb-2"><span class="text-danger">*</span> Campo obligatorio <span class="mx-1">|</span> <span class="omw-optional-mark">(opcional)</span> Campo no obligatorio</div>
 
             <?php include dirname(__DIR__) . '/templates/components/flash_toast.php'; ?>
             <?php include dirname(__DIR__) . '/templates/components/undo_toast.php'; ?>
@@ -8438,7 +7724,7 @@ if (is_array($stageGenerationSnapshot)) {
                                                             </a>
                                                             <a
                                                                 href="<?php echo msp2Escape($consumoReportePdfUrl ?? '#'); ?>"
-                                                                class="btn btn-outline-dark <?php echo ($consumoReporteExcelUrl !== null && $consumoReportePdfUrl !== null) ? '' : 'disabled'; ?>"
+                                                                class="btn btn-outline-secondary <?php echo ($consumoReporteExcelUrl !== null && $consumoReportePdfUrl !== null) ? '' : 'disabled'; ?>"
                                                                 <?php if ($consumoReporteExcelUrl !== null && $consumoReportePdfUrl !== null): ?>
                                                                     target="_blank" rel="noopener"
                                                                 <?php else: ?>
@@ -9705,8 +8991,8 @@ if (is_array($stageGenerationSnapshot)) {
                                     No hay filas para evaluar en el período.
                                 </div>
                             <?php else: ?>
-                                <div class="table-responsive mb-3">
-                                    <table class="table table-sm align-middle mb-0">
+                                <div class="table-responsive gp-table-shell mb-3">
+                                    <table class="table table-sm align-middle mb-0 gp-table-compact gp-table-mobile-cards">
                                         <thead>
                                         <tr>
                                             <th>Combinación</th>
@@ -9785,21 +9071,15 @@ if (is_array($stageGenerationSnapshot)) {
                             <?php if ($lotesProgramados === []): ?>
                                 <div class="small text-muted">No hay lotes registrados para este período.</div>
                             <?php else: ?>
-                                <div class="table-responsive">
-                                    <table class="table table-sm align-middle mb-0">
+                                <div class="table-responsive gp-table-shell">
+                                    <table class="table table-sm align-middle mb-0 gp-table-compact gp-table-mobile-cards omw-lotes-table">
                                         <thead>
                                         <tr>
-                                            <th>#Lote</th>
-                                            <th>Servicio</th>
-                                            <th>Programado</th>
-                                            <th>Estado</th>
-                                            <th class="text-end">Total</th>
-                                            <th class="text-end">Documentos</th>
-                                            <th class="text-end">Procesados</th>
-                                            <th class="text-end">Enviados</th>
-                                            <th class="text-end">Fallidos</th>
-                                            <th class="text-end">Omitidos</th>
-                                            <th class="text-end">Acciones</th>
+                                            <th>Lote / servicio</th>
+                                            <th>Programación / estado</th>
+                                            <th>Cobertura</th>
+                                            <th>Ejecución</th>
+                                            <th data-gp-column-kind="actions">Acciones</th>
                                         </tr>
                                         </thead>
                                         <tbody>
@@ -9813,19 +9093,11 @@ if (is_array($stageGenerationSnapshot)) {
                                             $canDeleteLote = $estadoLote !== 2;
                                             ?>
                                             <tr>
-                                                <td>#<?php echo $idLoteRow; ?></td>
-                                                <td><?php echo msp2Escape((string) ($loteRow['codigo_servicio'] ?? '-')); ?></td>
-                                                <td data-programado-utc="<?php echo msp2Escape($programadoParaRaw); ?>" data-programado-local>
-                                                    <?php echo msp2Escape(omFmtFecha($programadoParaRaw) . ' ' . substr($programadoParaRaw, 11, 5)); ?>
-                                                </td>
-                                                <td><?php echo msp2Escape(EnvioLotesProgramadosService::buildEstadoLabel($estadoLote)); ?></td>
-                                                <td class="text-end"><?php echo (int) ($loteRow['total_destinatarios'] ?? 0); ?></td>
-                                                <td class="text-end"><?php echo (int) ($loteRow['total_documentos'] ?? 0); ?></td>
-                                                <td class="text-end"><?php echo (int) ($loteRow['procesados'] ?? 0); ?></td>
-                                                <td class="text-end"><?php echo (int) ($loteRow['enviados'] ?? 0); ?></td>
-                                                <td class="text-end"><?php echo (int) ($loteRow['fallidos'] ?? 0); ?></td>
-                                                <td class="text-end"><?php echo (int) ($loteRow['omitidos'] ?? 0); ?></td>
-                                                <td class="text-end">
+                                                <td data-gp-label="Lote / servicio"><strong>#<?php echo $idLoteRow; ?></strong><div class="small text-muted"><?php echo msp2Escape((string) ($loteRow['codigo_servicio'] ?? '-')); ?></div></td>
+                                                <td data-gp-label="Programación / estado"><strong data-programado-utc="<?php echo msp2Escape($programadoParaRaw); ?>" data-programado-local><?php echo msp2Escape(omFmtFecha($programadoParaRaw) . ' ' . substr($programadoParaRaw, 11, 5)); ?></strong><div class="small text-muted"><?php echo msp2Escape(EnvioLotesProgramadosService::buildEstadoLabel($estadoLote)); ?></div></td>
+                                                <td data-gp-label="Cobertura"><span class="gp-data-pair"><span>Destinatarios</span><strong><?php echo (int) ($loteRow['total_destinatarios'] ?? 0); ?></strong></span><span class="gp-data-pair"><span>Documentos</span><strong><?php echo (int) ($loteRow['total_documentos'] ?? 0); ?></strong></span></td>
+                                                <td data-gp-label="Ejecución"><span class="gp-data-pair"><span>Procesados</span><strong><?php echo (int) ($loteRow['procesados'] ?? 0); ?></strong></span><span class="gp-data-pair text-success"><span>Enviados</span><strong><?php echo (int) ($loteRow['enviados'] ?? 0); ?></strong></span><span class="gp-data-pair text-danger"><span>Fallidos</span><strong><?php echo (int) ($loteRow['fallidos'] ?? 0); ?></strong></span><span class="gp-data-pair"><span>Omitidos</span><strong><?php echo (int) ($loteRow['omitidos'] ?? 0); ?></strong></span></td>
+                                                <td data-gp-label="Acciones" class="gp-cell-actions">
                                                     <?php if ($canForceLote || $canCancelLote || $canDeleteLote): ?>
                                                         <?php if ($canForceLote): ?>
                                                             <form method="post" class="d-inline me-1" data-confirm-message="Se ejecutará ahora el lote #<?php echo $idLoteRow; ?>. ¿Deseas continuar?" data-confirm-title="Forzar envío de lote" data-confirm-variant="warning">
@@ -10000,7 +9272,7 @@ if (is_array($stageGenerationSnapshot)) {
 </main>
 <script>
 (() => {
-    const initialFocus = <?php echo json_encode($focusAnchorQuery, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    const initialFocus = <?php echo pgpJsonForHtml($focusAnchorQuery, '""'); ?>;
     const wizardButtons = Array.from(document.querySelectorAll('.omw-step-btn'));
     const wizardPanes = Array.from(document.querySelectorAll('.omw-step-pane'));
     const prevBtn = document.getElementById('omw-prev-btn');
@@ -10285,7 +9557,7 @@ if (is_array($stageGenerationSnapshot)) {
     const periodoFormSubmitBtn = document.getElementById('periodo_form_submit_btn');
     const periodoInputHelp = document.getElementById('periodo_input_help');
     const pasoUno = document.getElementById('paso-1');
-    const initialPeriodoFormMode = <?php echo json_encode($periodoFormMode, JSON_UNESCAPED_UNICODE); ?>;
+    const initialPeriodoFormMode = <?php echo pgpJsonForHtml($periodoFormMode, '""'); ?>;
     let fechaValorUfAutoMode = <?php echo $periodoFormMode === 'create' ? 'true' : 'false'; ?>;
     const periodoInputInitialValue = periodoInput instanceof HTMLInputElement ? String(periodoInput.value || '').trim() : '';
     let fechaValorUfDirty = false;
@@ -10561,11 +9833,11 @@ if (is_array($stageGenerationSnapshot)) {
     }
 
     const params = new URLSearchParams(window.location.search);
-    const excelUrls = <?php echo json_encode([
+    const excelUrls = <?php echo pgpJsonForHtml([
         'LUZ' => msp2Url('cobros/plantilla_lecturas.php?servicio=LUZ&periodo=' . urlencode($periodoActualYm)),
         'GAS' => msp2Url('cobros/plantilla_lecturas.php?servicio=GAS&periodo=' . urlencode($periodoActualYm)),
         'AGUA' => msp2Url('cobros/plantilla_lecturas.php?servicio=AGUA&periodo=' . urlencode($periodoActualYm)),
-    ], JSON_UNESCAPED_SLASHES); ?>;
+    ], '{}'); ?>;
 
     const setServiceFeedback = (form, type, message) => {
         const card = form.closest('[data-service-card]');
@@ -11112,7 +10384,7 @@ if (is_array($stageGenerationSnapshot)) {
     setWizardStep(focusStep);
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__) . '/templates/components/confirm_action_modal.php'; ?>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>

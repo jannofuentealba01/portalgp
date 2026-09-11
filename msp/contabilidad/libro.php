@@ -27,6 +27,10 @@ if ($filtroCuenta !== 'all' && preg_match('/^[0-9A-Za-z\.\-_]+$/', $filtroCuenta
     $filtroCuenta = 'all';
 }
 
+$idAsientoFiltro = filter_input(INPUT_GET, 'id_asiento', FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1],
+]) ?: 0;
+
 function lbFmtMonto(mixed $value): string
 {
     return '$ ' . number_format((float) ($value ?? 0), 2, ',', '.');
@@ -100,6 +104,10 @@ if ($loadError === null) {
             $where[] = 'codigo_cuenta = :cuenta';
             $params[':cuenta'] = $filtroCuenta;
         }
+        if ($idAsientoFiltro > 0) {
+            $where[] = 'id_asiento_contable = :id_asiento';
+            $params[':id_asiento'] = $idAsientoFiltro;
+        }
 
         $sqlWhere = implode(' AND ', $where);
 
@@ -150,7 +158,7 @@ if ($loadError === null) {
         $stmtRows->execute();
         $rows = $stmtRows->fetchAll();
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar el libro diario contable: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.contabilidad.libro', 'No fue posible cargar el control diario contable.');
     }
 }
 ?>
@@ -158,10 +166,10 @@ if ($loadError === null) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>MSP | Libro Diario Contable</title>
+    <title>MSP | Control diario</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
 <body class="bg-light">
@@ -170,7 +178,7 @@ if ($loadError === null) {
     <div class="container bg-white rounded shadow-sm p-4">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-gp-commandbar>
             <div>
-                <h1 class="h4 mb-0">Libro Diario Contable</h1>
+                <h1 class="h4 mb-0">Control diario</h1>
             </div>
             <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1"></i>Volver al menú MSP
@@ -264,7 +272,7 @@ if ($loadError === null) {
                     <?php else: ?>
                         <?php foreach ($rows as $row): ?>
                             <?php $estado = (int) ($row['estado_asiento'] ?? 0); ?>
-                            <tr>
+                            <tr id="asiento-<?php echo (int) ($row['id_asiento_contable'] ?? 0); ?>" class="<?php echo $idAsientoFiltro > 0 ? 'table-warning' : ''; ?>">
                                 <td><?php echo msp2Escape(lbFmtFecha((string) ($row['fecha_contable'] ?? ''))); ?></td>
                                 <td><?php echo msp2Escape((string) ($row['periodo_ym'] ?? '')); ?></td>
                                 <td><?php echo (int) ($row['id_asiento_contable'] ?? 0); ?> / <?php echo (int) ($row['linea'] ?? 0); ?></td>
@@ -297,7 +305,7 @@ if ($loadError === null) {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

@@ -1,0 +1,44 @@
+/* Page-specific screen layout. Source: msp/pagos/simulacion_masiva.php */
+
+.pm-hero {
+            border: 1px solid var(--color-info-border);
+            background: linear-gradient(135deg, var(--color-surface-soft) 0%, var(--color-surface) 70%);
+            border-radius: 14px;
+            padding: 1rem 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .pm-card-soft {
+            border: 1px solid var(--color-border);
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(var(--color-shadow-rgb), 0.05);
+        }
+
+        .pm-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 0.5rem;
+        }
+
+        .pm-metric-chip {
+            border: 1px solid var(--color-border);
+            background: var(--color-surface-soft);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 0.82rem;
+        }
+
+        .pm-table thead th {
+            background: var(--color-surface-soft);
+            border-bottom-color: var(--color-border);
+            font-weight: 600;
+        }
+
+        .pm-table tbody tr:hover {
+            background: var(--color-surface-soft);
+        }
+
+        .pm-table .js-ajuste-input {
+            font-variant-numeric: tabular-nums;
+        }

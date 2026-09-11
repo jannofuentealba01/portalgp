@@ -133,10 +133,12 @@ final class PendientesService
             if ($pactado <= 0) {
                 $subtipo = 'SIN_MONTO';
                 $prioridad = self::PRIORIDAD_ALTA;
-                $titulo = 'Garantía sin monto pactado';
-                $descripcion = 'El contrato/local requiere definir el monto de garantía.';
+                $titulo = trim((string) ($row['nombre_locatario'] ?? '')) !== ''
+                    ? (string) $row['nombre_locatario']
+                    : (string) ($row['nombre_comercial'] ?? 'Garantía sin monto pactado');
+                $descripcion = 'Garantía sin monto pactado.';
                 $accion = 'Definir garantía';
-                $url = 'garantias/recepciones.php?id_contrato_arriendo=' . (int) $row['id_contrato_arriendo'];
+                $url = 'garantias/recepciones.php?id_garantia=' . (int) $row['id_garantia'];
             } elseif ($recibido <= 0) {
                 $subtipo = 'NO_RECIBIDA';
                 $prioridad = self::PRIORIDAD_NORMAL;
@@ -157,14 +159,14 @@ final class PendientesService
                 $titulo = 'Recepción de garantía excedida';
                 $descripcion = 'El monto recibido supera lo pactado y requiere revisión.';
                 $accion = 'Revisar garantía';
-                $url = 'garantias/ficha.php?id_garantia=' . (int) $row['id_garantia'];
+                $url = 'garantias/ficha.php?id=' . (int) $row['id_garantia'];
             } elseif ($reservado > 0) {
                 $subtipo = 'SALDO_RESERVADO';
                 $prioridad = self::PRIORIDAD_ALTA;
                 $titulo = 'Garantía con saldo reservado';
                 $descripcion = 'Hay $' . $this->monto($reservado) . ' reservados que requieren resolución.';
                 $accion = 'Revisar aplicación';
-                $url = 'garantias/ficha.php?id_garantia=' . (int) $row['id_garantia'];
+                $url = 'garantias/ficha.php?id=' . (int) $row['id_garantia'];
             } else {
                 continue;
             }
@@ -175,7 +177,7 @@ final class PendientesService
                 'contrato' => $row['id_contrato_arriendo'] ?? null,
                 'local' => $row['cdo_local'] ?? null,
                 'tienda' => $row['nombre_comercial'] ?? null,
-                'monto' => max(0, $pactado - $recibido),
+                'monto' => $subtipo === 'SIN_MONTO' ? null : max(0, $pactado - $recibido),
                 'accion_principal' => $accion,
                 'url_accion' => $url,
                 'entidad_id' => (int) $row['id_garantia'],
@@ -399,7 +401,7 @@ final class PendientesService
             }
         }
         if ($this->table('msp_tesoreria_conciliaciones') && $this->table('msp_tesoreria_cuentas')) {
-            $sql = "SELECT c.id_conciliacion_tesoreria,c.fecha_desde,c.fecha_hasta,c.diferencia,c.estado_conciliacion,
+            $sql = "SELECT c.id_conciliacion_tesoreria,c.id_cuenta_tesoreria,c.fecha_desde,c.fecha_hasta,c.diferencia,c.estado_conciliacion,
                            tc.nombre_cuenta
                     FROM dbo.msp_tesoreria_conciliaciones c
                     INNER JOIN dbo.msp_tesoreria_cuentas tc ON tc.id_cuenta_tesoreria=c.id_cuenta_tesoreria
@@ -411,13 +413,18 @@ final class PendientesService
                         'fecha_limite' => $row['fecha_hasta'] ?? null,
                         'monto' => abs((float) $row['diferencia']),
                         'accion_principal' => 'Revisar conciliación',
-                        'url_accion' => 'tesoreria/conciliacion.php',
+                        'url_accion' => 'tesoreria/conciliacion.php?' . http_build_query([
+                            'cuenta' => (int) $row['id_cuenta_tesoreria'],
+                            'desde' => substr((string) $row['fecha_desde'], 0, 10),
+                            'hasta' => substr((string) $row['fecha_hasta'], 0, 10),
+                            'id_conciliacion' => (int) $row['id_conciliacion_tesoreria'],
+                        ]),
                         'entidad_id' => (int) $row['id_conciliacion_tesoreria'],
                     ]);
             }
         }
         if ($this->table('msp_tesoreria_cierres_caja') && $this->table('msp_tesoreria_cuentas')) {
-            $sql = "SELECT c.id_cierre_caja,c.fecha_cierre,c.saldo_sistema,c.efectivo_contado,c.diferencia,tc.nombre_cuenta
+            $sql = "SELECT c.id_cierre_caja,c.id_cuenta_tesoreria,c.fecha_cierre,c.saldo_sistema,c.efectivo_contado,c.diferencia,tc.nombre_cuenta
                     FROM dbo.msp_tesoreria_cierres_caja c
                     INNER JOIN dbo.msp_tesoreria_cuentas tc ON tc.id_cuenta_tesoreria=c.id_cuenta_tesoreria
                     WHERE c.estado_cierre=N'CON_DIFERENCIA' OR ABS(c.diferencia)>0.01";
@@ -427,7 +434,11 @@ final class PendientesService
                         'fecha_origen' => $row['fecha_cierre'] ?? null,
                         'monto' => abs((float) $row['diferencia']),
                         'accion_principal' => 'Revisar cierre de caja',
-                        'url_accion' => 'tesoreria/conciliacion.php?fecha_caja=' . substr((string) $row['fecha_cierre'], 0, 10),
+                        'url_accion' => 'tesoreria/conciliacion.php?' . http_build_query([
+                            'fecha_caja' => substr((string) $row['fecha_cierre'], 0, 10),
+                            'cuenta_caja' => (int) $row['id_cuenta_tesoreria'],
+                            'id_cierre' => (int) $row['id_cierre_caja'],
+                        ]),
                         'entidad_id' => (int) $row['id_cierre_caja'],
                     ]);
             }
@@ -500,7 +511,10 @@ final class PendientesService
                         'contrato' => (int) $row['id_contrato_arriendo'],
                         'local' => $row['cdo_local'] ?? null,
                         'accion_principal' => 'Configurar arriendo',
-                        'url_accion' => 'contratos/arriendo_reglas.php?id_contrato_arriendo=' . (int) $row['id_contrato_arriendo'],
+                        'url_accion' => 'contratos/arriendo_reglas.php?' . http_build_query([
+                            'id_contrato_arriendo' => (int) $row['id_contrato_arriendo'],
+                            'id_contrato_local' => (int) $row['id_contrato_local'],
+                        ]) . '#contrato-local-' . (int) $row['id_contrato_local'],
                         'entidad_id' => (int) $row['id_contrato_local'],
                     ]);
             }
@@ -574,7 +588,7 @@ final class PendientesService
                         'local' => $row['cdo_local'] ?? null,
                         'monto' => $monto,
                         'accion_principal' => 'Gestionar devolución',
-                        'url_accion' => 'garantias/ficha.php?id_garantia=' . (int) $row['id_garantia'],
+                        'url_accion' => 'garantias/devoluciones.php?id_garantia=' . (int) $row['id_garantia'],
                         'entidad_id' => (int) $row['id_garantia'],
                     ]);
             }
@@ -613,7 +627,10 @@ final class PendientesService
                     'contrato' => (int) $row['id_contrato_arriendo'],
                     'local' => $row['cdo_local'] ?? null,
                     'accion_principal' => 'Revisar local',
-                    'url_accion' => 'locales/index.php?filtroTexto=' . rawurlencode((string) ($row['cdo_local'] ?? '')),
+                    'url_accion' => 'locales/index.php?' . http_build_query([
+                        'id_local' => (int) $row['id_local'],
+                        'filtroTexto' => (string) ($row['cdo_local'] ?? ''),
+                    ]) . '#local-' . (int) $row['id_local'],
                     'entidad_id' => (int) $row['id_contrato_local'],
                 ]);
         }
@@ -641,7 +658,10 @@ final class PendientesService
                     'fecha_origen' => $row['fecha_contable'] ?? null,
                     'monto' => $diferencia,
                     'accion_principal' => 'Revisar asiento',
-                    'url_accion' => 'contabilidad/libro.php?periodo=' . rawurlencode(substr((string) ($row['fecha_contable'] ?? ''), 0, 7)),
+                    'url_accion' => 'contabilidad/libro.php?' . http_build_query([
+                        'periodo' => substr((string) ($row['fecha_contable'] ?? ''), 0, 7),
+                        'id_asiento' => (int) $row['id_asiento_contable'],
+                    ]) . '#asiento-' . (int) $row['id_asiento_contable'],
                     'entidad_id' => (int) $row['id_asiento_contable'],
                 ]);
         }
@@ -693,10 +713,9 @@ final class PendientesService
     {
         $grupos = [];
         foreach ($items as $item) {
-            $esGrupoMasivo = ($item['modulo_origen'] ?? '') === 'GARANTIA';
-            $key = $esGrupoMasivo
-                ? implode('|', [(string) $item['modulo_origen'], (string) $item['subtipo'], (string) ($item['periodo'] ?? '')])
-                : (string) $item['id'];
+            // Cada garantía representa una obligación concreta de un contrato/local y
+            // debe conservar su propia tarea, acción y metadatos en la bandeja.
+            $key = (string) $item['id'];
             if (!isset($grupos[$key])) {
                 $grupos[$key] = $item;
                 $grupos[$key]['detalles'] = [$item];
@@ -722,9 +741,6 @@ final class PendientesService
                 $grupo['contrato'] = null;
                 $grupo['local'] = null;
                 $grupo['descripcion'] = count($grupo['detalles']) . ' casos requieren la misma acción. Revisa el detalle del grupo.';
-                if (($grupo['modulo_origen'] ?? '') === 'GARANTIA') {
-                    $grupo['url_accion'] = 'garantias/index.php?alerta=' . rawurlencode((string) $grupo['subtipo']);
-                }
             }
         }
         unset($grupo);
@@ -846,7 +862,7 @@ final class PendientesService
         } catch (Throwable $exception) {
             $this->diagnosticos[] = [
                 'modulo' => $modulo,
-                'mensaje' => $exception->getMessage(),
+                'mensaje' => pgpPublicOrBusinessException($exception, 'msp.pendientes', 'No fue posible cargar este pendiente.'),
             ];
             return [];
         }

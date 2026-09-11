@@ -237,7 +237,7 @@ try {
     }
 
     foreach ($headers as $idx => $header) {
-        $sheet->setCellValueByColumnAndRow($idx + 1, 1, $header);
+        msp2SetSpreadsheetCellByColumnAndRow($sheet, $idx + 1, 1, $header);
     }
 
     $rowIndex = 2;
@@ -251,22 +251,22 @@ try {
         }
 
         if ($servicio === 'AGUA' || $servicio === 'LUZ' || $servicio === 'GAS') {
-            $sheet->setCellValueByColumnAndRow(1, $rowIndex, (string) ($row['cod_local'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(2, $rowIndex, (string) ($row['codigo_medidor'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(3, $rowIndex, $lecturaAnterior);
-            $sheet->setCellValueByColumnAndRow(4, $rowIndex, '');
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 1, $rowIndex, (string) ($row['cod_local'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 2, $rowIndex, (string) ($row['codigo_medidor'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 3, $rowIndex, $lecturaAnterior);
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 4, $rowIndex, '');
         } else {
-            $sheet->setCellValueByColumnAndRow(1, $rowIndex, (string) ($row['cod_local'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(2, $rowIndex, (string) ($row['codigo_servicio'] ?? $servicio));
-            $sheet->setCellValueByColumnAndRow(3, $rowIndex, (string) ($row['nombre_servicio'] ?? $servicio));
-            $sheet->setCellValueByColumnAndRow(4, $rowIndex, (string) ($row['codigo_medidor'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(5, $rowIndex, (string) ($row['alias_medidor'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(6, $rowIndex, $lecturaAnterior);
-            $sheet->setCellValueByColumnAndRow(7, $rowIndex, (string) ($row['fecha_hasta_consumo_anterior'] ?? ''));
-            $sheet->setCellValueByColumnAndRow(8, $rowIndex, '');
-            $sheet->setCellValueByColumnAndRow(9, $rowIndex, $fechaHastaSugerida);
-            $sheet->setCellValueByColumnAndRow(10, $rowIndex, $fechaHastaSugerida);
-            $sheet->setCellValueByColumnAndRow(11, $rowIndex, '');
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 1, $rowIndex, (string) ($row['cod_local'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 2, $rowIndex, (string) ($row['codigo_servicio'] ?? $servicio));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 3, $rowIndex, (string) ($row['nombre_servicio'] ?? $servicio));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 4, $rowIndex, (string) ($row['codigo_medidor'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 5, $rowIndex, (string) ($row['alias_medidor'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 6, $rowIndex, $lecturaAnterior);
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 7, $rowIndex, (string) ($row['fecha_hasta_consumo_anterior'] ?? ''));
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 8, $rowIndex, '');
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 9, $rowIndex, $fechaHastaSugerida);
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 10, $rowIndex, $fechaHastaSugerida);
+            msp2SetSpreadsheetCellByColumnAndRow($sheet, 11, $rowIndex, '');
         }
         $rowIndex++;
     }
@@ -318,6 +318,6 @@ try {
     @unlink($tmpFile);
     exit();
 } catch (Throwable $e) {
-    msp2SetFlash('danger', 'No fue posible generar la plantilla del servicio. Detalle técnico: ' . $e->getMessage());
+    msp2SetFlash('danger', pgpPublicException($e, 'msp.cobros.plantilla_lecturas', 'No fue posible generar la plantilla del servicio.'));
     msp2Redirect('cobros/operacion_mensual.php?periodo=' . urlencode($periodoYm));
 }

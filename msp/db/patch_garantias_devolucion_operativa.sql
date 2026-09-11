@@ -30,9 +30,12 @@ BEGIN
         CONSTRAINT FK_msp_garantia_devoluciones_cuenta FOREIGN KEY(id_cuenta_tesoreria) REFERENCES dbo.msp_tesoreria_cuentas(id_cuenta_tesoreria),
         CONSTRAINT UQ_msp_garantia_devoluciones_movimiento UNIQUE(id_movimiento_garantia),
         CONSTRAINT CK_msp_garantia_devoluciones_monto CHECK(monto_devolucion>0),
-        CONSTRAINT CK_msp_garantia_devoluciones_medio CHECK(medio_devolucion=N'EFECTIVO'),
+        CONSTRAINT CK_msp_garantia_devoluciones_medio CHECK(medio_devolucion IN(N'EFECTIVO',N'TRANSFERENCIA')),
         CONSTRAINT CK_msp_garantia_devoluciones_estado CHECK(estado_devolucion IN(N'EMITIDA',N'ANULADA')),
-        CONSTRAINT CK_msp_garantia_devoluciones_datos CHECK(medio_devolucion=N'EFECTIVO')
+        CONSTRAINT CK_msp_garantia_devoluciones_datos CHECK(
+            medio_devolucion=N'EFECTIVO' OR
+            (medio_devolucion=N'TRANSFERENCIA' AND referencia_transferencia IS NOT NULL AND banco_destino IS NOT NULL AND cuenta_destino IS NOT NULL)
+        )
     );
     CREATE INDEX IX_msp_garantia_devoluciones_fecha ON dbo.msp_garantia_devoluciones(fecha_devolucion DESC,id_devolucion_garantia DESC);
 END;
@@ -44,8 +47,11 @@ BEGIN
         ALTER TABLE dbo.msp_garantia_devoluciones DROP CONSTRAINT CK_msp_garantia_devoluciones_datos;
     IF EXISTS(SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(N'dbo.msp_garantia_devoluciones') AND name=N'CK_msp_garantia_devoluciones_medio')
         ALTER TABLE dbo.msp_garantia_devoluciones DROP CONSTRAINT CK_msp_garantia_devoluciones_medio;
-    ALTER TABLE dbo.msp_garantia_devoluciones ADD CONSTRAINT CK_msp_garantia_devoluciones_medio CHECK(medio_devolucion=N'EFECTIVO');
-    ALTER TABLE dbo.msp_garantia_devoluciones ADD CONSTRAINT CK_msp_garantia_devoluciones_datos CHECK(medio_devolucion=N'EFECTIVO');
+    ALTER TABLE dbo.msp_garantia_devoluciones ADD CONSTRAINT CK_msp_garantia_devoluciones_medio CHECK(medio_devolucion IN(N'EFECTIVO',N'TRANSFERENCIA'));
+    ALTER TABLE dbo.msp_garantia_devoluciones ADD CONSTRAINT CK_msp_garantia_devoluciones_datos CHECK(
+        medio_devolucion=N'EFECTIVO' OR
+        (medio_devolucion=N'TRANSFERENCIA' AND referencia_transferencia IS NOT NULL AND banco_destino IS NOT NULL AND cuenta_destino IS NOT NULL)
+    );
 END;
 GO
 

@@ -415,7 +415,11 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
                             $executionReport['saldo_favor_periodo_errors'][] = [
                                 'id_documento_cobro' => $idDocumento,
                                 'id_pago' => $idPago,
-                                'message' => $syncException->getMessage(),
+                                'message' => pgpPublicOrBusinessException(
+                                    $syncException,
+                                    'msp.pagos.simulacion_masiva.saldo_favor',
+                                    'No fue posible sincronizar el saldo a favor del documento.'
+                                ),
                             ];
                         }
                     }
@@ -462,56 +466,12 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Pago Masivo Mensual</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/driver.js-1.3.6/driver.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
-        .pm-hero {
-            border: 1px solid #d8e6ff;
-            background: linear-gradient(135deg, #eef5ff 0%, #ffffff 70%);
-            border-radius: 14px;
-            padding: 1rem 1.2rem;
-            margin-bottom: 1rem;
-        }
-
-        .pm-card-soft {
-            border: 1px solid #e7ebf3;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(17, 24, 39, 0.05);
-        }
-
-        .pm-metrics {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 0.5rem;
-        }
-
-        .pm-metric-chip {
-            border: 1px solid #dbe3ef;
-            background: #f8fafc;
-            border-radius: 999px;
-            padding: 4px 10px;
-            font-size: 0.82rem;
-        }
-
-        .pm-table thead th {
-            background: #f1f5fb;
-            border-bottom-color: #d7e0ee;
-            font-weight: 600;
-        }
-
-        .pm-table tbody tr:hover {
-            background: #f8fbff;
-        }
-
-        .pm-table .js-ajuste-input {
-            font-variant-numeric: tabular-nums;
-        }
-    </style>
 </head>
-<body class="gp-layout bg-light">
+<body class="gp-layout bg-light gp-module-msp">
 
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 
@@ -526,10 +486,10 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
                 <a href="<?php echo msp2Escape(msp2Url('pagos/index.php')); ?>" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-cash-coin me-1" aria-hidden="true"></i>Pagos
                 </a>
-                <a href="<?php echo msp2Escape(msp2Url('ayuda/index.php')); ?>" class="btn btn-outline-info btn-sm">
+                <a href="<?php echo msp2Escape(msp2Url('ayuda/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-question-circle me-1" aria-hidden="true"></i>Ayuda
                 </a>
-                <button type="button" class="btn btn-outline-info btn-sm" id="mspStartPagoMasivoTour" data-tour="pm-tour-button">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="mspStartPagoMasivoTour" data-tour="pm-tour-button">
                     <i class="bi bi-play-circle me-1" aria-hidden="true"></i>Ver tutorial
                 </button>
             </div>
@@ -621,19 +581,16 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
 
                         <div id="lote_validation_msg" class="alert alert-danger d-none py-2 mb-2"></div>
 
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered align-middle text-center mb-0 pm-table" id="tabla_pago_masivo_mes">
+                        <div class="table-responsive gp-table-shell">
+                            <table class="table table-sm table-bordered align-middle mb-0 pm-table gp-table-compact gp-table-mobile-cards msp-bulk-payment-table" id="tabla_pago_masivo_mes">
                                 <thead class="table-light">
                                     <tr>
                                         <th style="width:40px;">
                                             <input type="checkbox" class="form-check-input" id="check_todos" aria-label="Seleccionar todos">
                                         </th>
-                                        <th style="width:90px;">Doc</th>
-                                        <th class="text-start">Tienda</th>
-                                        <th class="text-start">Arrendatario</th>
-                                        <th style="width:120px;" class="text-end">Saldo</th>
-                                        <th style="width:160px;">Ajuste +/-</th>
-                                        <th style="width:140px;" class="text-end">Monto final</th>
+                                        <th>Documento</th>
+                                        <th>Tienda / arrendatario</th>
+                                        <th>Resumen financiero</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -650,7 +607,7 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
                                     $isChecked = isset($seleccionadosLookup[$docId]);
                                     ?>
                                     <tr data-row-doc="<?php echo $docId; ?>">
-                                        <td>
+                                        <td data-gp-label="Seleccionar">
                                             <input
                                                 type="checkbox"
                                                 class="form-check-input js-row-check"
@@ -659,28 +616,26 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
                                                 <?php echo $isChecked ? 'checked' : ''; ?>
                                                 aria-label="Seleccionar documento <?php echo $docId; ?>">
                                         </td>
-                                        <td>
+                                        <td data-gp-label="Documento">
                                             <div><strong>#<?php echo $docId; ?></strong></div>
                                             <small class="text-muted"><?php echo msp2Escape((string) ($doc['numero_documento'] ?? '')); ?></small>
                                         </td>
-                                        <td class="text-start"><?php echo msp2Escape((string) ($doc['nombre_tienda'] ?? '')); ?></td>
-                                        <td class="text-start">
+                                        <td data-gp-label="Tienda / arrendatario" class="gp-cell-description">
+                                            <strong><?php echo msp2Escape((string) ($doc['nombre_tienda'] ?? '')); ?></strong>
                                             <div><?php echo msp2Escape($arrendatario !== '' ? $arrendatario : '-'); ?></div>
                                             <small class="text-muted"><?php echo msp2Escape($rutArrendatario !== '' ? $rutArrendatario : '-'); ?></small>
                                         </td>
-                                        <td class="text-end js-saldo" data-saldo="<?php echo msp2Escape(number_format($saldo, 2, '.', '')); ?>"><?php echo msp2Escape(pmFormatMoney($saldo)); ?></td>
-                                        <td>
+                                        <td data-gp-label="Resumen financiero" class="gp-financial-cell">
+                                            <span class="gp-data-pair"><span>Saldo</span><strong class="js-saldo" data-saldo="<?php echo msp2Escape(number_format($saldo, 2, '.', '')); ?>"><?php echo msp2Escape(pmFormatMoney($saldo)); ?></strong></span>
+                                            <label class="gp-data-pair"><span>Ajuste +/-</span>
                                             <input
                                                 type="text"
                                                 class="form-control form-control-sm text-end js-ajuste-input"
                                                 name="ajuste[<?php echo $docId; ?>]"
                                                 value="<?php echo msp2Escape(number_format($ajusteMostrado, 2, '.', '')); ?>"
                                                 inputmode="decimal"
-                                                placeholder="0.00">
-                                            <div class="form-text">Base saldo + ajuste</div>
-                                        </td>
-                                        <td class="text-end fw-bold js-monto-final" data-monto-final="<?php echo msp2Escape(number_format($montoFinal, 2, '.', '')); ?>">
-                                            <?php echo msp2Escape(pmFormatMoney($montoFinal)); ?>
+                                                placeholder="0.00"></label>
+                                            <span class="gp-data-pair gp-data-pair--total"><span>Monto final</span><strong class="js-monto-final" data-monto-final="<?php echo msp2Escape(number_format($montoFinal, 2, '.', '')); ?>"><?php echo msp2Escape(pmFormatMoney($montoFinal)); ?></strong></span>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -706,27 +661,23 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
                 ?>
                 <div class="card card-body mb-3 pm-card-soft">
                     <h2 class="h5 mb-3">Resultado de ejecucion</h2>
-                    <div class="row g-2 mb-2">
-                        <div class="col-md-3"><strong>Seleccionadas:</strong> <?php echo (int) ($executionReport['total_seleccionadas'] ?? 0); ?></div>
-                        <div class="col-md-3"><strong>Exitosas:</strong> <?php echo (int) ($executionReport['ok'] ?? 0); ?></div>
-                        <div class="col-md-3"><strong>Fallidas:</strong> <?php echo (int) ($executionReport['failed'] ?? 0); ?></div>
-                        <div class="col-md-3"><strong>Monto aplicado:</strong> <?php echo msp2Escape(pmFormatMoney($executionReport['monto_aplicado'] ?? 0)); ?></div>
-                        <div class="col-md-3"><strong>Monto programado:</strong> <?php echo msp2Escape(pmFormatMoney($executionReport['monto_programado'] ?? 0)); ?></div>
-                        <div class="col-md-3"><strong>Excedente total:</strong> <?php echo msp2Escape(pmFormatMoney($executionReport['monto_excedente'] ?? 0)); ?></div>
-                        <div class="col-md-3"><strong>Saldo mes sig. OK:</strong> <?php echo (int) ($executionReport['saldo_favor_periodo_ok'] ?? 0); ?></div>
-                        <div class="col-md-3"><strong>Saldo mes sig. revisar:</strong> <?php echo (int) ($executionReport['saldo_favor_periodo_failed'] ?? 0); ?></div>
+                    <div class="pm-metrics mb-3" aria-label="Resumen de ejecución">
+                        <span class="pm-metric-chip">Seleccionadas <strong><?php echo (int) ($executionReport['total_seleccionadas'] ?? 0); ?></strong></span>
+                        <span class="pm-metric-chip text-success">Exitosas <strong><?php echo (int) ($executionReport['ok'] ?? 0); ?></strong></span>
+                        <span class="pm-metric-chip text-danger">Fallidas <strong><?php echo (int) ($executionReport['failed'] ?? 0); ?></strong></span>
+                        <span class="pm-metric-chip">Programado <strong><?php echo msp2Escape(pmFormatMoney($executionReport['monto_programado'] ?? 0)); ?></strong></span>
+                        <span class="pm-metric-chip">Aplicado <strong><?php echo msp2Escape(pmFormatMoney($executionReport['monto_aplicado'] ?? 0)); ?></strong></span>
+                        <span class="pm-metric-chip">Excedente <strong><?php echo msp2Escape(pmFormatMoney($executionReport['monto_excedente'] ?? 0)); ?></strong></span>
+                        <span class="pm-metric-chip">Saldo mes siguiente <strong><?php echo (int) ($executionReport['saldo_favor_periodo_ok'] ?? 0); ?> OK / <?php echo (int) ($executionReport['saldo_favor_periodo_failed'] ?? 0); ?> revisar</strong></span>
                     </div>
 
                     <?php if ($successRows !== []): ?>
-                        <div class="table-responsive mt-2">
-                            <table class="table table-sm table-bordered align-middle text-center">
+                        <details class="gp-import-result-group" open><summary>Pagos procesados correctamente (<?php echo count($successRows); ?>)</summary><div class="table-responsive gp-table-shell mt-2">
+                            <table class="table table-sm table-bordered align-middle gp-table-compact gp-table-mobile-cards msp-import-results-table mb-0">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Documento</th>
-                                        <th>Pago generado</th>
-                                        <th>Monto programado</th>
-                                        <th>Monto aplicado</th>
-                                        <th>Excedente</th>
+                                        <th>Documento / pago</th>
+                                        <th>Resumen financiero</th>
                                         <th>Mes siguiente</th>
                                     </tr>
                                 </thead>
@@ -743,22 +694,19 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
                                         }
                                         ?>
                                         <tr>
-                                            <td>#<?php echo (int) ($row['id_documento_cobro'] ?? 0); ?></td>
-                                            <td>#<?php echo (int) ($row['id_pago'] ?? 0); ?></td>
-                                            <td class="text-end"><?php echo msp2Escape(pmFormatMoney($row['monto_programado'] ?? 0)); ?></td>
-                                            <td class="text-end"><?php echo msp2Escape(pmFormatMoney($row['monto_aplicado'] ?? 0)); ?></td>
-                                            <td class="text-end"><?php echo msp2Escape(pmFormatMoney($row['monto_excedente'] ?? 0)); ?></td>
-                                            <td><?php echo msp2Escape($saldoPeriodoLabel); ?></td>
+                                            <td data-gp-label="Documento / pago"><strong>Documento #<?php echo (int) ($row['id_documento_cobro'] ?? 0); ?></strong><div class="small text-muted">Pago #<?php echo (int) ($row['id_pago'] ?? 0); ?></div></td>
+                                            <td data-gp-label="Resumen financiero" class="gp-financial-cell"><span class="gp-data-pair"><span>Programado</span><strong><?php echo msp2Escape(pmFormatMoney($row['monto_programado'] ?? 0)); ?></strong></span><span class="gp-data-pair gp-data-pair--total"><span>Aplicado</span><strong><?php echo msp2Escape(pmFormatMoney($row['monto_aplicado'] ?? 0)); ?></strong></span><span class="gp-data-pair"><span>Excedente</span><strong><?php echo msp2Escape(pmFormatMoney($row['monto_excedente'] ?? 0)); ?></strong></span></td>
+                                            <td data-gp-label="Mes siguiente"><?php echo msp2Escape($saldoPeriodoLabel); ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
-                        </div>
+                        </div></details>
                     <?php endif; ?>
 
                     <?php if ($errorRows !== []): ?>
-                        <div class="table-responsive mt-2">
-                            <table class="table table-sm table-bordered align-middle">
+                        <details class="gp-import-result-group gp-import-result-group--error" open><summary>Filas no procesadas (<?php echo count($errorRows); ?>)</summary><div class="table-responsive gp-table-shell mt-2">
+                            <table class="table table-sm table-bordered align-middle gp-table-compact gp-table-mobile-cards msp-import-results-table mb-0">
                                 <thead class="table-light">
                                     <tr>
                                         <th style="width: 150px;">Documento</th>
@@ -768,18 +716,18 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
                                 <tbody>
                                     <?php foreach (array_slice($errorRows, 0, 300) as $row): ?>
                                         <tr>
-                                            <td>#<?php echo (int) ($row['id_documento_cobro'] ?? 0); ?></td>
-                                            <td><?php echo msp2Escape((string) ($row['message'] ?? '')); ?></td>
+                                            <td data-gp-label="Documento">#<?php echo (int) ($row['id_documento_cobro'] ?? 0); ?></td>
+                                            <td data-gp-label="Motivo"><?php echo msp2Escape((string) ($row['message'] ?? '')); ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
-                        </div>
+                        </div></details>
                     <?php endif; ?>
 
                     <?php if ($saldoFavorPeriodoErrorRows !== []): ?>
-                        <div class="table-responsive mt-2">
-                            <table class="table table-sm table-bordered align-middle">
+                        <details class="gp-import-result-group gp-import-result-group--error" open><summary>Saldos del mes siguiente por revisar (<?php echo count($saldoFavorPeriodoErrorRows); ?>)</summary><div class="table-responsive gp-table-shell mt-2">
+                            <table class="table table-sm table-bordered align-middle gp-table-compact gp-table-mobile-cards msp-import-results-table mb-0">
                                 <thead class="table-light">
                                     <tr>
                                         <th style="width: 150px;">Documento</th>
@@ -790,14 +738,14 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
                                 <tbody>
                                     <?php foreach (array_slice($saldoFavorPeriodoErrorRows, 0, 300) as $row): ?>
                                         <tr>
-                                            <td>#<?php echo (int) ($row['id_documento_cobro'] ?? 0); ?></td>
-                                            <td>#<?php echo (int) ($row['id_pago'] ?? 0); ?></td>
-                                            <td><?php echo msp2Escape((string) ($row['message'] ?? '')); ?></td>
+                                            <td data-gp-label="Documento">#<?php echo (int) ($row['id_documento_cobro'] ?? 0); ?></td>
+                                            <td data-gp-label="Pago">#<?php echo (int) ($row['id_pago'] ?? 0); ?></td>
+                                            <td data-gp-label="Error saldo mes siguiente"><?php echo msp2Escape((string) ($row['message'] ?? '')); ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
-                        </div>
+                        </div></details>
                     <?php endif; ?>
                 </div>
             <?php endif; ?>
@@ -805,8 +753,8 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
     </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/driver.js-1.3.6/driver.js.iife.js"></script>
 <script src="<?php echo msp2Escape(msp2Url('assets/msp_tour_pago_masivo.js')); ?>"></script>
 <script>
 (function () {

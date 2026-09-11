@@ -206,7 +206,7 @@ function dashboardMonthKey(?string $value): string
 
 function dashboardJson(mixed $value): string
 {
-    return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    return pgpJsonForHtml($value);
 }
 
 try {
@@ -1011,7 +1011,7 @@ if ($tablaExiste) {
             $chartSeries['top_deudores_values'][] = round((float) ($deudorRow['saldo_pendiente'] ?? 0), 2);
         }
     } catch (PDOException $exception) {
-        $loadError = 'No fue posible cargar el dashboard. Detalle tecnico: ' . $exception->getMessage();
+        $loadError = pgpPublicException($exception, 'msp.dashboard.index', 'No fue posible cargar el dashboard.');
     }
 }
 ?>
@@ -1021,264 +1021,9 @@ if ($tablaExiste) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP | Panel de gestión</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css?v=<?php echo rawurlencode((string) filemtime(dirname(__DIR__, 2) . '/styles.css')); ?>">
-    <style>
-        .dashboard-shell { width: 100%; max-width: 1640px; margin: 0 auto; }
-        .dash-page-header {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-            align-items: center;
-            gap: 1rem;
-        }
-        .dash-page-title { color: #003c96; font-size: clamp(1.7rem, 2.4vw, 2.25rem); }
-        .dash-page-actions { justify-self: end; }
-        .dash-filter-card .card-body { padding: .72rem .8rem; }
-        .dash-filter-card .form-label { margin-bottom: .25rem; font-size: .82rem; }
-        .dash-filter-card .form-control,
-        .dash-filter-card .btn { min-height: 40px; }
-        .dash-filter-tools { min-width: min(100%, 440px); }
-        .dash-consumption-links {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: .45rem;
-        }
-        .dash-consumption-links-title {
-            color: #123f72;
-            font-weight: 700;
-            margin-right: .2rem;
-        }
-        .dash-consumption-links .btn { min-height: 34px; padding: .3rem .62rem; }
-        .dash-kpi-card { border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
-        .dash-kpi-label { font-size: .68rem; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: .04em; }
-        .dash-kpi-value { font-weight: 700; font-size: 1.12rem; line-height: 1.18; }
-        .dash-kpi-sub { font-size: .72rem; line-height: 1.25; color: var(--color-text-muted); }
-        .dash-summary-kpis {
-            display: grid;
-            grid-template-columns: repeat(7, minmax(0, 1fr));
-            gap: .55rem;
-        }
-        .dash-summary-kpis > [class*="col-"] { width: auto; padding: 0; }
-        .dash-summary-kpis .dash-kpi-card,
-        .dash-summary-kpis .dash-overview-card {
-            min-height: 92px;
-            padding: .65rem .72rem !important;
-        }
-        .dash-summary-kpis .dash-overview-value { font-size: 1.12rem; line-height: 1.18; }
-        .dash-summary-kpis .dash-overview-label { font-size: .68rem; margin-bottom: .2rem; }
-        .dash-summary-kpis .dash-overview-sub { font-size: .72rem; line-height: 1.25; }
-        .dash-table thead th { white-space: nowrap; position: sticky; top: 0; z-index: 1; background-color: #f1f5f9; }
-        .dash-col-money { text-align: right; white-space: nowrap; }
-        .dash-local-row { background: #eef4fb; font-weight: 700; cursor: pointer; }
-        .dash-local-row:hover { background: #e3edf9; }
-        .dash-local-detail { background: #ffffff; }
-        .dash-local-detail td { border-top: 0; }
-        .dash-toggle {
-            display: inline-flex;
-            width: 28px;
-            height: 28px;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            border: 1px solid #cbd5e1;
-            background: #fff;
-            color: #334155;
-            transition: transform .2s ease;
-        }
-        .dash-local-row[aria-expanded="true"] .dash-toggle {
-            transform: rotate(180deg);
-        }
-        .d-none-local { display: none; }
-        .dash-doc-link {
-            color: #1d4ed8;
-            text-decoration: underline;
-            text-underline-offset: 2px;
-            font-weight: 600;
-        }
-        .dash-doc-link:hover,
-        .dash-doc-link:focus {
-            color: #1e40af;
-        }
-        .dash-doc-list {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 2px;
-        }
-        .dash-section-title {
-            font-size: .78rem;
-            text-transform: uppercase;
-            letter-spacing: .08em;
-            color: var(--color-text-muted);
-            margin-bottom: .75rem;
-        }
-        .dash-kpi-card.is-accent {
-            background: linear-gradient(135deg, #0f3d68 0%, #1d5f91 100%);
-            color: #fff;
-            border-color: transparent;
-        }
-        .dash-kpi-card.is-accent .dash-kpi-label,
-        .dash-kpi-card.is-accent .dash-kpi-sub {
-            color: rgba(255, 255, 255, 0.82);
-        }
-        .dash-mini-table td,
-        .dash-mini-table th {
-            vertical-align: middle;
-        }
-        .dash-chart-card {
-            border: 1px solid #dbe4f0;
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            background: linear-gradient(135deg, #f8fbff 0%, #eef4fb 100%);
-            padding: .8rem;
-            height: 100%;
-        }
-        .dash-chart-wrap {
-            position: relative;
-            min-height: 280px;
-        }
-        .dash-chart-wrap.is-tall {
-            min-height: 235px;
-        }
-        .dash-primary-chart .dash-chart-wrap {
-            min-height: 365px;
-        }
-        .dash-consumption-kpis {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: .4rem;
-            align-content: start;
-        }
-        .dash-consumption-kpis .dash-kpi-card,
-        .dash-consumption-kpis .dash-overview-card {
-            min-height: 0;
-            height: auto;
-            padding: .45rem .55rem !important;
-        }
-        .dash-consumption-kpis .dash-kpi-label,
-        .dash-consumption-kpis .dash-overview-label { font-size: .63rem; margin-bottom: .15rem; }
-        .dash-consumption-kpis .dash-kpi-value,
-        .dash-consumption-kpis .dash-overview-value { font-size: .98rem; line-height: 1.15; }
-        .dash-consumption-kpis .dash-kpi-sub,
-        .dash-consumption-kpis .dash-overview-sub { font-size: .66rem; line-height: 1.2; }
-        .dash-axis-note { font-size: .7rem; color: var(--color-text-muted); }
-        .dash-history-collapse .card-header { padding: .55rem .75rem; }
-        .dash-top-extra.d-none { display: none !important; }
-        .dash-composition-chart { min-height: 205px; }
-        .dash-composition-detail {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: .35rem;
-            margin-top: .35rem;
-        }
-        .dash-composition-item {
-            display: grid;
-            grid-template-columns: auto minmax(0, 1fr) auto;
-            align-items: center;
-            gap: .35rem;
-            padding: .32rem .42rem;
-            border: 1px solid rgba(148, 163, 184, .25);
-            border-radius: 7px;
-            background: rgba(255, 255, 255, .55);
-            font-size: .7rem;
-        }
-        .dash-composition-dot { width: 8px; height: 8px; border-radius: 50%; }
-        .dash-composition-value { font-weight: 700; white-space: nowrap; }
-        .dash-composition-percent { color: var(--color-text-muted); font-size: .64rem; }
-        .dash-composition-item:last-child:nth-child(odd) { grid-column: 1 / -1; }
-        .dash-service-charts .dash-chart-card {
-            padding: .7rem;
-        }
-        .dash-service-charts .dash-chart-heading {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: .45rem;
-            margin-bottom: .35rem;
-        }
-        .dash-service-charts .dash-toggle-group {
-            width: 100%;
-            justify-content: center;
-        }
-        .dash-service-charts .dash-toggle-chip {
-            flex: 1 1 auto;
-            padding: .3rem .45rem;
-        }
-        .dash-filter-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: .45rem;
-            padding: .45rem .75rem;
-            border-radius: 999px;
-            background: #eff6ff;
-            color: #1d4ed8;
-            font-size: .85rem;
-            font-weight: 600;
-        }
-        .dash-overview-card {
-            border: 1px solid #dbe4f0;
-            border-radius: var(--radius-md);
-            background: linear-gradient(135deg, #f8fbff 0%, #eef4fb 100%);
-            padding: 1rem 1.1rem;
-            height: 100%;
-        }
-        .dash-overview-label {
-            font-size: .75rem;
-            text-transform: uppercase;
-            letter-spacing: .08em;
-            color: #5b6b82;
-            margin-bottom: .35rem;
-        }
-        .dash-overview-value {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #12324f;
-        }
-        .dash-overview-sub {
-            color: #64748b;
-            font-size: .84rem;
-        }
-        .dash-toggle-group {
-            display: inline-flex;
-            gap: .35rem;
-            padding: .3rem;
-            border: 1px solid #dbe4f0;
-            border-radius: 999px;
-            background: #f8fafc;
-        }
-        .dash-toggle-chip {
-            border: 0;
-            border-radius: 999px;
-            background: transparent;
-            color: #475569;
-            font-size: .78rem;
-            font-weight: 600;
-            padding: .35rem .7rem;
-            line-height: 1.1;
-        }
-        .dash-toggle-chip.is-active {
-            background: #123f72;
-            color: #fff;
-            box-shadow: 0 8px 20px rgba(18, 63, 114, 0.18);
-        }
-        @media (max-width: 767.98px) {
-            .dash-page-header { grid-template-columns: 1fr; text-align: center; }
-            .dash-page-header > * { justify-self: center; }
-            .dash-page-title { grid-row: 1; }
-            .dash-page-back { grid-row: 2; }
-            .dash-page-actions { grid-row: 3; }
-            .dash-primary-chart .dash-chart-wrap { min-height: 285px; }
-            .dash-summary-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .dash-consumption-kpis { grid-template-columns: 1fr; }
-            .dash-filter-tools { min-width: 0; }
-            .dash-consumption-links { justify-content: flex-start; flex-wrap: wrap; }
-        }
-        @media (min-width: 768px) and (max-width: 1199.98px) {
-            .dash-summary-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-        }
-    </style>
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
@@ -1330,7 +1075,7 @@ if ($tablaExiste) {
                                 <a href="<?php echo msp2Escape(msp2Url('reportes/consumo_gas.php')); ?>" class="btn btn-outline-danger btn-sm">
                                     <i class="bi bi-fire me-1" aria-hidden="true"></i>Gas
                                 </a>
-                                <a href="<?php echo msp2Escape(msp2Url('reportes/consumo_agua.php')); ?>" class="btn btn-outline-info btn-sm">
+                                <a href="<?php echo msp2Escape(msp2Url('reportes/consumo_agua.php')); ?>" class="btn btn-outline-primary btn-sm">
                                     <i class="bi bi-droplet me-1" aria-hidden="true"></i>Agua
                                 </a>
                             </div>
@@ -1352,49 +1097,49 @@ if ($tablaExiste) {
             <section>
                     <div class="dash-summary-kpis mb-2">
                         <div class="col-12 col-md-6 col-xl-3">
-                            <div class="dash-kpi-card is-accent p-3 h-100">
+                            <div class="dash-kpi-item is-accent p-3 h-100">
                                 <div class="dash-kpi-label">Emitido bruto</div>
                                 <div class="dash-kpi-value"><?php echo msp2Escape(dashboardFmtMonto($resumenKpi['facturado'])); ?></div>
                                 <div class="dash-kpi-sub"><?php echo (int) $resumenKpi['documentos']; ?> documentos | arriendo + servicios + otros</div>
                             </div>
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
-                            <div class="dash-kpi-card p-3 bg-white h-100">
+                            <div class="dash-kpi-item p-3 h-100">
                                 <div class="dash-kpi-label">Cobrado</div>
                                 <div class="dash-kpi-value"><?php echo msp2Escape(dashboardFmtMonto($resumenKpi['cobrado'])); ?></div>
                                 <div class="dash-kpi-sub">Recaudación <?php echo msp2Escape(dashboardFmtPorcentaje($resumenKpi['recaudacion_pct'])); ?></div>
                             </div>
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
-                            <div class="dash-kpi-card p-3 bg-white h-100">
+                            <div class="dash-kpi-item p-3 h-100">
                                 <div class="dash-kpi-label">Saldo pendiente</div>
                                 <div class="dash-kpi-value"><?php echo msp2Escape(dashboardFmtMonto($resumenKpi['saldo'])); ?></div>
                                 <div class="dash-kpi-sub"><?php echo (int) $resumenKpi['arrendatarios_con_deuda']; ?> arrendatarios con deuda</div>
                             </div>
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
-                            <div class="dash-kpi-card p-3 bg-white h-100">
+                            <div class="dash-kpi-item p-3 h-100">
                                 <div class="dash-kpi-label">Morosidad vencida</div>
                                 <div class="dash-kpi-value"><?php echo msp2Escape(dashboardFmtMonto($operacionKpi['monto_vencido'])); ?></div>
                                 <div class="dash-kpi-sub"><?php echo (int) $operacionKpi['documentos_vencidos']; ?> documentos vencidos</div>
                             </div>
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
-                            <div class="dash-overview-card">
+                            <div class="dash-kpi-item">
                                 <div class="dash-overview-label">Contratos vigentes</div>
                                 <div class="dash-overview-value"><?php echo (int) $operacionKpi['contratos_vigentes']; ?></div>
                                 <div class="dash-overview-sub"><?php echo (int) $operacionKpi['contratos_en_liquidacion']; ?> en liquidación</div>
                             </div>
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
-                            <div class="dash-overview-card">
+                            <div class="dash-kpi-item">
                                 <div class="dash-overview-label">Ocupación</div>
                                 <div class="dash-overview-value"><?php echo (int) $operacionKpi['locales_ocupados']; ?> / <?php echo (int) $operacionKpi['locales_total']; ?></div>
                                 <div class="dash-overview-sub"><?php echo msp2Escape(dashboardFmtPorcentaje($operacionKpi['ocupacion_pct'])); ?> de locales ocupados</div>
                             </div>
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
-                            <div class="dash-overview-card">
+                            <div class="dash-kpi-item">
                                 <div class="dash-overview-label">Tiendas con deuda</div>
                                 <div class="dash-overview-value"><?php echo (int) $insightsKpi['tiendas_con_deuda']; ?></div>
                                 <div class="dash-overview-sub">Sobre <?php echo count($registrosPorTienda); ?> tiendas con movimiento</div>
@@ -1417,29 +1162,29 @@ if ($tablaExiste) {
                             </div>
                             <div class="col-12 col-xl-4">
                                 <div class="dash-consumption-kpis">
-                                    <div class="dash-kpi-card bg-white">
+                                    <div class="dash-kpi-item">
                                         <div class="dash-kpi-label">Servicios facturados</div>
                                         <div class="dash-kpi-value"><?php echo msp2Escape(dashboardFmtMonto($consumoKpi['total_actual'])); ?></div>
                                         <div class="dash-kpi-sub">Luz, gas y agua del rango actual</div>
                                     </div>
-                                    <div class="dash-kpi-card bg-white">
+                                    <div class="dash-kpi-item">
                                         <div class="dash-kpi-label">Variación comparable</div>
                                         <div class="dash-kpi-value"><?php echo msp2Escape(dashboardFmtDelta($consumoKpi['variacion_pct'])); ?></div>
                                         <div class="dash-kpi-sub"><?php echo msp2Escape(dashboardFmtMonto($consumoKpi['variacion_nominal'])); ?> vs ventana anterior</div>
                                     </div>
-                                    <div class="dash-kpi-card bg-white">
+                                    <div class="dash-kpi-item">
                                         <div class="dash-kpi-label">Promedio por local</div>
                                         <div class="dash-kpi-value"><?php echo msp2Escape(dashboardFmtMonto($consumoKpi['promedio_local'])); ?></div>
                                         <div class="dash-kpi-sub"><?php echo (int) $consumoKpi['locales_con_consumo']; ?> locales con consumo</div>
                                     </div>
-                                    <div class="dash-kpi-card bg-white">
+                                    <div class="dash-kpi-item">
                                         <div class="dash-kpi-label">Local más costoso</div>
                                         <div class="dash-kpi-value"><?php echo msp2Escape((string) $consumoKpi['local_top_nombre']); ?></div>
                                         <div class="dash-kpi-sub"><?php echo msp2Escape(dashboardFmtMonto($consumoKpi['local_top_monto'])); ?> en servicios</div>
                                     </div>
                                     <?php foreach (['luz', 'agua', 'gas'] as $servicioKey): ?>
                                         <?php $servicio = $consumoServicios[$servicioKey]; ?>
-                                        <div class="dash-overview-card">
+                                        <div class="dash-kpi-item">
                                             <div class="dash-overview-label"><?php echo msp2Escape($servicio['label']); ?> consumid<?php echo $servicioKey === 'agua' ? 'a' : 'o'; ?></div>
                                             <div class="dash-overview-value"><?php echo number_format((float) $servicio['consumo_actual'], 0, ',', '.'); ?> <?php echo msp2Escape($servicio['unidad']); ?></div>
                                             <div class="dash-overview-sub"><?php echo msp2Escape(dashboardFmtDelta($servicio['variacion_pct'])); ?> vs ventana anterior</div>
@@ -1447,7 +1192,7 @@ if ($tablaExiste) {
                                     <?php endforeach; ?>
                                     <?php foreach (['luz', 'agua', 'gas'] as $servicioKey): ?>
                                         <?php $servicio = $consumoServicios[$servicioKey]; ?>
-                                        <div class="dash-overview-card">
+                                        <div class="dash-kpi-item">
                                             <div class="dash-overview-label">Costo promedio <?php echo msp2Escape(mb_strtolower($servicio['label'], 'UTF-8')); ?></div>
                                             <div class="dash-overview-value"><?php echo msp2Escape(dashboardFmtMonto($servicio['costo_promedio'])); ?></div>
                                             <div class="dash-overview-sub"><?php echo msp2Escape(dashboardFmtMonto($servicio['costo_actual'])); ?> facturados</div>
@@ -1672,8 +1417,8 @@ if ($tablaExiste) {
         <?php endif; ?>
     </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <script>
 const historialLabels = <?php echo dashboardJson($chartSeries['historial_labels']); ?>;
 const historialFacturado = <?php echo dashboardJson($chartSeries['historial_facturado']); ?>;

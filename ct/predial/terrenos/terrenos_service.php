@@ -2014,7 +2014,7 @@ function ctTerrenosHandleAjax(PDO $conn, array $query): bool
     } catch (Throwable $exception) {
         http_response_code(400);
         echo (string) json_encode(
-            ['ok' => false, 'message' => $exception->getMessage()],
+            ['ok' => false, 'message' => pgpPublicOrBusinessException($exception, 'ct.terrenos.historial', 'No fue posible cargar el historial.')],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
         );
     }
