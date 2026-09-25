@@ -11,6 +11,28 @@ header('Pragma: no-cache');
 $flash = msp2PullFlash();
 
 $sections = msp2QuickAccessMenuSections();
+require_once __DIR__ . '/services/PortalInicioService.php';
+
+$puedeOperacion = msp2CurrentUserHasPermission('MSP Operacion')
+    || msp2CurrentUserHasPermission('MSP Cierre Mensual');
+$puedeFinanzas = msp2CurrentUserHasPermission('MSP Cobranza')
+    || msp2CurrentUserHasPermission('MSP Reportes');
+$portalInicio = (new PortalInicioService($conn))->cargar($puedeOperacion, $puedeFinanzas);
+$portalOperacion = is_array($portalInicio['operacion'] ?? null) ? $portalInicio['operacion'] : [];
+$portalFinanzas = is_array($portalInicio['finanzas'] ?? null) ? $portalInicio['finanzas'] : [];
+$portalPendientes = msp2CurrentUserHasPermission('MSP Operacion')
+    ? msp2PendingNotificationSnapshot()
+    : ['available' => true, 'total' => 0, 'critical' => 0, 'items' => []];
+$portalPeriodoYm = (string) ($portalInicio['periodo_ym'] ?? date('Y-m'));
+$portalPeriodoTexto = (string) ($portalInicio['periodo_texto'] ?? $portalPeriodoYm);
+$portalMoney = static fn (mixed $value): string => '$ ' . number_format((float) $value, 0, ',', '.');
+$portalPercent = static fn (mixed $value): string => $value === null
+    ? 'Sin base'
+    : number_format((float) $value, 1, ',', '.') . ' %';
+$portalExpected = max(
+    (int) ($portalOperacion['documentos_esperados'] ?? 0),
+    (int) ($portalOperacion['documentos_generados'] ?? 0) + (int) ($portalOperacion['documentos_pendientes'] ?? 0)
+);
 
 $sectionsById = [];
 foreach ($sections as $section) {
@@ -315,14 +337,174 @@ $menuColumns = array_values(array_filter(
         }
     </style>
 </head>
-<body class="gp-layout bg-light">
+<body class="gp-layout gp-module-msp bg-light">
 <?php include dirname(__DIR__) . '/templates/header.php'; ?>
 
 <main class="gp-main d-flex align-items-start justify-content-center p-3 p-md-4">
     <div class="box-container-full mspv2-shell" data-tour="menu-root">
 
+    <section class="msp-portal-home" aria-labelledby="mspPortalTitle">
+        <header class="msp-portal-toolbar">
+            <button class="btn btn-outline-secondary btn-sm msp-portal-menu-trigger" type="button" aria-expanded="false" aria-controls="mspPortalSidebar">
+                <i class="bi bi-list" aria-hidden="true"></i>
+                <span>Áreas</span>
+            </button>
+            <div class="msp-portal-heading">
+                <h1 id="mspPortalTitle">Mercado San Pedro</h1>
+                <p>Portal de gestión MSP</p>
+            </div>
+            <div class="msp-portal-period">
+                <i class="bi bi-calendar3" aria-hidden="true"></i>
+                <span>Período operativo: <strong><?php echo msp2Escape($portalPeriodoTexto); ?></strong></span>
+            </div>
+            <div class="msp-portal-toolbar-actions">
+                <a href="<?php echo msp2Escape(msp2Url('ayuda/index.php')); ?>" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-question-circle" aria-hidden="true"></i><span>Ayuda</span>
+                </a>
+                <a href="/portalgp/index.php" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-grid" aria-hidden="true"></i><span>PortalGP</span>
+                </a>
+            </div>
+        </header>
+
+        <?php msp2RenderFlash($flash); ?>
+
+        <div class="msp-portal-layout">
+            <aside class="msp-portal-sidebar" id="mspPortalSidebar" aria-label="Áreas principales de MSP">
+                <p class="msp-portal-sidebar-label">Áreas principales</p>
+                <nav class="msp-portal-nav">
+                    <button type="button" class="msp-portal-nav-item is-active" data-portal-section-target="inicio" aria-current="page">
+                        <i class="bi bi-grid-1x2" aria-hidden="true"></i><span>Inicio</span><i class="bi bi-chevron-right" aria-hidden="true"></i>
+                    </button>
+                    <?php foreach ($sections as $portalSection): ?>
+                        <button
+                            type="button"
+                            class="msp-portal-nav-item"
+                            data-portal-section-target="<?php echo msp2Escape((string) ($portalSection['id'] ?? '')); ?>">
+                            <i class="bi <?php echo msp2Escape((string) ($portalSection['icon'] ?? 'bi-grid')); ?>" aria-hidden="true"></i>
+                            <span><?php echo msp2Escape((string) ($portalSection['label'] ?? 'Área')); ?></span>
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        </button>
+                    <?php endforeach; ?>
+                </nav>
+                <p class="msp-portal-sidebar-note">Las áreas se abren con un clic y muestran únicamente las opciones autorizadas.</p>
+            </aside>
+
+            <div class="msp-portal-content">
+                <div class="msp-portal-summary-head">
+                    <div>
+                        <h2>Resumen operativo</h2>
+                        <p>Situación principal de <?php echo msp2Escape($portalPeriodoTexto); ?>.</p>
+                    </div>
+                    <span class="msp-portal-live-dot"><i aria-hidden="true"></i>Datos de PORTALGP</span>
+                </div>
+
+                <div class="msp-portal-kpis" aria-label="Indicadores principales">
+                    <?php if ($puedeOperacion): ?>
+                        <?php
+                        $portalEstadoCodigo = $portalOperacion['estado_codigo'] ?? null;
+                        $portalEstadoClass = $portalEstadoCodigo === 3 ? 'is-success' : ($portalEstadoCodigo === 4 ? 'is-danger' : 'is-warning');
+                        ?>
+                        <a class="msp-portal-kpi <?php echo $portalEstadoClass; ?>" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php?periodo=' . rawurlencode($portalPeriodoYm))); ?>">
+                            <span class="msp-portal-kpi-top"><span>Estado del mes</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></span>
+                            <strong><?php echo msp2Escape((string) ($portalOperacion['estado'] ?? 'No disponible')); ?></strong>
+                            <small><?php echo (bool) ($portalOperacion['disponible'] ?? false) ? 'Abrir operación de ' . msp2Escape($portalPeriodoTexto) : 'No fue posible consultar el período'; ?></small>
+                        </a>
+                        <a class="msp-portal-kpi" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php?periodo=' . rawurlencode($portalPeriodoYm))); ?>">
+                            <span class="msp-portal-kpi-top"><span>Documentos de cobro</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></span>
+                            <strong>
+                                <?php if ((bool) ($portalOperacion['disponible'] ?? false)): ?>
+                                    <?php echo (int) ($portalOperacion['documentos_generados'] ?? 0); ?> / <?php echo $portalExpected; ?>
+                                <?php else: ?>No disponible<?php endif; ?>
+                            </strong>
+                            <small><?php echo (int) ($portalOperacion['documentos_pendientes'] ?? 0); ?> pendientes de generación</small>
+                        </a>
+                    <?php endif; ?>
+
+                    <?php if ($puedeFinanzas): ?>
+                        <a class="msp-portal-kpi is-success" href="<?php echo msp2Escape(msp2Url('dashboard/index.php')); ?>">
+                            <span class="msp-portal-kpi-top"><span>Cobrado</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></span>
+                            <strong><?php echo (bool) ($portalFinanzas['disponible'] ?? false) ? msp2Escape($portalMoney($portalFinanzas['cobrado'] ?? 0)) : 'No disponible'; ?></strong>
+                            <small><?php echo msp2Escape($portalPercent($portalFinanzas['recaudacion_pct'] ?? null)); ?> de recaudación del período</small>
+                        </a>
+                        <a class="msp-portal-kpi is-danger" href="<?php echo msp2Escape(msp2Url('contabilidad/aging.php')); ?>">
+                            <span class="msp-portal-kpi-top"><span>Deuda vencida</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></span>
+                            <strong><?php echo (bool) ($portalFinanzas['disponible'] ?? false) ? msp2Escape($portalMoney($portalFinanzas['deuda_vencida'] ?? 0)) : 'No disponible'; ?></strong>
+                            <small><?php echo (int) ($portalFinanzas['documentos_vencidos'] ?? 0); ?> documentos requieren seguimiento</small>
+                        </a>
+                    <?php endif; ?>
+
+                    <?php if (msp2CurrentUserHasPermission('MSP Operacion')): ?>
+                        <a class="msp-portal-kpi is-danger" href="<?php echo msp2Escape(msp2Url('pendientes/index.php?vista=criticos')); ?>">
+                            <span class="msp-portal-kpi-top"><span>Pendientes críticos</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></span>
+                            <strong><?php echo (bool) ($portalPendientes['available'] ?? false) ? (int) ($portalPendientes['critical'] ?? 0) : 'No disponible'; ?></strong>
+                            <small><?php echo (bool) ($portalPendientes['available'] ?? false) ? 'Acceso directo desde la campana superior' : 'Abre la bandeja para reintentar'; ?></small>
+                        </a>
+                    <?php endif; ?>
+                </div>
+
+                <section class="msp-portal-workspace" aria-live="polite">
+                    <div class="msp-portal-panel" data-portal-panel="inicio">
+                        <header class="msp-portal-panel-head">
+                            <div><h2>Inicio operativo</h2><p>Selecciona un área para ver sus módulos y acciones disponibles.</p></div>
+                        </header>
+                        <div class="msp-portal-modules">
+                            <?php foreach ($sections as $portalSection): ?>
+                                <button type="button" class="msp-portal-module msp-portal-module-button" data-portal-section-target="<?php echo msp2Escape((string) ($portalSection['id'] ?? '')); ?>">
+                                    <span class="msp-portal-module-icon"><i class="bi <?php echo msp2Escape((string) ($portalSection['icon'] ?? 'bi-grid')); ?>" aria-hidden="true"></i></span>
+                                    <span class="msp-portal-module-copy">
+                                        <strong><?php echo msp2Escape((string) ($portalSection['label'] ?? 'Área')); ?></strong>
+                                        <small><?php echo msp2Escape((string) ($portalSection['description'] ?? 'Abre los módulos disponibles.')); ?></small>
+                                        <span>Ver opciones <i class="bi bi-arrow-right" aria-hidden="true"></i></span>
+                                    </span>
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <?php foreach ($sections as $portalSection): ?>
+                        <?php $portalSectionId = (string) ($portalSection['id'] ?? ''); ?>
+                        <div class="msp-portal-panel" data-portal-panel="<?php echo msp2Escape($portalSectionId); ?>" hidden>
+                            <header class="msp-portal-panel-head">
+                                <div>
+                                    <h2><?php echo msp2Escape((string) ($portalSection['label'] ?? 'Área MSP')); ?></h2>
+                                    <p><?php echo msp2Escape((string) ($portalSection['description'] ?? 'Selecciona una opción para continuar.')); ?></p>
+                                </div>
+                                <div class="msp-portal-panel-actions">
+                                    <?php if ($portalSectionId === 'operacion'): ?>
+                                        <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('correcciones/index.php?periodo_facturacion=' . rawurlencode($portalPeriodoYm))); ?>">Corregir operación</a>
+                                        <?php if (msp2CurrentUserHasPermission('MSP Cierre Mensual')): ?>
+                                            <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('cierre_mensual/index.php?filtroTexto=' . rawurlencode($portalPeriodoYm))); ?>">Registro de cierre</a>
+                                        <?php endif; ?>
+                                    <?php elseif ($portalSectionId === 'cobranza'): ?>
+                                        <a class="btn btn-primary btn-sm" href="<?php echo msp2Escape(msp2Url('cobranza/registrar_pago_contrato.php')); ?>">Registrar pago</a>
+                                    <?php elseif ($portalSectionId === 'garantias'): ?>
+                                        <a class="btn btn-primary btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/index.php')); ?>">Buscar garantía</a>
+                                    <?php endif; ?>
+                                </div>
+                            </header>
+                            <div class="msp-portal-modules">
+                                <?php foreach ((array) ($portalSection['items'] ?? []) as $portalItem): ?>
+                                    <?php if (!(bool) ($portalItem['enabled'] ?? false)) { continue; } ?>
+                                    <a class="msp-portal-module" href="<?php echo msp2Escape((string) ($portalItem['href'] ?? '#')); ?>">
+                                        <span class="msp-portal-module-icon"><i class="bi <?php echo msp2Escape((string) ($portalItem['icon'] ?? 'bi-grid')); ?>" aria-hidden="true"></i></span>
+                                        <span class="msp-portal-module-copy">
+                                            <strong><?php echo msp2Escape((string) ($portalItem['label'] ?? 'Módulo')); ?></strong>
+                                            <small><?php echo msp2Escape((string) ($portalItem['caption'] ?? 'Abrir módulo MSP.')); ?></small>
+                                            <span>Abrir módulo <i class="bi bi-arrow-right" aria-hidden="true"></i></span>
+                                        </span>
+                                    </a>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </section>
+            </div>
+        </div>
+    </section>
+
     <!-- Hero -->
-    <div class="mspv2-hero" data-tour="menu-header" data-gp-commandbar>
+    <div class="mspv2-hero" data-tour="menu-header" data-gp-commandbar hidden>
         <div class="mspv2-hero-back">
             <a href="/portalgp/index.php" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú principal
@@ -337,10 +519,8 @@ $menuColumns = array_values(array_filter(
         <h1 class="mspv2-hero-title">Mercado San Pedro</h1>
     </div>
 
-    <?php msp2RenderFlash($flash); ?>
-
     <!-- Grid de secciones -->
-    <div class="mspv2-grid" role="navigation" aria-label="Módulos del sistema">
+    <div class="mspv2-grid" role="navigation" aria-label="Módulos del sistema" hidden>
         <?php foreach ($menuColumns as $column): ?>
             <div class="mspv2-column" data-menu-col="<?= msp2Escape((string) ($column['id'] ?? '')) ?>">
                 <?php foreach ((array) ($column['section_ids'] ?? []) as $sectionId): ?>
@@ -403,8 +583,7 @@ $menuColumns = array_values(array_filter(
 </main>
 
 <script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script src="/portalgp/assets/vendor/driver.js-1.3.6/driver.js.iife.js"></script>
-<script src="<?php echo msp2Escape(msp2Url('assets/msp_tour_menu.js')); ?>"></script>
+<script src="<?php echo msp2Escape(msp2Url('assets/portal_home.js')); ?>" defer></script>
 <?php include dirname(__DIR__) . '/templates/footer.php'; ?>
 </body>
 </html>
