@@ -36,7 +36,7 @@ if (!function_exists('gpRenderMontoClpAssets')) {
         }
         $assetsRendered = true;
         ?>
-        <style>
+        <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .gp-monto-label {
             margin-bottom: .25rem;
             font-size: .78rem;
@@ -57,7 +57,7 @@ if (!function_exists('gpRenderMontoClpAssets')) {
             color: #15803d;
         }
         </style>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const bind = () => {
                 document.querySelectorAll('.js-gp-monto-clp').forEach((input) => {

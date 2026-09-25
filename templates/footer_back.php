@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-     <style>
+     <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         footer {
             background-color: #3C4C4E; /* Color sólido proporcionado */
             color: #fff; /* Blanco para contraste */

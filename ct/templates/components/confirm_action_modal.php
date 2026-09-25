@@ -23,4 +23,4 @@ declare(strict_types=1);
         </div>
     </div>
 </div>
-<script src="<?php echo ctEscape(ctUrl('assets/ct_confirm_action.js')); ?>"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="<?php echo ctEscape(ctUrl('assets/ct_confirm_action.js')); ?>"></script>

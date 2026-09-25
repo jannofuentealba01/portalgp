@@ -30,7 +30,7 @@ $permisos = $conn->query("SELECT * FROM cr_permisos")->fetchAll(PDO::FETCH_ASSOC
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Permisos</title>
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f4;

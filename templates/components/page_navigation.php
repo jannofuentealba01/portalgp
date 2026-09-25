@@ -77,6 +77,7 @@ function gpPageNavigationContextReturn(): ?array
 
     $labels = [
         'pendientes/index.php' => 'Volver a pendientes',
+        'cobros/operacion_mensual.php' => 'Volver a generar documentos',
         'cierre/index.php' => 'Volver a término y cierre',
         'garantias/index.php' => 'Volver a Garantías',
         'contratos/index.php' => 'Volver a contratos',
@@ -221,10 +222,10 @@ function gpPageNavigationMetadata(): array
 
 $gpPageNavigation = gpPageNavigationMetadata();
 ?>
-<script type="application/json" id="gp-page-navigation-data"><?php
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> type="application/json" id="gp-page-navigation-data"><?php
 echo json_encode($gpPageNavigation, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
 ?></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const initPageNavigation = () => {
         const dataNode = document.getElementById('gp-page-navigation-data');
@@ -470,7 +471,7 @@ echo json_encode($gpPageNavigation, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNIC
     }
 })();
 </script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const initMspFormSystem = () => {
         if (!document.body.classList.contains('gp-module-msp')) {

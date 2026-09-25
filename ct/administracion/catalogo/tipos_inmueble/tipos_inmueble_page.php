@@ -30,7 +30,7 @@ ob_start();
 <link rel="stylesheet" href="/portalgp/ct/administracion/catalogo/tipos_inmueble/assets/tipos_inmueble.css">
 <?php require __DIR__ . '/views/list.php'; ?>
 <?php require __DIR__ . '/views/modals.php'; ?>
-<script src="/portalgp/ct/administracion/catalogo/tipos_inmueble/assets/tipos_inmueble.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/ct/administracion/catalogo/tipos_inmueble/assets/tipos_inmueble.js"></script>
 <?php
 $pageBodyHtml = (string) ob_get_clean();
 require dirname(__DIR__, 3) . '/templates/module_shell.php';

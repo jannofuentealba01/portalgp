@@ -64,7 +64,7 @@ if (!function_exists('gpRenderConfirmActionAssets')) {
         }
         $rendered = true;
         ?>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const state = new WeakMap();
 

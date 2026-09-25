@@ -26,7 +26,7 @@ if ($pageMaxWidth < 960) {
     <link rel="stylesheet" href="/portalgp/styles.css">
     <link rel="stylesheet" href="/portalgp/ct/assets/ct_forms.css">
     <link rel="stylesheet" href="/portalgp/ct/assets/ct_crud.css">
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .ct-module-shell {
             width: min(<?php echo (int) $pageMaxWidth; ?>px, 96vw);
             margin: 0 auto;
@@ -109,6 +109,6 @@ if ($pageMaxWidth < 960) {
 </main>
 
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

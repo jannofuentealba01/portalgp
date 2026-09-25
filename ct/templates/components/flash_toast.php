@@ -47,5 +47,5 @@ $icon = $iconByType[$type] ?? 'bi-info-circle-fill';
         </div>
     </div>
 </div>
-<script src="<?php echo ctEscape(ctUrl('assets/ct_flash_toast.js')); ?>"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="<?php echo ctEscape(ctUrl('assets/ct_flash_toast.js')); ?>"></script>
 

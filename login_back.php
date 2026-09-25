@@ -10,7 +10,7 @@ exit;
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portal GP | Iniciar sesión</title>
     <link rel="stylesheet" href="styles.css">
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         :root {
             --auth-shadow: none;
             --auth-overlay-start: rgba(8, 40, 75, 0.62);
@@ -468,7 +468,7 @@ exit;
         </section>
     </main>
 
-    <script>
+    <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (function () {
             const toggle = document.querySelector(".toggle-password");
             const passwordInput = document.getElementById("password");

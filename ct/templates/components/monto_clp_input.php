@@ -47,7 +47,7 @@ if (!function_exists('ctRenderMontoClpAssets')) {
         }
         $assetsRendered = true;
         ?>
-        <style>
+        <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
             .ct-monto-label {
                 margin-bottom: .25rem;
                 font-size: .78rem;
@@ -74,7 +74,7 @@ if (!function_exists('ctRenderMontoClpAssets')) {
                 color: #15803d;
             }
         </style>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const bindMontoClpInputs = () => {
                 const montoInputs = Array.from(document.querySelectorAll('.js-ct-monto-clp')).filter((el) => el instanceof HTMLInputElement);

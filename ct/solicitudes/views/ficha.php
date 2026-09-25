@@ -386,7 +386,7 @@ require_once __DIR__ . '/partials/tercero_modal.php';
                                                                                 src="<?php echo ctEscape((string) $personaTag['url_logo']); ?>"
                                                                                 alt="<?php echo ctEscape((string) $personaTag['nombre']); ?>"
                                                                                 loading="lazy"
-                                                                                onerror="this.style.display='none';var p=this.parentNode;if(p&&p.classList){p.classList.remove('has-image');}">
+                                                                                onerror="this.hidden=true;var p=this.parentNode;if(p&&p.classList){p.classList.remove('has-image');}">
                                                                         <?php endif; ?>
                                                                         <span class="ct-participant-avatar-fallback"><?php echo ctEscape((string) $personaTag['initial']); ?></span>
                                                                     </span>
@@ -410,7 +410,7 @@ require_once __DIR__ . '/partials/tercero_modal.php';
                                                                                 src="<?php echo ctEscape((string) $personaTag['url_logo']); ?>"
                                                                                 alt="<?php echo ctEscape((string) $personaTag['nombre']); ?>"
                                                                                 loading="lazy"
-                                                                                onerror="this.style.display='none';var p=this.parentNode;if(p&&p.classList){p.classList.remove('has-image');}">
+                                                                                onerror="this.hidden=true;var p=this.parentNode;if(p&&p.classList){p.classList.remove('has-image');}">
                                                                         <?php endif; ?>
                                                                         <span class="ct-participant-avatar-fallback"><?php echo ctEscape((string) $personaTag['initial']); ?></span>
                                                                     </span>
@@ -809,7 +809,7 @@ require_once __DIR__ . '/partials/tercero_modal.php';
                 </div>
 
             </div>
-            <style>
+            <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
                 .ct-sol-area-thread {
                     background: #f8fafc;
                     height: 100%;
@@ -981,8 +981,9 @@ require_once __DIR__ . '/partials/tercero_modal.php';
                     }
                 }
             </style>
-            <script src="/portalgp/assets/vendor/htmx-1.9.12/htmx.min.js"></script>
-            <script>
+            <?php echo pgpCspHtmxConfigMeta(); ?>
+            <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/htmx-1.9.12/htmx.min.js"></script>
+            <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
             (function () {
                 function syncAreaCommentsHeight() {
                     var desktopMode = window.matchMedia('(min-width: 992px)').matches;

@@ -28,7 +28,7 @@ $roles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <head>
     <meta charset="UTF-8">
     <title>Crear Usuario</title>
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f4;

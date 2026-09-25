@@ -26,7 +26,7 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
 <!-- Agregar Bootstrap CSS (si no est� incluido en el header) -->
 <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-4.5.2/css/bootstrap.min.css">
 
-<style>
+<style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
     /* Estilos personalizados (mismo dise�o que editar_marca.php) */
     body {
         background-color: #f0f2f5;
@@ -319,7 +319,7 @@ $estados = $conn->query("SELECT id, estado FROM cr_estado_usuario")->fetchAll(PD
     </div>
 </div>
 
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 function abrirModal(usuario) {
     document.getElementById("edit_id").value = usuario.id;
     document.getElementById("edit_username").value = usuario.UserName;

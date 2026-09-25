@@ -12,7 +12,7 @@ if (!function_exists('gpRenderSearchableSelectAssets')) {
         }
         $assetsRendered = true;
         ?>
-        <style>
+        <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .gp-searchable-select-btn {
             display: flex;
             align-items: center;
@@ -47,7 +47,7 @@ if (!function_exists('gpRenderSearchableSelectAssets')) {
             scrollbar-gutter: stable;
         }
         </style>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const instances = new Map();
 
@@ -289,7 +289,7 @@ if (!function_exists('gpRenderSearchableSelectField')) {
                         data-searchable-filter
                         class="form-control form-control-sm mb-2"
                         placeholder="<?php echo gpComponentEscape($filterPlaceholder); ?>">
-                    <div class="list-group list-group-flush gp-searchable-select-list" id="<?php echo gpComponentEscape($listId); ?>" data-searchable-list style="max-height: <?php echo gpComponentEscape($listMaxHeight); ?>;">
+                    <div class="list-group list-group-flush gp-searchable-select-list" id="<?php echo gpComponentEscape($listId); ?>" data-searchable-list <?php echo pgpCspStyleAttribute('max-height: ' . $listMaxHeight . ';'); ?>>
                         <?php if ($items === []): ?>
                             <div class="small text-muted px-2 py-1"><?php echo gpComponentEscape($emptyMessage); ?></div>
                         <?php else: ?>

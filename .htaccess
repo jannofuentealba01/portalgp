@@ -14,6 +14,11 @@ RewriteRule ^(?:tests|scripts|config|del)(?:/|$) - [F,L,NC]
     Require all denied
 </FilesMatch>
 
+# Los prototipos HTML no forman parte de la aplicación operativa.
+<FilesMatch "(?i)(?:mockup|prototype).*\.html?$">
+    Require all denied
+</FilesMatch>
+
 # Las pantallas administrativas vigentes están exclusivamente en /sistema/gestion/.
 <FilesMatch "^(?:crear_usuario|editar_usuario|eliminar_usuario|desactivar_usuario|gestion_usuarios_permisos|crear_permiso|listar_permisos|editar_eliminar_permisos|asignar_permisos_roles|procesar_asignar_permisos|procesar_crear_usuario|procesar_editar_usuario|procesar_eliminar_usuario)\.php$">
     Require all denied
@@ -35,8 +40,13 @@ RewriteRule ^(?:tests|scripts|config|del)(?:/|$) - [F,L,NC]
     Header always set X-Permitted-Cross-Domain-Policies "none"
     Header always set Cross-Origin-Opener-Policy "same-origin"
     Header always set Cross-Origin-Resource-Policy "same-origin"
-    Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
     Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+
+    # PHP genera una CSP por respuesta con nonce y hashes de atributos exactos.
+    # Los documentos HTML/SVG estáticos no permiten contenido inline.
+    <FilesMatch "\.(?:html?|svg)$">
+        Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
+    </FilesMatch>
 
     <FilesMatch "\.php$">
         Header always set Cache-Control "no-store, private, max-age=0"

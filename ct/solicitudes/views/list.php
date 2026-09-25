@@ -479,7 +479,7 @@ $solicitudesFiltersConfig = [
     ],
 ];
 ?>
-<style>
+<style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 #ct-solicitud-preview-offcanvas {
     --bs-offcanvas-width: min(92vw, 460px);
 }
@@ -907,7 +907,7 @@ $solicitudesFiltersConfig = [
         </div>
     </div>
     <?php endif; ?>
-    <script>
+    <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
     (function () {
         var form = document.getElementById('ct-form-crear-solicitud');
         if (!form) {
@@ -1241,7 +1241,7 @@ $solicitudesFiltersConfig = [
         });
     })();
     </script>
-    <script>
+    <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
     (function () {
         var offcanvasEl = document.getElementById('ct-solicitud-preview-offcanvas');
         if (!offcanvasEl) {

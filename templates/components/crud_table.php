@@ -53,7 +53,7 @@ if (!function_exists('gpRenderCrudTableAssets')) {
         }
         $assetsRendered = true;
         ?>
-        <style>
+        <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .gp-crud-meta {
             display: flex;
             align-items: center;

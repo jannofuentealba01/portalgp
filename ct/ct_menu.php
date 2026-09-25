@@ -47,7 +47,7 @@ $sections = array_values(array_filter(array_map(static function (array $section)
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .ctv-shell {
             width: min(1320px, 96vw);
             margin: 0 auto;
@@ -272,7 +272,7 @@ $sections = array_values(array_filter(array_map(static function (array $section)
 </main>
 
 <?php include __DIR__ . '/templates/components/confirm_action_modal.php'; ?>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__) . '/templates/footer.php'; ?>
 </body>
 </html>

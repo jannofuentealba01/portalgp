@@ -152,7 +152,7 @@ function ctRenderCsrfAutoFieldScript(): void
         return;
     }
 
-    echo '<script>(function(){'
+    echo '<script' . pgpCspNonceAttribute() . '>(function(){'
         . 'const token=' . $tokenJson . ';'
         . 'const ensure=function(form){'
         . 'if(!(form instanceof HTMLFormElement)){return;}'

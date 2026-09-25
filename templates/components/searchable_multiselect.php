@@ -12,7 +12,7 @@ if (!function_exists('gpRenderSearchableMultiSelectAssets')) {
         }
         $assetsRendered = true;
         ?>
-        <style>
+        <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .gp-searchable-multiselect-btn {
             display: flex;
             align-items: center;
@@ -115,7 +115,7 @@ if (!function_exists('gpRenderSearchableMultiSelectAssets')) {
             font-weight: 700;
         }
         </style>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const instances = new Map();
 

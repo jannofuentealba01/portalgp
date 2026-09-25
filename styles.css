@@ -1,4 +1,31 @@
 /* Base enterprise styles (tokens + componentes) */
+.v2-concept-icon {
+  flex-shrink: 0;
+  font-size: 1.05em;
+}
+
+.v2-concept-icon--rent { color: #4f46e5; }
+.v2-concept-icon--electricity { color: #d97706; }
+.v2-concept-icon--gas { color: #dc2626; }
+.v2-concept-icon--water { color: #2563eb; }
+.v2-concept-icon--fine { color: #ea580c; }
+.v2-concept-icon--damage { color: #7c3aed; }
+.v2-concept-icon--default { color: #6b7280; }
+
+.v2-concept-name {
+  font-size: .92rem;
+}
+
+.v2-concept-balance {
+  color: var(--color-text-muted);
+  font-size: .85rem;
+  white-space: nowrap;
+}
+
+.v2-saldo-badge {
+  font-size: .72em;
+}
+
 :root {
   --color-bg: #f5f7fb;
   --color-surface: #ffffff;
@@ -4952,4 +4979,14 @@ a.gp-page-back {
     margin: .12rem 0;
     white-space: normal !important;
   }
+}
+/* HTMX indicators are local so the library never needs to inject an inline style. */
+.htmx-indicator {
+    opacity: 0;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    opacity: 1;
+    transition: opacity 200ms ease-in;
 }

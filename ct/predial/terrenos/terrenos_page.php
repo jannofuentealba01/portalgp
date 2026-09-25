@@ -83,9 +83,9 @@ if (!is_string($formRestoreJson)) {
     $formRestoreJson = '{}';
 }
 ?>
-<script>window.ctTerrenosFormRestore = <?php echo $formRestoreJson; ?>;</script>
-<script src="/portalgp/ct/predial/terrenos/assets/terrenos.js"></script>
-<script src="/portalgp/ct/contabilidad/assets/comercial.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>window.ctTerrenosFormRestore = <?php echo $formRestoreJson; ?>;</script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/ct/predial/terrenos/assets/terrenos.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/ct/contabilidad/assets/comercial.js"></script>
 <?php
 $pageBodyHtml = (string) ob_get_clean();
 

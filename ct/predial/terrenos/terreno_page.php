@@ -55,7 +55,7 @@ ob_start();
 ?>
 <link rel="stylesheet" href="/portalgp/ct/predial/terrenos/assets/terrenos.css">
 <?php require __DIR__ . '/views/terreno_ficha.php'; ?>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const parseSqlDateTimeUtc = (rawValue) => {
         const value = String(rawValue || '').trim();

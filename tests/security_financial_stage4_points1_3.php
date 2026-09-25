@@ -89,6 +89,31 @@ $testPayment=(int)$paymentResult['id_pago_generado'];
 $conn->rollBack();
 $assert($scalar('SELECT COUNT(*) FROM dbo.msp_pagos WHERE id_pago='.$testPayment)===0, 'la prueba de pago se revirtió completamente');
 
+$contractDoc=$conn->query("SELECT TOP(1) d.id_documento_cobro,d.saldo_pendiente,d.id_contrato_arriendo,c.id_arrendatario FROM dbo.msp_documentos_cobro d JOIN dbo.msp_contratos_arriendo c ON c.id_contrato_arriendo=d.id_contrato_arriendo WHERE d.estado_documento IN(2,3) AND d.saldo_pendiente>1 ORDER BY d.id_documento_cobro DESC")->fetch();
+$contractBefore=(float)$contractDoc['saldo_pendiente'];
+$conn->beginTransaction();
+$operationReference='PRUEBA-CONTRATO-'.bin2hex(random_bytes(6));
+$stmt=$conn->prepare("INSERT dbo.msp_pago_contrato_operaciones(id_arrendatario,id_contrato_arriendo,fecha_pago,monto_total_pagado,monto_total_aplicado,monto_total_excedente,monto_total_no_imputado,total_documentos,medio_pago,referencia_operacion,observaciones,estado_operacion) VALUES(:arr,:contract,:fecha,0.10,0,0,0.10,0,N'Transferencia',:reference,N'Prueba transaccional revertida',1)");
+$stmt->execute([':arr'=>(int)$contractDoc['id_arrendatario'],':contract'=>(int)$contractDoc['id_contrato_arriendo'],':fecha'=>date('Y-m-d'),':reference'=>$operationReference]);
+$testOperation=(int)$conn->lastInsertId();
+$stmt=$conn->prepare('SELECT TOP 1 id_pago_contrato_operacion FROM dbo.msp_pago_contrato_operaciones WITH (UPDLOCK,HOLDLOCK) WHERE referencia_operacion=:reference');
+$stmt->execute([':reference'=>$operationReference]);
+$lockedOperation=(int)($stmt->fetchColumn()?:0);
+$stmt=$conn->prepare("EXEC dbo.msp_registrar_pago_documento @id_documento_cobro=:doc,@fecha_pago=:fecha,@monto_pagado=0.10,@medio_pago=N'Transferencia',@referencia_pago=:reference,@observaciones=N'Prueba contrato revertida',@detalle_conceptos_json=NULL");
+$stmt->execute([':doc'=>(int)$contractDoc['id_documento_cobro'],':fecha'=>date('Y-m-d'),':reference'=>$operationReference]);
+$contractPaymentResult=$stmt->fetch();$stmt->closeCursor();
+$contractTestPayment=(int)($contractPaymentResult['id_pago_generado']??0);
+$contractApplied=round((float)($contractPaymentResult['monto_aplicado_documento']??0.10),2);
+$contractExcess=round((float)($contractPaymentResult['monto_saldo_favor_generado']??0),2);
+$stmt=$conn->prepare("INSERT dbo.msp_pago_contrato_operacion_detalle(id_pago_contrato_operacion,orden_aplicacion,id_pago,id_documento_cobro,saldo_pendiente_original,monto_intentado,monto_aplicado,monto_excedente,monto_consumido,monto_restante_luego) VALUES(:operation,1,:payment,:doc,:saldo,0.10,:applied,:excess,0.10,0)");
+$stmt->execute([':operation'=>$testOperation,':payment'=>$contractTestPayment,':doc'=>(int)$contractDoc['id_documento_cobro'],':saldo'=>$contractBefore,':applied'=>$contractApplied,':excess'=>$contractExcess]);
+$stmt=$conn->prepare("UPDATE dbo.msp_pago_contrato_operaciones SET monto_total_aplicado=:applied,monto_total_excedente=:excess,monto_total_no_imputado=0,total_documentos=1 WHERE id_pago_contrato_operacion=:operation");
+$stmt->execute([':applied'=>$contractApplied,':excess'=>$contractExcess,':operation'=>$testOperation]);
+$operationBalanced=(int)$conn->query('SELECT COUNT(*) FROM dbo.msp_pago_contrato_operaciones o JOIN dbo.msp_pago_contrato_operacion_detalle d ON d.id_pago_contrato_operacion=o.id_pago_contrato_operacion WHERE o.id_pago_contrato_operacion='.$testOperation.' AND d.id_pago='.$contractTestPayment.' AND ABS(o.monto_total_pagado-o.monto_total_aplicado-o.monto_total_excedente-o.monto_total_no_imputado)<=0.005')->fetchColumn();
+$assert($testOperation>0 && $lockedOperation===$testOperation && $contractTestPayment>0 && $operationBalanced===1, 'pago manual por contrato crea cabecera única, pago y trazabilidad balanceados');
+$conn->rollBack();
+$assert($scalar('SELECT COUNT(*) FROM dbo.msp_pago_contrato_operaciones WHERE id_pago_contrato_operacion='.$testOperation)===0 && $scalar('SELECT COUNT(*) FROM dbo.msp_pagos WHERE id_pago='.$contractTestPayment)===0, 'la prueba integral de pago por contrato se revirtió completamente');
+
 $saldoDoc=$conn->query("SELECT TOP(1) d.id_documento_cobro,d.id_tienda,d.saldo_pendiente,s.saldo_disponible FROM dbo.msp_documentos_cobro d JOIN dbo.msp_saldos_favor_tienda s ON s.id_tienda=d.id_tienda WHERE d.estado_documento IN(2,3) AND d.saldo_pendiente>1 AND s.saldo_disponible>1 ORDER BY d.id_documento_cobro DESC")->fetch();
 $saldoBefore=(float)$saldoDoc['saldo_disponible'];
 $conn->beginTransaction();
@@ -108,6 +133,8 @@ $sources=[
     'msp/pagos/anular.php'=>['beginTransaction()', 'msp_anular_pago_documento'],
     'msp/garantias/aplicar_documento.php'=>['beginTransaction()', 'categoria_aplicacion', 'commit()'],
     'msp/contratos/movimiento_garantia_cargo.php'=>['beginTransaction()', 'motivo_autorizacion', 'commit()'],
+    'msp/pagos/guardar_pago_contrato.php'=>['$mediosPagoPermitidos', ':monto_total_no_imputado', 'WITH (UPDLOCK, HOLDLOCK)', 'La solicitud de pago ya fue procesada.', 'closeCursor()', 'La distribución del pago por contrato no quedó cuadrada.'],
+    'msp/cobranza/registrar_pago_contrato.php'=>['$pagoContratoSolicitudId', 'name="referencia_operacion"', 'dataset.paymentSubmitting', 'confirmarComprobanteOmitirBtn', 'confirmarComprobanteEnviarBtn'],
 ];
 foreach($sources as $relative=>$needles){$source=(string)file_get_contents($root.'/'.$relative);foreach($needles as $needle)$assert(str_contains($source,$needle),$relative.' contiene '.$needle);}
 

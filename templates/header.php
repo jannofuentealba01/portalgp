@@ -63,6 +63,14 @@ if ($gpIsMsp2Route) {
                         </button>
                     </li>
                 <?php endif; ?>
+                <?php if (
+                    $gpIsMsp2Route
+                    && function_exists('msp2PendingNotificationSnapshot')
+                    && function_exists('msp2CurrentUserHasPermission')
+                    && msp2CurrentUserHasPermission('MSP Operacion')
+                ): ?>
+                    <?php require dirname(__DIR__) . '/msp/templates/components/pending_notifications.php'; ?>
+                <?php endif; ?>
                 <li>
                     <a href="/portalgp/index.php" class="gp-nav-link <?php echo $gpCurrentPage === 'index.php' ? 'gp-nav-link-active' : ''; ?>" <?php echo $gpCurrentPage === 'index.php' ? 'aria-current="page"' : ''; ?>>
                         Inicio
@@ -81,7 +89,7 @@ if ($gpIsMsp2Route) {
     </div>
 </header>
 
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (function () {
     function modalVisible() {
         return document.querySelector('.modal.show, .modal-backdrop.show') !== null;
@@ -120,9 +128,9 @@ if ($gpIsMsp2Route) {
 </script>
 
 <?php if ($gpIsMsp2Route): ?>
-    <script src="/portalgp/msp/assets/modal_form_feedback.js" defer></script>
-    <script src="/portalgp/msp/assets/button_system.js?v=<?php echo rawurlencode((string) @filemtime(dirname(__DIR__) . '/msp/assets/button_system.js')); ?>" defer></script>
-    <script src="/portalgp/msp/assets/table_system.js?v=<?php echo rawurlencode((string) @filemtime(dirname(__DIR__) . '/msp/assets/table_system.js')); ?>" defer></script>
+    <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/msp/assets/modal_form_feedback.js" defer></script>
+    <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/msp/assets/button_system.js?v=<?php echo rawurlencode((string) @filemtime(dirname(__DIR__) . '/msp/assets/button_system.js')); ?>" defer></script>
+    <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/msp/assets/table_system.js?v=<?php echo rawurlencode((string) @filemtime(dirname(__DIR__) . '/msp/assets/table_system.js')); ?>" defer></script>
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/components/page_navigation.php'; ?>
