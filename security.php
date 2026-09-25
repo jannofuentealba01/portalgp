@@ -524,16 +524,28 @@ function pgpSecurityUser(PDO $db, int $id): ?array
 
 function pgpValidateSession(PDO $db): bool
 {
+    static $requestCache = [];
+
     $id = (int) ($_SESSION['usuario']['id'] ?? 0);
     if ($id <= 0) {
         return false;
     }
-    $user = pgpSecurityUser($db, $id);
-    $version = (int) ($user['security_version'] ?? -1);
     // Adopt existing development sessions only at initial version zero.
     $sessionVersion = (int) ($_SESSION['pgp_security_version'] ?? 0);
+    // Web requests keep one identity snapshot; CLI checks may mutate fixtures mid-process.
+    $cacheEnabled = PHP_SAPI !== 'cli';
+    $cacheKey = spl_object_id($db) . '|' . $id . '|' . $sessionVersion;
+    if ($cacheEnabled && array_key_exists($cacheKey, $requestCache)) {
+        return $requestCache[$cacheKey];
+    }
+
+    $user = pgpSecurityUser($db, $id);
+    $version = (int) ($user['security_version'] ?? -1);
 
     if (!$user || (int) $user['estado_id'] !== 1 || $version !== $sessionVersion) {
+        if ($cacheEnabled) {
+            $requestCache[$cacheKey] = false;
+        }
         pgpSecurityDestroySession();
         return false;
     }
@@ -541,6 +553,9 @@ function pgpValidateSession(PDO $db): bool
     $_SESSION['usuario']['rol_id'] = (int) $user['rol_id'];
     $_SESSION['usuario']['roles'] = $user['nombre_rol'] !== null ? [(string) $user['nombre_rol']] : [];
     unset($_SESSION['usuario']['rol']);
+    if ($cacheEnabled) {
+        $requestCache[$cacheKey] = true;
+    }
     return true;
 }
 
@@ -644,18 +659,58 @@ function pgpRequestPermissionAction(?array $server = null, ?array $post = null):
 
 function pgpHasPermission(PDO $db, int $id, string $permission, string $action): bool
 {
+    static $requestCache = [];
+
     if ($id <= 0 || !in_array($action, ['lectura', 'escritura', 'eliminacion'], true)) {
         return false;
     }
-    // Column is exclusively from the allowlist above.
-    $stmt = $db->prepare('SELECT COUNT(*) FROM dbo.cr_usuarios u
+
+    // Load the complete role map once per web request instead of one query per check.
+    $cacheEnabled = PHP_SAPI !== 'cli';
+    $cacheKey = spl_object_id($db) . '|' . $id;
+    if (!$cacheEnabled || !array_key_exists($cacheKey, $requestCache)) {
+        $stmt = $db->prepare('SELECT p.nombre_permiso,rp.lectura,rp.escritura,rp.eliminacion
+        FROM dbo.cr_usuarios u
         JOIN dbo.cr_rol_permisos rp ON rp.rol_id=u.rol_id
         JOIN dbo.cr_permisos p ON p.id=rp.permiso_id
-        WHERE u.id=:id AND u.estado_id=1 AND p.nombre_permiso=:permission
-          AND rp.lectura=1 AND rp.' . $action . '=1'
-        . ($action === 'eliminacion' ? ' AND rp.escritura=1' : ''));
-    $stmt->execute([':id' => $id, ':permission' => $permission]);
-    return (int) $stmt->fetchColumn() > 0;
+        WHERE u.id=:id AND u.estado_id=1');
+        $stmt->execute([':id' => $id]);
+
+        $permissionMap = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $name = (string) ($row['nombre_permiso'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $current = $permissionMap[$name] ?? [
+                'lectura' => 0,
+                'escritura' => 0,
+                'eliminacion' => 0,
+            ];
+            foreach (['lectura', 'escritura', 'eliminacion'] as $flag) {
+                $current[$flag] = max($current[$flag], (int) ($row[$flag] ?? 0));
+            }
+            $permissionMap[$name] = $current;
+        }
+
+        if ($cacheEnabled) {
+            $requestCache[$cacheKey] = $permissionMap;
+        }
+    } else {
+        $permissionMap = $requestCache[$cacheKey];
+    }
+
+    $flags = $permissionMap[$permission] ?? null;
+    if (!is_array($flags) || (int) ($flags['lectura'] ?? 0) !== 1) {
+        return false;
+    }
+    if ($action === 'lectura') {
+        return true;
+    }
+    if ((int) ($flags['escritura'] ?? 0) !== 1) {
+        return false;
+    }
+    return $action === 'escritura' || (int) ($flags['eliminacion'] ?? 0) === 1;
 }
 
 function pgpCanManagePermissions(PDO $db, int $id): bool
