@@ -1,6 +1,6 @@
 <?php
 include 'db.php';
-include 'Templates/header.php';
+include __DIR__ . '/templates/header.php';
 
 if (!isset($_SESSION['usuario'])) {
     header("Location: login.php");
@@ -77,6 +77,6 @@ $nombreCompleto = $_SESSION['usuario']['nombre_completo'];
     </main>
 
     <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-    <?php include 'Templates/footer.php'; ?>
+    <?php include __DIR__ . '/templates/footer.php'; ?>
 </body>
 </html>

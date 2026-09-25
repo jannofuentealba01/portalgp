@@ -1,7 +1,7 @@
 <?php 
 include 'db.php';
 include 'permisos.php';
-include 'Templates/header.php';
+include __DIR__ . '/templates/header.php';
 
 // Verificar si el usuario ha iniciado sesión
 if (!isset($_SESSION['usuario'])) {
@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !$registrosAsociados) {
     <?php endif; ?>
 </div>
 
-<?php include 'Templates/footer.php'; ?>
+<?php include __DIR__ . '/templates/footer.php'; ?>
 
 </body>
 </html>

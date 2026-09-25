@@ -1,7 +1,7 @@
 <?php
 include 'db.php';
 include 'permisos.php';
-include 'Templates/header.php';
+include __DIR__ . '/templates/header.php';
 
 if (!isset($_SESSION['usuario'])) {
     echo "<script>alert('Debes iniciar sesi&oacute;n.'); window.location.href = 'login.php';</script>";
@@ -108,6 +108,6 @@ $roles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 </main>
 
 <script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<?php include 'Templates/footer.php'; ?>
+<?php include __DIR__ . '/templates/footer.php'; ?>
 </body>
 </html>
