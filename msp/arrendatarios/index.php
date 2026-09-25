@@ -930,6 +930,9 @@ function msp2ContratoEstadoBadge(int $estado): string
                                                 </button>
                                                 <?php if ($idContratoFila > 0): ?>
                                                     <a href="<?php echo msp2Escape(msp2Url('contratos/ficha.php?id_contrato_arriendo=' . $idContratoFila)); ?>" class="btn btn-outline-primary btn-sm" aria-label="Ver contrato ID <?php echo $idContratoFila; ?>"><i class="bi bi-file-earmark-text me-1" aria-hidden="true"></i>Contrato</a>
+                                                    <?php if (msp2CurrentUserHasPermission('MSP Cobranza')): ?>
+                                                        <a href="<?php echo msp2Escape(msp2Url('garantias/index.php?id_contrato_arriendo=' . $idContratoFila)); ?>" class="btn btn-outline-primary btn-sm" aria-label="Ver garantía del contrato ID <?php echo $idContratoFila; ?>"><i class="bi bi-shield-check me-1" aria-hidden="true"></i>Ver garantía</a>
+                                                    <?php endif; ?>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
@@ -1188,8 +1191,8 @@ function msp2ContratoEstadoBadge(int $estado): string
 </div>
 
 <?php include dirname(__DIR__) . '/templates/components/undo_toast.php'; ?>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const sanitizeRut = (value) => value.toUpperCase().replace(/[^0-9K]/g, '');
     const formatRut = (value) => {

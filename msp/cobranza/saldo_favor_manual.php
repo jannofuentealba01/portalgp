@@ -21,6 +21,10 @@ $periodoYm = trim((string) ($_GET['periodo'] ?? $_POST['periodo'] ?? ''));
 if (!preg_match('/^\d{4}-\d{2}$/', $periodoYm)) {
     $periodoYm = (new DateTimeImmutable('today'))->format('Y-m');
 }
+$contextTiendaId = filter_input(INPUT_GET, 'id_tienda', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$contextContratoId = filter_input(INPUT_GET, 'id_contrato_arriendo', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$contextTiendaId = is_int($contextTiendaId) ? $contextTiendaId : 0;
+$contextContratoId = is_int($contextContratoId) ? $contextContratoId : 0;
 
 function sfParseMonthToFirstDay(string $periodo): ?string
 {
@@ -1253,6 +1257,18 @@ foreach ($saldoFavorOptionRows as $optionRow) {
     unset($optionRow['first_local'], $optionRow['nombre_tienda']);
     $saldoFavorTiendaOptions[] = $optionRow;
 }
+$saldoFavorSelectedTienda = '';
+$saldoFavorContextLabel = '';
+if ($contextTiendaId > 0) {
+    foreach ($saldoFavorTiendaOptions as $optionRow) {
+        if ((int) ($optionRow['value'] ?? 0) !== $contextTiendaId) {
+            continue;
+        }
+        $saldoFavorSelectedTienda = (string) $contextTiendaId;
+        $saldoFavorContextLabel = (string) ($optionRow['label'] ?? '');
+        break;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es" class="h-100">
@@ -1289,12 +1305,22 @@ foreach ($saldoFavorOptionRows as $optionRow) {
             <div class="alert alert-warning"><?php echo msp2Escape($loadError); ?></div>
         <?php else: ?>
                     <form method="get" class="row g-2 align-items-end mb-3" id="form_periodo_saldo_favor">
+                        <?php if ($contextTiendaId > 0): ?><input type="hidden" name="id_tienda" value="<?php echo $contextTiendaId; ?>"><?php endif; ?>
+                        <?php if ($contextContratoId > 0): ?><input type="hidden" name="id_contrato_arriendo" value="<?php echo $contextContratoId; ?>"><?php endif; ?>
                         <div class="col-12 col-md-3">
                             <label class="form-label">Periodo</label>
                             <input type="month" class="form-control" id="periodo_saldo_favor" name="periodo" value="<?php echo msp2Escape($periodoYm); ?>" required>
                             <div class="small text-muted mt-1">Filtra ingresos y aplicaciones del período.</div>
                         </div>
                     </form>
+
+                    <?php if ($contextTiendaId > 0 && $saldoFavorSelectedTienda === ''): ?>
+                        <div class="alert alert-warning py-2 mb-2">La tienda seleccionada no está disponible para registrar saldo a favor.</div>
+                    <?php elseif ($saldoFavorSelectedTienda !== ''): ?>
+                        <div class="alert alert-info py-2 mb-2">
+                            Arrendatario precargado: <strong><?php echo msp2Escape($saldoFavorContextLabel); ?></strong>.
+                        </div>
+                    <?php endif; ?>
 
                     <?php if ($periodoSaldoFavorNoCreado): ?>
                         <div class="alert alert-info py-2 small mb-3">
@@ -1328,6 +1354,7 @@ foreach ($saldoFavorOptionRows as $optionRow) {
                                                 'filter_placeholder' => 'Buscar arrendatario o local',
                                                 'empty_message' => 'No hay arrendatarios disponibles.',
                                                 'required' => true,
+                                                'value' => $saldoFavorSelectedTienda,
                                                 'options' => $saldoFavorTiendaOptions,
                                             ]);
                                             ?>
@@ -1560,8 +1587,8 @@ foreach ($saldoFavorOptionRows as $optionRow) {
                     <?php endif; ?>
         <?php endif; ?>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const formPeriodo = document.getElementById('form_periodo_saldo_favor');
     const inputPeriodo = document.getElementById('periodo_saldo_favor');

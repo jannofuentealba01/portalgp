@@ -323,7 +323,7 @@ $canCloseBatch = is_array($batch)
                     </div>
                 </div>
                 <?php if ($canApprove): ?>
-                    <form method="post" action="<?php echo msp2Escape(msp2Url('documentos_tienda/cambiar_estado_lote.php')); ?>" class="row g-2 align-items-end" onsubmit="return confirm('<?php echo $isClosed ? '¿Reabrir este lote para permitir modificaciones?' : '¿Cerrar y bloquear este lote?'; ?>');">
+                    <form method="post" action="<?php echo msp2Escape(msp2Url('documentos_tienda/cambiar_estado_lote.php')); ?>" class="row g-2 align-items-end" <?php echo pgpCspEventAttribute('onsubmit', "return confirm('" . ($isClosed ? '¿Reabrir este lote para permitir modificaciones?' : '¿Cerrar y bloquear este lote?') . "');"); ?>>
                         <?php msp2CsrfField(); ?><input type="hidden" name="id_lote" value="<?php echo $batchId; ?>"><input type="hidden" name="accion_lote" value="<?php echo $isClosed?'reabrir':'cerrar'; ?>">
                         <div class="col-lg-9"><label class="form-label" for="motivo_lote">Motivo de <?php echo $isClosed?'reapertura':'cierre'; ?></label><input class="form-control" id="motivo_lote" name="motivo" minlength="5" maxlength="500" required placeholder="Deja constancia del motivo"></div>
                         <div class="col-lg-3 d-grid"><button class="btn btn-warning" <?php echo !$isClosed&&!$canCloseBatch?'disabled':''; ?>><i class="bi <?php echo $isClosed?'bi-unlock':'bi-lock'; ?> me-1"></i><?php echo $isClosed?'Reabrir lote':'Cerrar lote'; ?></button></div>
@@ -347,8 +347,8 @@ $canCloseBatch = is_array($batch)
         </details>
     <?php endif; ?>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const form = document.getElementById('association_form');
     const selectPage = document.getElementById('select_page');

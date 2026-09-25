@@ -9019,7 +9019,7 @@ BEGIN
         CONSTRAINT UQ_msp_pool_documentos_periodo UNIQUE (periodo_facturacion, id_tienda, id_contrato_arriendo),
         CONSTRAINT CK_msp_pool_doc_periodo CHECK (DAY(periodo_facturacion) = 1),
         CONSTRAINT CK_msp_pool_doc_estado CHECK (estado_pool IN (1,2,3,4,5)),
-        CONSTRAINT CK_msp_pool_doc_perfil CHECK (perfil_servicios IN (N'LUZ', N'LUZ_GAS', N'LUZ_AGUA', N'LUZ_GAS_AGUA')),
+        CONSTRAINT CK_msp_pool_doc_perfil CHECK (perfil_servicios IN (N'LUZ', N'LUZ_GAS', N'LUZ_AGUA', N'LUZ_GAS_AGUA', N'GAS', N'AGUA', N'GAS_AGUA', N'SIN_SERVICIO')),
         CONSTRAINT FK_msp_pool_doc_tienda FOREIGN KEY (id_tienda) REFERENCES dbo.msp_tiendas (id_tienda),
         CONSTRAINT FK_msp_pool_doc_contrato FOREIGN KEY (id_contrato_arriendo) REFERENCES dbo.msp_contratos_arriendo (id_contrato_arriendo),
         CONSTRAINT FK_msp_pool_doc_documento FOREIGN KEY (id_documento_cobro) REFERENCES dbo.msp_documentos_cobro (id_documento_cobro)

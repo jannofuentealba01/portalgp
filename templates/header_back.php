@@ -13,7 +13,7 @@ pgpRequireEnabledSession($conn);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         header {
             background-color: #3C4C4E; /* Color sólido proporcionado */
             padding: 15px 20px;

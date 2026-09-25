@@ -10,6 +10,7 @@ msp2RequireAccess();
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     msp2Redirect('dashboard/index.php');
 }
+msp2RequireValidCsrfToken();
 
 $accion = strtoupper(trim((string) ($_POST['accion'] ?? '')));
 $clave = trim((string) ($_POST['pendiente_clave'] ?? ''));

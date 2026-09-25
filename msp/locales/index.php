@@ -976,8 +976,8 @@ function msp2ServicioMedidorBadge(?string $codigoServicio): string
     <input type="hidden" name="id_medidor" id="delete_medidor_local_id">
 </form>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const parseJsonArray = (raw) => {
         try {

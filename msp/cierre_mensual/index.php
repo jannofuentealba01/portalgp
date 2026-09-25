@@ -178,7 +178,7 @@ function cierreEstadoBadge(?string $estado): string
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MSP | Cierre Mensual</title>
+    <title>MSP | Registro de cierre</title>
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
@@ -197,8 +197,8 @@ function cierreEstadoBadge(?string $estado): string
 
         </div>
 
-        <h1 class="form-title text-center mb-2">Cierre mensual</h1>
-        <p class="text-muted text-center mb-4">Define periodos de cobro, valor UF y estado del ciclo.</p>
+        <h1 class="form-title text-center mb-2">Registro de cierre</h1>
+        <p class="text-muted text-center mb-4">Consulta y administra los períodos de cobro, su valor UF y el estado del ciclo.</p>
 
         <?php include dirname(__DIR__) . '/templates/components/flash_toast.php'; ?>
 
@@ -466,8 +466,8 @@ function cierreEstadoBadge(?string $estado): string
     </div>
 </div>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((element) => {
         bootstrap.Tooltip.getOrCreateInstance(element, {

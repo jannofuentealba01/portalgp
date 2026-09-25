@@ -12,7 +12,7 @@ if (!function_exists('gpRenderSectionHeaderAssets')) {
         }
         $assetsRendered = true;
         ?>
-        <style>
+        <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .gp-section-hero {
             position: relative;
             overflow: hidden;
@@ -119,7 +119,7 @@ if (!function_exists('gpRenderSectionHeaderAssets')) {
             }
         }
         </style>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const initTooltips = () => {
                 if (!window.bootstrap || typeof window.bootstrap.Tooltip !== 'function') {

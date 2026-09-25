@@ -157,5 +157,5 @@ function msp2RenderSearchAssets(): void
         return;
     }
     $rendered = true;
-    echo '<script src="/portalgp/msp/assets/search.js"></script>';
+    echo '<script' . pgpCspNonceAttribute() . ' src="/portalgp/msp/assets/search.js"></script>';
 }

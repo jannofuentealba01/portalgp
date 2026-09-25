@@ -56,7 +56,7 @@ if (!function_exists('gpRenderFlashToastAssets')) {
         }
         $rendered = true;
         ?>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const init = () => {
                 document.querySelectorAll('[data-gp-flash-toast]').forEach((toastEl) => {

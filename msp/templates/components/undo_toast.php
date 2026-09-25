@@ -35,4 +35,4 @@ if ($message === '' || $actionPath === '' || !is_array($fields)) {
         </div>
     </div>
 </div>
-<script src="<?php echo msp2Escape(msp2Url('assets/msp_undo_toast.js')); ?>"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="<?php echo msp2Escape(msp2Url('assets/msp_undo_toast.js')); ?>"></script>

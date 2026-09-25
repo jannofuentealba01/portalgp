@@ -82,6 +82,6 @@ $statusLabels = [
 
     <?php if($unassociated!==[]): ?><section class="card border-warning mt-3"><div class="card-header fw-semibold">Documentos que impiden completar la preparación</div><ul class="list-group list-group-flush"><?php foreach($unassociated as $item): ?><li class="list-group-item"><?php echo msp2Escape((string)$item['nombre_original']); ?> <span class="badge text-bg-warning ms-2">Sin asociación</span></li><?php endforeach; ?></ul></section><?php endif; ?>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

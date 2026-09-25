@@ -155,6 +155,7 @@ final class DocumentosCobroService
          DECLARE @docs_creados INT = 0;
          DECLARE @items_recompuestos INT = 0;
          DECLARE @items_servicios_recompuestos INT = 0;
+         DECLARE @items_servicios_tardios_recompuestos INT = 0;
          DECLARE @items_multa_recompuestos INT = 0;
          DECLARE @items_cargos_extra_recompuestos INT = 0;
 
@@ -216,6 +217,25 @@ final class DocumentosCobroService
             RETURN;
          END;
 
+         -- Una regeneración vuelve a dejar el consumo tardío disponible antes
+         -- de borrar y reconstruir los ítems de servicio del documento.
+         UPDATE c
+         SET c.estado_consumo = 1,
+             c.id_documento_cobro = NULL,
+             c.fecha_actualizacion = SYSDATETIME()
+         FROM dbo.msp_liquidacion_servicio_consumos c
+         INNER JOIN dbo.msp_liquidacion_servicios ls
+            ON ls.id_liquidacion_servicio = c.id_liquidacion_servicio
+         INNER JOIN dbo.msp_contrato_locales cl
+            ON cl.id_contrato_local = ls.id_contrato_local
+         INNER JOIN dbo.msp_contratos_arriendo ca
+            ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
+         WHERE c.periodo_emision = @periodo
+           AND c.estado_consumo = 2
+           AND (@has_target = 0 OR EXISTS (
+                SELECT 1 FROM @target_tiendas tt WHERE tt.id_tienda = ca.id_tienda
+           ));
+
          ;WITH servicios_por_contrato AS (
             SELECT
                 ca.id_tienda,
@@ -267,7 +287,7 @@ final class DocumentosCobroService
               ))
          ),
          contratos_arriendo AS (
-            SELECT DISTINCT
+            SELECT
                 s.id_tienda,
                 s.id_contrato_arriendo,
                 CAST(0 AS BIT) AS es_liquidacion
@@ -283,6 +303,8 @@ final class DocumentosCobroService
                     FROM @target_tiendas tt
                     WHERE tt.id_tienda = s.id_tienda
               ))
+            GROUP BY s.id_tienda, s.id_contrato_arriendo
+            HAVING SUM(ISNULL(s.monto_neto_clp, 0)) > 0
          ),
          contratos_servicios AS (
             SELECT DISTINCT
@@ -312,41 +334,32 @@ final class DocumentosCobroService
                     ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
                 WHERE cl.id_local = m.id_local
                   AND cl.estado_relacion IN (1,2)
-                  AND cl.fecha_inicio <= EOMONTH(@periodo)
-                  AND (
-                        cl.fecha_termino IS NULL
-                        OR cl.fecha_termino >= @periodo
-                        OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ISNULL(cl.fecha_termino, ca.fecha_termino_efectiva)), MONTH(ISNULL(cl.fecha_termino, ca.fecha_termino_efectiva)), 1)) = @periodo
-                  )
-                  AND ca.fecha_inicio <= EOMONTH(@periodo)
-                  AND (
-                        ca.fecha_termino_efectiva IS NULL
-                        OR ca.fecha_termino_efectiva >= @periodo
-                        OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo
-                  )
+                  AND cl.fecha_inicio <= lm.fecha_hasta_consumo
+                  AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= lm.fecha_hasta_consumo)
+                  AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= @periodo
+                       OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(cl.fecha_termino), MONTH(cl.fecha_termino), 1)) = @periodo)
+                  AND ca.fecha_inicio <= lm.fecha_hasta_consumo
+                  AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= lm.fecha_hasta_consumo)
+                  AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= @periodo
+                       OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo)
                   AND ca.estado_contrato IN (1,2,3,4)
                 ORDER BY
-                    CASE
-                        WHEN ca.fecha_termino_efectiva IS NOT NULL
-                         AND ca.fecha_termino_efectiva < @periodo
-                         AND DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo
-                        THEN 0
-                        ELSE 1
-                    END,
-                    CASE WHEN cl.fecha_inicio <= @periodo THEN 0 ELSE 1 END,
-                    CASE WHEN cl.fecha_inicio <= @periodo THEN cl.fecha_inicio END DESC,
-                    CASE WHEN cl.fecha_inicio > @periodo THEN cl.fecha_inicio END ASC,
+                    cl.fecha_inicio DESC,
                     cl.id_contrato_local DESC
             ) map
             WHERE p.id_cierre_mensual = @id_cierre
               AND p.estado_proceso <> 4
+              AND cs.monto_total > 0
               AND map.id_tienda IS NOT NULL
-              AND EXISTS (
+              AND (@has_target = 0 OR EXISTS (
+                    SELECT 1 FROM @target_tiendas tt WHERE tt.id_tienda = map.id_tienda
+              ))
+              AND (@service_profile = N'ALL' OR EXISTS (
                     SELECT 1
                     FROM contratos_perfil cp
                     WHERE cp.id_tienda = map.id_tienda
                       AND cp.id_contrato_arriendo = map.id_contrato_arriendo
-              )
+              ))
          ),
          contratos_cargos AS (
             SELECT DISTINCT
@@ -360,7 +373,8 @@ final class DocumentosCobroService
             FROM dbo.msp_cargos_salida cs
             INNER JOIN dbo.msp_contratos_arriendo ca
                 ON ca.id_contrato_arriendo = cs.id_contrato_arriendo
-            WHERE cs.estado_cargo IN (1,2)
+            WHERE @aplicar_cargos_extra = 1
+              AND cs.estado_cargo IN (1,2)
               AND cs.id_documento_cobro IS NULL
               AND ISNULL(cs.periodo_referencia, @periodo) = @periodo
               AND cs.monto_cargo > 0
@@ -370,12 +384,40 @@ final class DocumentosCobroService
                     WHERE tt.id_tienda = ca.id_tienda
               ))
          ),
-         contratos_objetivo AS (
+         contratos_servicios_tardios AS (
+            SELECT DISTINCT
+                ca.id_tienda,
+                ca.id_contrato_arriendo,
+                CAST(1 AS BIT) AS es_liquidacion
+            FROM dbo.msp_liquidacion_servicio_consumos c
+            INNER JOIN dbo.msp_liquidacion_servicios ls
+               ON ls.id_liquidacion_servicio = c.id_liquidacion_servicio
+            INNER JOIN dbo.msp_contrato_locales cl
+               ON cl.id_contrato_local = ls.id_contrato_local
+            INNER JOIN dbo.msp_contratos_arriendo ca
+               ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
+            WHERE c.periodo_emision = @periodo
+              AND c.estado_consumo = 1
+              AND ls.estado_liquidacion IN (1,2,3)
+              AND ca.estado_contrato IN (3,4)
+              AND c.monto_asignado > 0
+              AND (@has_target = 0 OR EXISTS (
+                    SELECT 1 FROM @target_tiendas tt WHERE tt.id_tienda = ca.id_tienda
+              ))
+         ),
+         contratos_objetivo_fuente AS (
             SELECT id_tienda, id_contrato_arriendo, es_liquidacion FROM contratos_arriendo
-            UNION
+            UNION ALL
             SELECT id_tienda, id_contrato_arriendo, es_liquidacion FROM contratos_servicios
-            UNION
+            UNION ALL
             SELECT id_tienda, id_contrato_arriendo, es_liquidacion FROM contratos_cargos
+            UNION ALL
+            SELECT id_tienda, id_contrato_arriendo, es_liquidacion FROM contratos_servicios_tardios
+         ),
+         contratos_objetivo AS (
+            SELECT id_tienda, id_contrato_arriendo, CAST(MAX(CAST(es_liquidacion AS INT)) AS BIT) AS es_liquidacion
+            FROM contratos_objetivo_fuente
+            GROUP BY id_tienda, id_contrato_arriendo
          )
          INSERT INTO dbo.msp_documentos_cobro (
             id_tienda,
@@ -574,7 +616,8 @@ final class DocumentosCobroService
             al.valor_arriendo_neto,
             al.valor_arriendo_neto,
             NULL
-         FROM arriendo_local al;
+         FROM arriendo_local al
+         WHERE ABS(al.valor_arriendo_neto) > 0.005;
 
          SET @items_recompuestos = @@ROWCOUNT;
 
@@ -609,34 +652,22 @@ final class DocumentosCobroService
                     ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
                 WHERE cl.id_local = m.id_local
                   AND cl.estado_relacion IN (1,2)
-                  AND cl.fecha_inicio <= EOMONTH(@periodo)
-                  AND (
-                        cl.fecha_termino IS NULL
-                        OR cl.fecha_termino >= @periodo
-                        OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ISNULL(cl.fecha_termino, ca.fecha_termino_efectiva)), MONTH(ISNULL(cl.fecha_termino, ca.fecha_termino_efectiva)), 1)) = @periodo
-                  )
-                  AND ca.fecha_inicio <= EOMONTH(@periodo)
-                  AND (
-                        ca.fecha_termino_efectiva IS NULL
-                        OR ca.fecha_termino_efectiva >= @periodo
-                        OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo
-                  )
+                  AND cl.fecha_inicio <= lm.fecha_hasta_consumo
+                  AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= lm.fecha_hasta_consumo)
+                  AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= @periodo
+                       OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(cl.fecha_termino), MONTH(cl.fecha_termino), 1)) = @periodo)
+                  AND ca.fecha_inicio <= lm.fecha_hasta_consumo
+                  AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= lm.fecha_hasta_consumo)
+                  AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= @periodo
+                       OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo)
                   AND ca.estado_contrato IN (1,2,3,4)
                 ORDER BY
-                    CASE
-                        WHEN ca.fecha_termino_efectiva IS NOT NULL
-                         AND ca.fecha_termino_efectiva < @periodo
-                         AND DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo
-                        THEN 0
-                        ELSE 1
-                    END,
-                    CASE WHEN cl.fecha_inicio <= @periodo THEN 0 ELSE 1 END,
-                    CASE WHEN cl.fecha_inicio <= @periodo THEN cl.fecha_inicio END DESC,
-                    CASE WHEN cl.fecha_inicio > @periodo THEN cl.fecha_inicio END ASC,
+                    cl.fecha_inicio DESC,
                     cl.id_contrato_local DESC
             ) map
             WHERE p.id_cierre_mensual = @id_cierre
               AND p.estado_proceso <> 4
+              AND cs.monto_total > 0
               AND map.id_tienda IS NOT NULL
               AND (@has_target = 0 OR EXISTS (
                     SELECT 1
@@ -686,6 +717,83 @@ final class DocumentosCobroService
            AND dc.estado_documento <> 5;
 
          SET @items_servicios_recompuestos = @@ROWCOUNT;
+
+         INSERT INTO dbo.msp_documentos_cobro_detalle (
+            id_documento_cobro,
+            orden_item,
+            id_tipo_item_documento,
+            descripcion_item,
+            cantidad,
+            valor_unitario,
+            subtotal,
+            id_cobro_servicio,
+            id_consumo_liquidacion
+         )
+         SELECT
+            dc.id_documento_cobro,
+            2000 + ROW_NUMBER() OVER (
+                PARTITION BY dc.id_documento_cobro
+                ORDER BY ts.codigo_servicio, " . msp2LocalCodeNaturalOrderSql('loc.cdo_local') . ", c.id_consumo_liquidacion
+            ),
+            CASE UPPER(ts.codigo_servicio)
+                WHEN N'AGUA' THEN @id_item_agua
+                WHEN N'LUZ'  THEN @id_item_luz
+                WHEN N'GAS'  THEN @id_item_gas
+                ELSE @id_item_ajuste
+            END,
+            CONCAT(
+                ts.nombre_servicio, N' tardío local ', loc.cdo_local,
+                CASE WHEN NULLIF(LTRIM(RTRIM(ISNULL(m.codigo_medidor, N''))), N'') IS NULL
+                    THEN N'' ELSE CONCAT(N' medidor ', m.codigo_medidor) END,
+                N' · ', c.referencia_origen,
+                N' · consumo ', CONVERT(NVARCHAR(10), c.fecha_hasta_consumo, 23)
+            ),
+            CASE WHEN ISNULL(c.consumo_asignado, 0) > 0 THEN c.consumo_asignado ELSE 1 END,
+            CASE
+                WHEN ISNULL(c.consumo_asignado, 0) > 0 THEN ROUND(c.monto_asignado / c.consumo_asignado, 2)
+                ELSE c.monto_asignado
+            END,
+            c.monto_asignado,
+            NULL,
+            c.id_consumo_liquidacion
+         FROM dbo.msp_liquidacion_servicio_consumos c
+         INNER JOIN dbo.msp_liquidacion_servicios ls
+            ON ls.id_liquidacion_servicio = c.id_liquidacion_servicio
+         INNER JOIN dbo.msp_contrato_locales cl
+            ON cl.id_contrato_local = ls.id_contrato_local
+         INNER JOIN dbo.msp_contratos_arriendo ca
+            ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
+         INNER JOIN dbo.msp_locales loc
+            ON loc.id_local = cl.id_local
+         INNER JOIN dbo.msp_tipos_servicio ts
+            ON ts.id_tipo_servicio = ls.id_tipo_servicio
+         LEFT JOIN dbo.msp_medidores m
+            ON m.id_medidor = ls.id_medidor
+         INNER JOIN dbo.msp_documentos_cobro dc
+            ON dc.id_contrato_arriendo = ca.id_contrato_arriendo
+           AND dc.id_tienda = ca.id_tienda
+           AND dc.periodo_facturacion = @periodo
+           AND dc.estado_documento <> 5
+         WHERE c.periodo_emision = @periodo
+           AND c.estado_consumo = 1
+           AND ls.estado_liquidacion IN (1,2,3)
+           AND c.monto_asignado > 0
+           AND (@has_target = 0 OR EXISTS (
+                SELECT 1 FROM @target_tiendas tt WHERE tt.id_tienda = ca.id_tienda
+           ));
+
+         SET @items_servicios_tardios_recompuestos = @@ROWCOUNT;
+
+         UPDATE c
+         SET c.estado_consumo = 2,
+             c.id_documento_cobro = dcd.id_documento_cobro,
+             c.fecha_actualizacion = SYSDATETIME()
+         FROM dbo.msp_liquidacion_servicio_consumos c
+         INNER JOIN dbo.msp_documentos_cobro_detalle dcd
+            ON dcd.id_consumo_liquidacion = c.id_consumo_liquidacion
+         INNER JOIN dbo.msp_documentos_cobro dc
+            ON dc.id_documento_cobro = dcd.id_documento_cobro
+         WHERE dc.periodo_facturacion = @periodo;
 
          IF @aplicar_cargos_extra = 1
             AND OBJECT_ID(N'dbo.msp_cargos_salida', N'U') IS NOT NULL
@@ -1118,7 +1226,7 @@ final class DocumentosCobroService
 
          SELECT
             @docs_creados AS docs_creados,
-            (@items_recompuestos + @items_servicios_recompuestos + @items_multa_recompuestos + @items_cargos_extra_recompuestos) AS items_recompuestos;"
+            (@items_recompuestos + @items_servicios_recompuestos + @items_servicios_tardios_recompuestos + @items_multa_recompuestos + @items_cargos_extra_recompuestos) AS items_recompuestos;"
     );
     $reconStmt->bindValue(':id', $idCierre, PDO::PARAM_INT);
     $reconStmt->bindValue(':aplicar_cargos_extra', $aplicarCargosExtra ? 1 : 0, PDO::PARAM_INT);
@@ -1581,8 +1689,8 @@ final class DocumentosCobroService
                         WHEN bwd.codigo_modalidad = N'CLP_FIJO'
                          AND (bwd.valor_base_clp IS NULL OR bwd.valor_base_clp <= 0) THEN N'sin valor CLP'
                         WHEN bwd.codigo_modalidad = N'DINAMICO_MENSUAL'
-                         AND (bwd.valor_periodo_clp IS NULL OR bwd.valor_periodo_clp <= 0)
-                         AND (bwd.valor_periodo_uf IS NULL OR bwd.valor_periodo_uf <= 0) THEN N'dinámico sin valor para el período'
+                         AND bwd.valor_periodo_clp IS NULL
+                         AND bwd.valor_periodo_uf IS NULL THEN N'dinámico sin valor para el período'
                         WHEN bwd.codigo_modalidad NOT IN (N'UF_ESTATICO', N'CLP_FIJO', N'DINAMICO_MENSUAL') THEN N'modalidad inválida'
                         WHEN bwd.descuentos_activos > 1 THEN N'descuentos duplicados'
                         WHEN bwd.descuentos_activos = 1

@@ -428,10 +428,24 @@ function corrMonto(mixed $value): string
         $analisisCorreccion = json_decode((string) ($correccion['resultado_analisis'] ?? ''), true);
         if (!is_array($analisisCorreccion)) { $analisisCorreccion = []; }
         $registroExacto = is_array($analisisCorreccion['registro_exacto'] ?? null) ? $analisisCorreccion['registro_exacto'] : [];
+        $servicioLecturaControlada = strtoupper((string) ($registroExacto['servicio'] ?? ''));
+        $esLecturaControlada = $tipoCorreccion === 'LECTURA'
+            && in_array($servicioLecturaControlada, ['LUZ','GAS','AGUA'], true);
+        $esArriendoControlado = $tipoCorreccion === 'ARRIENDO_PERIODO'
+            && strtoupper((string) ($registroExacto['unidad_correccion'] ?? '')) === 'UF_BASE';
+        $esCorreccionControlada = $esLecturaControlada || $esArriendoControlado;
+        $puedeAplicarControlada = $esCorreccionControlada
+            && in_array($nivelCorreccion, ['REGENERACION_CONTROLADA','AUTORIZACION'], true)
+            && in_array($estadoCorreccion, ['BORRADOR','ANALIZADA','PENDIENTE_APROBACION','ERROR','APROBADA'], true);
+        if ($nivelCorreccion === 'AUTORIZACION') {
+            $puedeAplicarControlada = $puedeAplicarControlada
+                && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
+                    || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura'));
+        }
         $mensajesNivel = [
             'REGENERACION_CONTROLADA' => 'El registro ya forma parte de un documento sin pagos. Requiere actualizar ese documento de forma controlada.',
             'AJUSTE_FINANCIERO' => 'El registro ya tiene pagos, saldo o garantía relacionada. La diferencia debe resolverse mediante un ajuste financiero.',
-            'AUTORIZACION' => 'El registro tiene contabilidad o efectos protegidos y requiere autorización y una reversa o ajuste formal.',
+            'AUTORIZACION' => 'El período está cerrado o el registro tiene contabilidad. Requiere autorización y, si corresponde, reversa y regeneración contable.',
             'REVISION' => 'El estado actual del registro requiere una revisión antes de permitir la corrección.',
         ];
         $labelTipoCorreccion = ['LECTURA'=>'Lectura o consumo','CARGO'=>'Multa o cargo adicional','ARRIENDO_PERIODO'=>'Arriendo de un período'][$tipoCorreccion] ?? $tipoCorreccion;
@@ -457,6 +471,16 @@ function corrMonto(mixed $value): string
                             <input type="hidden" name="id_correccion" value="<?php echo (int) ($correccion['id_correccion'] ?? 0); ?>">
                             <button class="btn btn-primary btn-sm">Confirmar corrección</button>
                         </form><?php endif; ?>
+                        <?php if ($puedeAplicarControlada): ?><form method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>">
+                            <?php msp2CsrfField(); ?>
+                            <input type="hidden" name="accion" value="aplicar_controlada">
+                            <input type="hidden" name="id_correccion" value="<?php echo (int) ($correccion['id_correccion'] ?? 0); ?>">
+                            <button class="btn btn-warning btn-sm">
+                                <?php echo $nivelCorreccion === 'AUTORIZACION'
+                                    ? ($esArriendoControlado ? 'Autorizar y corregir UF Base' : 'Autorizar y corregir lectura')
+                                    : 'Aplicar corrección controlada'; ?>
+                            </button>
+                        </form><?php endif; ?>
                     </div>
                 </div>
                 <div class="row g-3">
@@ -469,7 +493,16 @@ function corrMonto(mixed $value): string
                         Esta corrección puede ejecutarse de forma selectiva y no reabre el período completo.
                         <?php if ($estadoCorreccion !== 'EJECUTADA'): ?><strong>El valor todavía no cambiará hasta presionar “Aplicar corrección”.</strong><?php endif; ?>
                     <?php else: ?>
-                        <?php echo msp2Escape($mensajesNivel[$nivelCorreccion] ?? 'La solicitud requiere una estrategia controlada antes de ejecutarse.'); ?> La solicitud queda auditada y no se habilita una modificación insegura.
+                        <?php echo msp2Escape($mensajesNivel[$nivelCorreccion] ?? 'La solicitud requiere una estrategia controlada antes de ejecutarse.'); ?>
+                        <?php if ($puedeAplicarControlada): ?>
+                            Se conservará una versión anterior, se recalculará el documento y, si corresponde, se revertirá y regenerará su asiento contable. La operación completa es transaccional.
+                        <?php elseif ($nivelCorreccion === 'AJUSTE_FINANCIERO'): ?>
+                            El documento no será sobrescrito. Debe registrarse una diferencia mediante ajuste financiero.
+                        <?php elseif ($nivelCorreccion === 'AUTORIZACION' && $esCorreccionControlada): ?>
+                            El usuario actual no tiene autorización para corregir un período cerrado ni ejecutar una eventual reversa contable.
+                        <?php else: ?>
+                            La solicitud queda auditada y no se habilita una modificación insegura.
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
                 <?php if (!empty($correccion['eventos']) && is_array($correccion['eventos'])): ?>
@@ -527,7 +560,7 @@ function corrMonto(mixed $value): string
         <div class="alert alert-info">Ingresa un contrato para ver el impacto de corrección.</div>
     <?php endif; ?>
 </main>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 document.addEventListener('DOMContentLoaded', () => {
     const entidad=document.getElementById('corrEntidad');
     const servicio=document.getElementById('corrServicio'), servicioGrupo=document.getElementById('corrServicioGrupo');

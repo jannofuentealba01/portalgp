@@ -753,10 +753,10 @@ if ($tablaOk && $isPost && trim((string) ($_POST['accion'] ?? '')) === 'ejecutar
     </div>
 </main>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script src="/portalgp/assets/vendor/driver.js-1.3.6/driver.js.iife.js"></script>
-<script src="<?php echo msp2Escape(msp2Url('assets/msp_tour_pago_masivo.js')); ?>"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/driver.js-1.3.6/driver.js.iife.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="<?php echo msp2Escape(msp2Url('assets/msp_tour_pago_masivo.js')); ?>"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (function () {
     const formPeriodoMes = document.getElementById('form_periodo_mes');
     const periodoInput = document.getElementById('periodo_ym');

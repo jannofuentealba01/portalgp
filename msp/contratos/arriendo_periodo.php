@@ -283,7 +283,7 @@ try {
             </div>
 
             <div class="alert alert-info">
-                Ingresa <strong>UF</strong> o <strong>CLP</strong> por local para el período. Si completas ambos campos en una fila, el cálculo mensual prioriza el valor <strong>CLP</strong>. El descuento es monto mensual en CLP.
+                Ingresa <strong>UF</strong> o <strong>CLP</strong> por local para el período. Si completas ambos campos en una fila, el cálculo mensual prioriza el valor <strong>CLP</strong>. El descuento es monto mensual en CLP. Para un mes sin arriendo, ingresa <strong>0</strong> en el valor de arriendo y confirma al guardar; dejar ambos valores vacíos significa pendiente de carga. Los documentos ya emitidos no se recalculan automáticamente.
             </div>
 
             <?php if ($rows === []): ?>
@@ -293,11 +293,12 @@ try {
                     </div>
                 </div>
             <?php else: ?>
-                <form method="post" action="<?php echo msp2Escape(msp2Url('contratos/guardar_arriendo_periodo.php')); ?>">
+                <form method="post" action="<?php echo msp2Escape(msp2Url('contratos/guardar_arriendo_periodo.php')); ?>" data-arriendo-periodo-form>
                     <?php msp2CsrfField(); ?>
                     <input type="hidden" name="periodo" value="<?php echo msp2Escape($periodoYm); ?>">
                     <input type="hidden" name="filtro" value="<?php echo msp2Escape($filtroTexto); ?>">
                     <input type="hidden" name="solo_pendientes" value="<?php echo $soloPendientes ? '1' : '0'; ?>">
+                    <input type="hidden" name="confirmar_arriendo_cero" value="0" data-confirmar-arriendo-cero>
 
                     <div class="card shadow-sm border-0">
                         <div class="table-responsive">
@@ -317,7 +318,15 @@ try {
                                 <tbody>
                                 <?php foreach ($rows as $row): ?>
                                     <?php $idContratoLocal = (int) ($row['id_contrato_local'] ?? 0); ?>
-                                    <tr>
+                                    <?php
+                                    $valorOriginalClp = (string) ($row['valor_periodo_clp'] ?? '');
+                                    $valorOriginalUf = (string) ($row['valor_periodo_uf'] ?? '');
+                                    $valorOriginalEfectivo = $valorOriginalClp !== '' ? $valorOriginalClp : $valorOriginalUf;
+                                    $eraCero = (bool) ($row['tiene_periodo'] ?? false)
+                                        && $valorOriginalEfectivo !== ''
+                                        && (float) $valorOriginalEfectivo === 0.0;
+                                    ?>
+                                    <tr data-arriendo-periodo-row data-original-zero="<?php echo $eraCero ? '1' : '0'; ?>" data-rent-label="<?php echo msp2Escape((string) ($row['nombre_comercial'] ?? '') . ' / ' . (string) ($row['cdo_local'] ?? '')); ?>">
                                         <td>
                                             <div><strong>#<?php echo $idContratoLocal; ?></strong></div>
                                             <div class="small text-muted">Contrato #<?php echo (int) ($row['id_contrato_arriendo'] ?? 0); ?></div>
@@ -395,7 +404,8 @@ try {
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/msp/assets/arriendo_periodo.js" defer></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

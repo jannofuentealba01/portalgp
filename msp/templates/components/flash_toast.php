@@ -66,4 +66,4 @@ $enableSuccessBurst = !empty($meta['enable_success_burst']) && empty($meta['disa
         </div>
     </div>
 <?php endif; ?>
-<script src="<?php echo msp2Escape(msp2Url('assets/msp_flash_toast.js')); ?>"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="<?php echo msp2Escape(msp2Url('assets/msp_flash_toast.js')); ?>"></script>

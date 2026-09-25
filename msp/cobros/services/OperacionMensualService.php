@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 final class OperacionMensualService
 {
-    private const AGUA_FORMULA_V2_FROM = '2026-04-01';
+    private const AGUA_FORMULA_EXCEL_FROM = '2026-04-01';
 
     public static function generarCobros(PDO $conn, int $idCierre, bool $reemplazar, array $selectedServices): int
     {
@@ -50,11 +50,11 @@ final class OperacionMensualService
         $stmt = $conn->prepare(
             "UPDATE cs
              SET
-                cs.subtotal_variable = calc.monto_recalculado,
-                cs.cargo_fijo = 0,
-                cs.monto_total = calc.monto_recalculado,
-                cs.formula_version = N'V2_AGUA_2026_04',
-                cs.detalle_calculo = N'AGUA: consumo * ((SAP + SAL + TAS + cargo_fijo)/divisor)'
+                cs.subtotal_variable = calc.subtotal_variable,
+                cs.cargo_fijo = calc.cargo_fijo,
+                cs.monto_total = calc.monto_total,
+                cs.formula_version = N'V3_AGUA_EXCEL_2604',
+                cs.detalle_calculo = N'AGUA Excel: cargo fijo completo por medidor + consumo * ((SAP + SAL + TAS)/divisor)'
              FROM dbo.msp_cobros_servicios cs
              INNER JOIN dbo.msp_lecturas_medidores lm
                 ON lm.id_lectura = cs.id_lectura
@@ -67,29 +67,31 @@ final class OperacionMensualService
              LEFT JOIN dbo.msp_proceso_cobro_agua pa
                 ON pa.id_proceso_cobro = p.id_proceso_cobro
              CROSS APPLY (
-                SELECT CAST(
-                    ISNULL(
-                        ROUND(
-                            cs.consumo_cobrado * (
-                                (
-                                    ISNULL(pa.servicio_agua_potable, 0)
-                                    + ISNULL(pa.servicio_alcantarillado, 0)
-                                    + ISNULL(pa.tratamiento_aguas_servidas, 0)
-                                    + ISNULL(pa.cargo_fijo, 0)
-                                ) / NULLIF(pa.divisor, 0)
-                            ),
-                            2
-                        ),
-                        0
-                    ) AS DECIMAL(18,2)
-                ) AS monto_recalculado
+                SELECT
+                    CAST(ISNULL(ROUND(
+                        cs.consumo_cobrado * (
+                            (
+                                ISNULL(pa.servicio_agua_potable, 0)
+                                + ISNULL(pa.servicio_alcantarillado, 0)
+                                + ISNULL(pa.tratamiento_aguas_servidas, 0)
+                            ) / NULLIF(pa.divisor, 0)
+                        ), 2), 0) AS DECIMAL(18,2)) AS subtotal_variable,
+                    CAST(ROUND(ISNULL(pa.cargo_fijo, 0), 2) AS DECIMAL(18,2)) AS cargo_fijo,
+                    CAST(ISNULL(ROUND(
+                        cs.consumo_cobrado * (
+                            (
+                                ISNULL(pa.servicio_agua_potable, 0)
+                                + ISNULL(pa.servicio_alcantarillado, 0)
+                                + ISNULL(pa.tratamiento_aguas_servidas, 0)
+                            ) / NULLIF(pa.divisor, 0)
+                        ) + ISNULL(pa.cargo_fijo, 0), 2), 0) AS DECIMAL(18,2)) AS monto_total
              ) calc
              WHERE p.id_cierre_mensual = :id_cierre
                AND UPPER(ts.codigo_servicio) = N'AGUA'
                AND c.periodo_facturacion >= :from_periodo"
         );
         $stmt->bindValue(':id_cierre', $idCierre, PDO::PARAM_INT);
-        $stmt->bindValue(':from_periodo', self::AGUA_FORMULA_V2_FROM, PDO::PARAM_STR);
+        $stmt->bindValue(':from_periodo', self::AGUA_FORMULA_EXCEL_FROM, PDO::PARAM_STR);
         $stmt->execute();
     }
 

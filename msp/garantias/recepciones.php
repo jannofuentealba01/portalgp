@@ -184,8 +184,8 @@ try {
         </div></div>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (()=>{
     const medio=document.getElementById('medio_recepcion');
     const garantia=document.getElementById('id_garantia');
@@ -287,7 +287,7 @@ try {
     actualizarGarantia();
 })();
 </script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (()=>{
     const idInput=document.getElementById('modalRecepcionId');
     const description=document.getElementById('modalAdjuntarRecepcionDescripcion');

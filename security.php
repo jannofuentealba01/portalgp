@@ -163,12 +163,272 @@ function pgpSecurityIsHttps(?array $server = null): bool
         || (string)($server['SERVER_PORT'] ?? '') === '443';
 }
 
+/** Returns one unpredictable CSP nonce for the current response. */
+function pgpCspNonce(): string
+{
+    static $nonce = null;
+    if (is_string($nonce)) {
+        return $nonce;
+    }
+    try {
+        $bytes = random_bytes(18);
+    } catch (Throwable) {
+        $bytes = hash('sha256', uniqid('pgp-csp-', true), true);
+    }
+    $nonce = rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
+    return $nonce;
+}
+
+/** Returns the escaped nonce attribute for a trusted script or style element. */
+function pgpCspNonceAttribute(): string
+{
+    return ' nonce="' . htmlspecialchars(
+        pgpCspNonce(),
+        ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5,
+        'UTF-8'
+    ) . '"';
+}
+
+/**
+ * Registers hashes created by trusted PHP templates during the current
+ * response. Values discovered only in the final HTML are never registered.
+ *
+ * @return array{script:list<string>,style:list<string>}
+ */
+function pgpCspAttributeRegistry(?string $kind = null, ?string $value = null): array
+{
+    static $registry = ['script' => [], 'style' => []];
+    if ($kind !== null && $value !== null) {
+        if (!array_key_exists($kind, $registry)) {
+            throw new InvalidArgumentException('Tipo de atributo CSP no válido.');
+        }
+        $registry[$kind][base64_encode(hash('sha256', $value, true))] = true;
+    }
+    return [
+        'script' => array_keys($registry['script']),
+        'style' => array_keys($registry['style']),
+    ];
+}
+
+/** Returns one trusted inline style attribute and registers its exact hash. */
+function pgpCspStyleAttribute(string $style): string
+{
+    pgpCspAttributeRegistry('style', $style);
+    return 'style="' . htmlspecialchars(
+        $style,
+        ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5,
+        'UTF-8'
+    ) . '"';
+}
+
+/** Returns one trusted DOM event attribute and registers its exact hash. */
+function pgpCspEventAttribute(string $name, string $code): string
+{
+    $normalizedName = strtolower(trim($name));
+    if (preg_match('/^on[a-z][a-z0-9_-]*$/', $normalizedName) !== 1) {
+        throw new InvalidArgumentException('Nombre de evento HTML no válido.');
+    }
+    pgpCspAttributeRegistry('script', $code);
+    return $normalizedName . '="' . htmlspecialchars(
+        $code,
+        ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5,
+        'UTF-8'
+    ) . '"';
+}
+
+/** HTMX must not create its own unnonced indicator style element. */
+function pgpCspHtmxConfigMeta(): string
+{
+    $config = json_encode([
+        'includeIndicatorStyles' => false,
+        'inlineScriptNonce' => pgpCspNonce(),
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    return '<meta name="htmx-config" content="' . htmlspecialchars(
+        $config,
+        ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5,
+        'UTF-8'
+    ) . '">';
+}
+
+/**
+ * @return array{script:array<string,true>,style:array<string,true>}
+ */
+function pgpCspTrustedAttributeHashAllowlist(): array
+{
+    static $allowlist = null;
+    if (is_array($allowlist)) {
+        return $allowlist;
+    }
+
+    $allowlist = ['script' => [], 'style' => []];
+    $path = __DIR__ . '/config/csp_inline_attribute_hashes.php';
+    if (!is_file($path)) {
+        return $allowlist;
+    }
+    $loaded = require $path;
+    if (!is_array($loaded)) {
+        return $allowlist;
+    }
+    foreach (['script', 'style'] as $kind) {
+        foreach (($loaded[$kind] ?? []) as $hash) {
+            if (is_string($hash) && preg_match('/^[A-Za-z0-9+\/=]{43,44}$/', $hash) === 1) {
+                $allowlist[$kind][$hash] = true;
+            }
+        }
+    }
+    return $allowlist;
+}
+
+/** @param array<string,true> $trustedHashes @return list<string> */
+function pgpCspAttributeHashes(string $html, string $attributePattern, array $trustedHashes = []): array
+{
+    $hashes = [];
+    $pattern = '~\s(?:' . $attributePattern . ')\s*=\s*(["\'])(.*?)\1~is';
+    if (preg_match_all($pattern, $html, $matches) !== false) {
+        foreach ($matches[2] ?? [] as $rawValue) {
+            $value = html_entity_decode((string) $rawValue, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $hash = base64_encode(hash('sha256', $value, true));
+            if (isset($trustedHashes[$hash])) {
+                $hashes[$hash] = true;
+            }
+        }
+    }
+    $values = array_keys($hashes);
+    sort($values, SORT_STRING);
+    return $values;
+}
+
+/**
+ * Inventories only attributes whose hashes were generated from trusted source
+ * templates. It intentionally leaves the rendered HTML unchanged: an injected
+ * script/style element therefore never receives the response nonce.
+ *
+ * @return array{html:string,script_attribute_hashes:list<string>,style_attribute_hashes:list<string>}
+ */
+function pgpCspPrepareHtml(string $html, string $nonce): array
+{
+    unset($nonce);
+    $allowlist = pgpCspTrustedAttributeHashAllowlist();
+
+    return [
+        'html' => $html,
+        'script_attribute_hashes' => pgpCspAttributeHashes(
+            $html,
+            'on[a-z][a-z0-9_-]*',
+            $allowlist['script']
+        ),
+        'style_attribute_hashes' => pgpCspAttributeHashes($html, 'style', $allowlist['style']),
+    ];
+}
+
+/** @param list<string> $scriptAttributeHashes @param list<string> $styleAttributeHashes */
+function pgpCspPolicy(
+    string $nonce,
+    array $scriptAttributeHashes = [],
+    array $styleAttributeHashes = []
+): string {
+    $nonceSource = "'nonce-" . $nonce . "'";
+    $attributeSources = static function (array $hashes): string {
+        if ($hashes === []) {
+            return "'none'";
+        }
+        $sources = array_map(
+            static fn(string $hash): string => "'sha256-" . $hash . "'",
+            array_values(array_unique($hashes))
+        );
+        return "'unsafe-hashes' " . implode(' ', $sources);
+    };
+
+    return implode('; ', [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "frame-src 'none'",
+        "frame-ancestors 'self'",
+        "form-action 'self'",
+        "script-src 'self' " . $nonceSource,
+        "script-src-elem 'self' " . $nonceSource,
+        'script-src-attr ' . $attributeSources($scriptAttributeHashes),
+        "style-src 'self' " . $nonceSource,
+        "style-src-elem 'self' " . $nonceSource,
+        'style-src-attr ' . $attributeSources($styleAttributeHashes),
+        "img-src 'self' data: blob: https:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "media-src 'self' blob:",
+        "worker-src 'self' blob:",
+        "manifest-src 'self'",
+    ]);
+}
+
+function pgpCspResponseIsHtml(string $buffer): bool
+{
+    foreach (headers_list() as $headerLine) {
+        if (stripos($headerLine, 'Content-Type:') !== 0) {
+            continue;
+        }
+        $contentType = strtolower(trim(substr($headerLine, strlen('Content-Type:'))));
+        return str_starts_with($contentType, 'text/html')
+            || str_starts_with($contentType, 'application/xhtml+xml');
+    }
+    return $buffer === ''
+        || preg_match('~<!doctype\s+html|<html\b|<(?:script|style)\b~i', $buffer) === 1;
+}
+
+function pgpCspFinalizeOutput(string $buffer, int $phase = PHP_OUTPUT_HANDLER_FINAL): string
+{
+    static $scriptAttributeHashes = [];
+    static $styleAttributeHashes = [];
+    $nonce = pgpCspNonce();
+
+    if (pgpCspResponseIsHtml($buffer)) {
+        $prepared = pgpCspPrepareHtml($buffer, $nonce);
+        $buffer = $prepared['html'];
+        foreach ($prepared['script_attribute_hashes'] as $hash) {
+            $scriptAttributeHashes[$hash] = true;
+        }
+        foreach ($prepared['style_attribute_hashes'] as $hash) {
+            $styleAttributeHashes[$hash] = true;
+        }
+    }
+
+    if (!headers_sent()) {
+        $registeredHashes = pgpCspAttributeRegistry();
+        header_remove('Content-Security-Policy');
+        header(
+            'Content-Security-Policy: ' . pgpCspPolicy(
+                $nonce,
+                array_values(array_unique(array_merge(
+                    array_keys($scriptAttributeHashes),
+                    $registeredHashes['script']
+                ))),
+                array_values(array_unique(array_merge(
+                    array_keys($styleAttributeHashes),
+                    $registeredHashes['style']
+                )))
+            )
+        );
+    }
+    return $buffer;
+}
+
+function pgpCspStartOutputProtection(): void
+{
+    static $started = false;
+    if ($started || PHP_SAPI === 'cli' || headers_sent()) {
+        return;
+    }
+    $started = true;
+    ob_start('pgpCspFinalizeOutput');
+}
+
 /** Applies the browser security baseline when Apache mod_headers is unavailable. */
 function pgpApplySecurityHeaders(?array $server = null): void
 {
     if (PHP_SAPI === 'cli' || headers_sent()) {
         return;
     }
+    pgpCspStartOutputProtection();
     if (function_exists('apache_get_modules') && in_array('mod_headers', apache_get_modules(), true)) {
         return;
     }
@@ -180,7 +440,6 @@ function pgpApplySecurityHeaders(?array $server = null): void
     header('X-Permitted-Cross-Domain-Policies: none');
     header('Cross-Origin-Opener-Policy: same-origin');
     header('Cross-Origin-Resource-Policy: same-origin');
-    header("Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'");
     header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()');
     header('Cache-Control: no-store, private, max-age=0');
     header('Pragma: no-cache');
@@ -333,7 +592,7 @@ function pgpRenderCsrfAutoFieldScript(): void
     }
     $rendered = true;
     $token = pgpJsonForHtml(pgpCsrfToken(), '""');
-    echo '<script>(function(){const token=' . $token . ';const ensure=function(form){'
+    echo '<script' . pgpCspNonceAttribute() . '>(function(){const token=' . $token . ';const ensure=function(form){'
         . 'if(!(form instanceof HTMLFormElement)){return;}const method=(form.getAttribute("method")||"get").toLowerCase();'
         . 'if(method!=="post"){return;}let input=form.querySelector("input[name=\\"_pgp_csrf\\"]");'
         . 'if(!input){input=document.createElement("input");input.type="hidden";input.name="_pgp_csrf";form.appendChild(input);}input.value=token;};'

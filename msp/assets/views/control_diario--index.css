@@ -107,6 +107,10 @@
             position: relative;
         }
 
+        .control-grid-content {
+            transition: opacity 0.2s ease, filter 0.2s ease;
+        }
+
         .control-grid-card.is-preparing .control-grid-content,
         .control-grid-card.is-loading .control-grid-content {
             filter: blur(1px);
@@ -119,17 +123,24 @@
             position: absolute;
             inset: 0;
             z-index: 80;
-            display: none;
+            display: flex;
             align-items: center;
             justify-content: center;
             padding: 1rem;
             background: rgba(var(--color-surface-rgb), 0.88);
             backdrop-filter: blur(2px);
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.2s ease, visibility 0s linear 0.2s;
         }
 
         .control-grid-card.is-preparing .control-loading-layer,
         .control-grid-card.is-loading .control-loading-layer {
-            display: flex;
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transition-delay: 0s;
         }
 
         .control-loading-panel {
@@ -369,6 +380,19 @@
             color: var(--color-primary);
         }
 
+        .month-scale-item.is-target {
+            color: var(--color-primary);
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .control-grid-content,
+            .control-loading-layer {
+                transition: none;
+            }
+        }
+
         .btn-month-nav {
             min-width: 76px;
             width: 100%;
@@ -602,6 +626,161 @@
             font-weight: 600;
         }
 
+        .electricity-edit-cell,
+        .gas-edit-cell,
+        .water-edit-cell,
+        .rent-edit-cell {
+            position: relative;
+            padding-right: 30px !important;
+        }
+
+        .electricity-cell-value,
+        .gas-cell-value,
+        .water-cell-value,
+        .rent-cell-value {
+            display: block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .electricity-edit-btn,
+        .gas-edit-btn,
+        .water-edit-btn,
+        .rent-edit-btn {
+            position: absolute;
+            top: 50%;
+            right: 4px;
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 1px solid var(--color-primary);
+            border-radius: 6px;
+            background: var(--color-surface);
+            color: var(--color-primary);
+            opacity: 0;
+            transform: translateY(-50%);
+            transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+            z-index: 2;
+        }
+
+        .gas-edit-btn,
+        .water-edit-btn,
+        .rent-edit-btn {
+            opacity: 1;
+        }
+
+        .electricity-edit-cell:hover .electricity-edit-btn,
+        .electricity-edit-cell:focus-within .electricity-edit-btn,
+        .electricity-edit-btn:focus-visible,
+        .gas-edit-cell:hover .gas-edit-btn,
+        .gas-edit-cell:focus-within .gas-edit-btn,
+        .gas-edit-btn:focus-visible,
+        .water-edit-cell:hover .water-edit-btn,
+        .water-edit-cell:focus-within .water-edit-btn,
+        .water-edit-btn:focus-visible,
+        .rent-edit-cell:hover .rent-edit-btn,
+        .rent-edit-cell:focus-within .rent-edit-btn,
+        .rent-edit-btn:focus-visible {
+            opacity: 1;
+        }
+
+        .electricity-edit-btn:hover,
+        .electricity-edit-btn:focus-visible,
+        .gas-edit-btn:hover,
+        .gas-edit-btn:focus-visible,
+        .water-edit-btn:hover,
+        .water-edit-btn:focus-visible,
+        .rent-edit-btn:hover,
+        .rent-edit-btn:focus-visible {
+            background: var(--color-primary);
+            color: #fff;
+        }
+
+        .electricity-correction-context,
+        .electricity-calculation-grid,
+        .electricity-result-panel,
+        .gas-correction-context,
+        .gas-calculation-grid,
+        .gas-result-panel,
+        .water-correction-context,
+        .water-calculation-grid,
+        .water-result-panel,
+        .rent-correction-context,
+        .rent-calculation-grid,
+        .rent-result-panel {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .electricity-correction-context > div,
+        .electricity-calculation-grid > div,
+        .electricity-result-panel > div,
+        .gas-correction-context > div,
+        .gas-calculation-grid > div,
+        .gas-result-panel > div,
+        .water-correction-context > div,
+        .water-calculation-grid > div,
+        .water-result-panel > div,
+        .rent-correction-context > div,
+        .rent-calculation-grid > div,
+        .rent-result-panel > div {
+            min-width: 0;
+            padding: 8px 10px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            background: var(--color-surface-soft);
+        }
+
+        .electricity-correction-context span,
+        .electricity-calculation-grid span,
+        .electricity-result-panel span,
+        .gas-correction-context span,
+        .gas-calculation-grid span,
+        .gas-result-panel span,
+        .water-correction-context span,
+        .water-calculation-grid span,
+        .water-result-panel span,
+        .rent-correction-context span,
+        .rent-calculation-grid span,
+        .rent-result-panel span {
+            display: block;
+            margin-bottom: 2px;
+            color: var(--color-text-muted);
+            font-size: 11px;
+            line-height: 1.2;
+        }
+
+        .electricity-correction-context strong,
+        .electricity-calculation-grid strong,
+        .electricity-result-panel strong,
+        .gas-correction-context strong,
+        .gas-calculation-grid strong,
+        .gas-result-panel strong,
+        .water-correction-context strong,
+        .water-calculation-grid strong,
+        .water-result-panel strong,
+        .rent-correction-context strong,
+        .rent-calculation-grid strong,
+        .rent-result-panel strong {
+            display: block;
+            color: var(--color-primary);
+            font-size: 13px;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+
+        .electricity-result-panel > div,
+        .gas-result-panel > div,
+        .rent-result-panel > div {
+            background: #eef6ff;
+            border-color: #bdd6f2;
+        }
+
         .local-label {
             font-weight: 700;
             color: var(--color-primary);
@@ -737,6 +916,30 @@
 
             .control-nav-summary {
                 grid-template-columns: 1fr;
+            }
+
+            .electricity-correction-context,
+            .electricity-calculation-grid,
+            .electricity-result-panel,
+            .gas-correction-context,
+            .gas-calculation-grid,
+            .gas-result-panel,
+            .water-correction-context,
+            .water-calculation-grid,
+            .water-result-panel,
+            .rent-correction-context,
+            .rent-calculation-grid,
+            .rent-result-panel {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (hover: none) {
+            .electricity-edit-btn,
+            .gas-edit-btn,
+            .water-edit-btn,
+            .rent-edit-btn {
+                opacity: 1;
             }
         }
 

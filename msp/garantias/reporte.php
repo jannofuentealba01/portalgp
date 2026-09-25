@@ -27,4 +27,4 @@ $queryExport=http_build_query(array_filter(['q'=>$q,'alerta'=>$alerta,'estado'=>
         <?php endforeach;?>
         </tbody>
     </table>
-</div></main><?php require_once dirname(__DIR__, 2) . '/templates/components/page_navigation.php'; ?><script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script></body></html>
+</div></main><?php require_once dirname(__DIR__, 2) . '/templates/components/page_navigation.php'; ?><script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script></body></html>

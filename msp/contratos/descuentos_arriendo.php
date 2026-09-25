@@ -832,8 +832,8 @@ if ($loadError === null && $totalPaginas > 1) {
     </div>
 <?php endif; ?>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 document.addEventListener('DOMContentLoaded', () => {
     const select = document.getElementById('asociar_id_contrato_arriendo');
     const list = document.getElementById('asociar_contrato_dropdown_list');

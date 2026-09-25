@@ -38,8 +38,8 @@ $acciones = [
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
-<body class="gp-layout bg-light">
-<?php include dirname(__DIR__) . '/templates/header.php'; ?>
+<body class="gp-layout gp-module-msp bg-light">
+<?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main p-4">
     <div class="box-container-full mx-auto" style="max-width: 980px;">
         <a href="index.php" class="btn btn-outline-secondary btn-sm mb-3"><i class="bi bi-arrow-left me-1"></i>Volver a pendientes</a>
@@ -71,7 +71,7 @@ $acciones = [
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

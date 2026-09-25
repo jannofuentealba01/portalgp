@@ -270,7 +270,7 @@ try {
     <html lang="es">
     <head>
         <meta charset="UTF-8">
-        <style>
+        <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
             body { font-family: DejaVu Sans, Arial, sans-serif; color: #111; font-size: 10px; }
             .header { text-align: center; margin-bottom: 8px; }
             .title { font-size: 16px; font-weight: 700; }

@@ -91,6 +91,23 @@ function msp2PagoContratoPdfDownloadItem(string $type, array $pagoData, array $a
     ];
 }
 
+function msp2PagoContratoLogError(Throwable $exception): string
+{
+    try {
+        $reference = strtoupper(bin2hex(random_bytes(4)));
+    } catch (Throwable) {
+        $reference = strtoupper(substr(hash('sha256', uniqid('', true)), 0, 8));
+    }
+
+    $detail = $exception->getMessage();
+    if (function_exists('pgpRedactLogMessage')) {
+        $detail = pgpRedactLogMessage($detail);
+    }
+    error_log('[PortalGP][msp.pago_contrato][' . $reference . '] ' . $detail);
+
+    return $reference;
+}
+
 function msp2ResolvePagoContratoRedirect(): string
 {
     $returnTo = msp2PagoContratoSafeReturnTo($_POST['return_to'] ?? '');
@@ -196,6 +213,18 @@ $descargarPdfsPago = trim((string) ($_POST['descargar_pdfs_pago'] ?? '0')) === '
 $demoEmailConfirmado = trim((string) ($_POST['demo_email_confirmado'] ?? '')) === '1';
 $demoEmailOverrideRaw = trim((string) ($_POST['demo_email_override'] ?? ''));
 $demoEmailOverride = filter_var($demoEmailOverrideRaw, FILTER_VALIDATE_EMAIL) !== false ? $demoEmailOverrideRaw : '';
+
+$mediosPagoPermitidos = [
+    'TRANSFERENCIA' => 'Transferencia',
+    'EFECTIVO' => 'Efectivo',
+    'CHEQUE' => 'Cheque',
+];
+$medioPagoKey = mb_strtoupper($medioPago, 'UTF-8');
+if (!isset($mediosPagoPermitidos[$medioPagoKey])) {
+    msp2SetFlash('warning', 'Debes seleccionar un medio de pago válido.');
+    msp2Redirect($redirectTarget);
+}
+$medioPago = $mediosPagoPermitidos[$medioPagoKey];
 
 if ($idArrendatario === false || $idArrendatario === null) {
     msp2SetFlash('warning', 'Debes seleccionar un arrendatario válido.');
@@ -352,6 +381,17 @@ try {
     $enTransaccion = true;
 
     $idUsuario = isset($_SESSION['usuario']['id']) ? (int) $_SESSION['usuario']['id'] : null;
+    $stmtOperacionExistente = $conn->prepare(
+        'SELECT TOP 1 id_pago_contrato_operacion
+         FROM dbo.msp_pago_contrato_operaciones WITH (UPDLOCK, HOLDLOCK)
+         WHERE referencia_operacion = :referencia_operacion'
+    );
+    $stmtOperacionExistente->bindValue(':referencia_operacion', $operacionTag, PDO::PARAM_STR);
+    $stmtOperacionExistente->execute();
+    if ((int) ($stmtOperacionExistente->fetchColumn() ?: 0) > 0) {
+        throw new RuntimeException('La solicitud de pago ya fue procesada.');
+    }
+
     $stmtOperacion = $conn->prepare(
         "INSERT INTO dbo.msp_pago_contrato_operaciones (
             id_arrendatario,
@@ -375,11 +415,11 @@ try {
             :id_arrendatario,
             :id_contrato_arriendo,
             :fecha_pago,
-            :monto_total_pagado,
-            0,
-            0,
-            0,
-            0,
+             :monto_total_pagado,
+             0,
+             0,
+             :monto_total_no_imputado,
+             0,
             :medio_pago,
             :referencia_pago,
             :referencia_operacion,
@@ -394,6 +434,7 @@ try {
     $stmtOperacion->bindValue(':id_contrato_arriendo', (int) $idContratoArriendo, PDO::PARAM_INT);
     $stmtOperacion->bindValue(':fecha_pago', $fechaPagoRaw, PDO::PARAM_STR);
     $stmtOperacion->bindValue(':monto_total_pagado', round((float) $montoPagado, 2), PDO::PARAM_STR);
+    $stmtOperacion->bindValue(':monto_total_no_imputado', round((float) $montoPagado, 2), PDO::PARAM_STR);
     $stmtOperacion->bindValue(':medio_pago', $medioPago === '' ? null : $medioPago, $medioPago === '' ? PDO::PARAM_NULL : PDO::PARAM_STR);
     $stmtOperacion->bindValue(':referencia_pago', $referenciaPago === '' ? null : $referenciaPago, $referenciaPago === '' ? PDO::PARAM_NULL : PDO::PARAM_STR);
     $stmtOperacion->bindValue(':referencia_operacion', $operacionTag === '' ? null : $operacionTag, $operacionTag === '' ? PDO::PARAM_NULL : PDO::PARAM_STR);
@@ -475,7 +516,11 @@ try {
         $stmtPago->execute();
 
         $resultado = $stmtPago->fetch() ?: [];
+        $stmtPago->closeCursor();
         $idPagoGenerado = isset($resultado['id_pago_generado']) ? (int) $resultado['id_pago_generado'] : 0;
+        if ($idPagoGenerado <= 0) {
+            throw new RuntimeException('El procedimiento de pago no devolvió un identificador válido.');
+        }
         $montoAplicado = isset($resultado['monto_aplicado_documento'])
             ? round((float) $resultado['monto_aplicado_documento'], 2)
             : round(min($montoIntento, $saldoPendiente), 2);
@@ -528,6 +573,11 @@ try {
 
     if ($pagosProcesados === []) {
         throw new RuntimeException('No fue posible procesar el pago sobre documentos con saldo pendiente.');
+    }
+
+    $montoCuadrado = round($totalAplicado + $totalExcedente + $montoRestante, 2);
+    if (abs(round((float) $montoPagado, 2) - $montoCuadrado) > 0.01) {
+        throw new RuntimeException('La distribución del pago por contrato no quedó cuadrada.');
     }
 
     $stmtOperacionTotales = $conn->prepare(
@@ -593,13 +643,19 @@ try {
     } elseif (str_contains($message, 'has too many arguments specified')) {
         msp2SetFlash('danger', 'La base de datos no tiene habilitado pagos por concepto. Ejecuta `db/patch_pagos_por_concepto.sql`.');
     } else {
-        msp2SetFlash('danger', 'No fue posible registrar el pago por contrato. Revisa la estructura de la base o intenta nuevamente.');
+        $errorReference = msp2PagoContratoLogError($exception);
+        msp2SetFlash('danger', 'No fue posible registrar el pago por contrato. Referencia: ' . $errorReference . '.');
     }
 } catch (Throwable $exception) {
     if ($enTransaccion && $conn->inTransaction()) {
         $conn->rollBack();
     }
-    msp2SetFlash('danger', 'No fue posible registrar el pago por contrato.');
+    if ($exception->getMessage() === 'La solicitud de pago ya fue procesada.') {
+        msp2SetFlash('warning', 'Este pago ya había sido procesado; no se registró un duplicado.');
+    } else {
+        $errorReference = msp2PagoContratoLogError($exception);
+        msp2SetFlash('danger', 'No fue posible registrar el pago por contrato. Referencia: ' . $errorReference . '.');
+    }
 }
 
 try {

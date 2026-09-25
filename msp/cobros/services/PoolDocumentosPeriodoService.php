@@ -23,6 +23,7 @@ final class PoolDocumentosPeriodoService
 
         self::syncBase($conn, $periodoFacturacion);
         self::refreshReadiness($conn, $periodoFacturacion);
+        self::syncLateServices($conn, $periodoFacturacion);
         self::bindDocumentos($conn, $periodoFacturacion);
         self::normalizeLoteStageConsistency($conn, $periodoFacturacion);
 
@@ -422,6 +423,7 @@ final class PoolDocumentosPeriodoService
               AND p.id_documento_cobro IS NOT NULL
               AND el.id_lote_envio IS NULL
               AND dc.estado_documento <> 5
+              AND dc.monto_total > 0
               AND ($readyPredicate)
             GROUP BY
                 a.id_arrendatario,
@@ -484,7 +486,10 @@ final class PoolDocumentosPeriodoService
         $readyPredicate = match ($etapa) {
             'LUZ' => '(p.ready_luz = 1 AND p.requiere_luz = 1 AND p.requiere_gas = 0 AND p.requiere_agua = 0)',
             'GAS' => '(p.ready_gas = 1 AND p.requiere_gas = 1 AND p.requiere_agua = 0)',
-            'AGUA' => '(p.ready_agua = 1 AND p.requiere_agua = 1)',
+            // En la ultima etapa el AGUA pendiente no bloquea el documento base:
+            // se materializan arriendo y servicios disponibles. La seleccion de
+            // candidatos para envio conserva ready_agua = 1.
+            'AGUA' => '(p.requiere_agua = 1)',
             default => '1 = 0',
         };
 
@@ -494,6 +499,57 @@ final class PoolDocumentosPeriodoService
              WHERE p.periodo_facturacion = :periodo
                AND p.estado_pool IN (1,2,3)
                AND ($readyPredicate)
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.msp_contrato_locales cl_check
+                    OUTER APPLY (
+                        SELECT TOP (1)
+                            rr.id_regla_arriendo,
+                            rr.id_modalidad_arriendo,
+                            rr.valor_base_uf,
+                            rr.valor_base_clp
+                        FROM dbo.msp_contrato_local_arriendo_regla rr
+                        WHERE rr.id_contrato_local = cl_check.id_contrato_local
+                          AND rr.estado_regla = 1
+                          AND rr.fecha_inicio <= EOMONTH(p.periodo_facturacion)
+                          AND (rr.fecha_termino IS NULL OR rr.fecha_termino >= p.periodo_facturacion)
+                        ORDER BY
+                            CASE WHEN rr.es_default = 1 THEN 1 ELSE 0 END DESC,
+                            rr.prioridad DESC,
+                            rr.id_regla_arriendo DESC
+                    ) regla_check
+                    LEFT JOIN dbo.msp_tipo_modalidad_arriendo modalidad_check
+                        ON modalidad_check.id_modalidad_arriendo = regla_check.id_modalidad_arriendo
+                    LEFT JOIN dbo.msp_contrato_local_arriendo_periodo periodo_check
+                        ON periodo_check.id_contrato_local = cl_check.id_contrato_local
+                       AND periodo_check.periodo_facturacion = p.periodo_facturacion
+                       AND periodo_check.estado_periodo = 1
+                    WHERE cl_check.id_contrato_arriendo = p.id_contrato_arriendo
+                      AND cl_check.estado_relacion IN (1,2)
+                      AND cl_check.fecha_inicio <= EOMONTH(p.periodo_facturacion)
+                      AND (cl_check.fecha_termino IS NULL OR cl_check.fecha_termino >= p.periodo_facturacion)
+                      AND (
+                            regla_check.id_regla_arriendo IS NULL
+                            OR UPPER(LTRIM(RTRIM(ISNULL(modalidad_check.codigo_modalidad, N'')))) NOT IN (
+                                N'UF_ESTATICO',
+                                N'CLP_FIJO',
+                                N'DINAMICO_MENSUAL'
+                            )
+                            OR (
+                                UPPER(LTRIM(RTRIM(ISNULL(modalidad_check.codigo_modalidad, N'')))) = N'UF_ESTATICO'
+                                AND ISNULL(regla_check.valor_base_uf, 0) <= 0
+                            )
+                            OR (
+                                UPPER(LTRIM(RTRIM(ISNULL(modalidad_check.codigo_modalidad, N'')))) = N'CLP_FIJO'
+                                AND ISNULL(regla_check.valor_base_clp, 0) <= 0
+                            )
+                            OR (
+                                UPPER(LTRIM(RTRIM(ISNULL(modalidad_check.codigo_modalidad, N'')))) = N'DINAMICO_MENSUAL'
+                                AND periodo_check.valor_periodo_uf IS NULL
+                                AND periodo_check.valor_periodo_clp IS NULL
+                            )
+                      )
+               )
              ORDER BY p.id_tienda ASC"
         );
         $stmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
@@ -656,7 +712,41 @@ final class PoolDocumentosPeriodoService
     {
         $stmt = $conn->prepare(
             "DECLARE @periodo DATE = :periodo;
-             ;WITH contratos_periodo AS (
+             ;WITH servicios_facturados AS (
+                SELECT map.id_tienda, map.id_contrato_arriendo,
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'LUZ' THEN 1 ELSE 0 END) AS tiene_luz,
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'GAS' THEN 1 ELSE 0 END) AS tiene_gas,
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'AGUA' THEN 1 ELSE 0 END) AS tiene_agua
+                FROM dbo.msp_cobros_servicios cs
+                INNER JOIN dbo.msp_lecturas_medidores lm ON lm.id_lectura = cs.id_lectura
+                INNER JOIN dbo.msp_procesos_cobro_servicio p ON p.id_proceso_cobro = lm.id_proceso_cobro
+                INNER JOIN dbo.msp_cierre_mensual cm ON cm.id_cierre_mensual = p.id_cierre_mensual
+                INNER JOIN dbo.msp_tipos_servicio ts ON ts.id_tipo_servicio = p.id_tipo_servicio
+                INNER JOIN dbo.msp_medidores m ON m.id_medidor = lm.id_medidor
+                OUTER APPLY (
+                    SELECT TOP (1) ca.id_tienda, ca.id_contrato_arriendo
+                    FROM dbo.msp_contrato_locales cl
+                    INNER JOIN dbo.msp_contratos_arriendo ca ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
+                    WHERE cl.id_local = m.id_local
+                      AND cl.estado_relacion IN (1,2)
+                      AND cl.fecha_inicio <= lm.fecha_hasta_consumo
+                      AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= lm.fecha_hasta_consumo)
+                      AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= @periodo
+                           OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(cl.fecha_termino), MONTH(cl.fecha_termino), 1)) = @periodo)
+                      AND ca.fecha_inicio <= lm.fecha_hasta_consumo
+                      AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= lm.fecha_hasta_consumo)
+                      AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= @periodo
+                           OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo)
+                      AND ca.estado_contrato IN (1,2,3,4)
+                    ORDER BY cl.fecha_inicio DESC, cl.id_contrato_local DESC
+                ) map
+                WHERE cm.periodo_facturacion = @periodo
+                  AND p.estado_proceso <> 4
+                  AND cs.monto_total > 0
+                  AND map.id_contrato_arriendo IS NOT NULL
+                GROUP BY map.id_tienda, map.id_contrato_arriendo
+             ),
+             contratos_periodo_base AS (
                 SELECT
                     ca.id_tienda,
                     ca.id_contrato_arriendo,
@@ -676,15 +766,39 @@ final class PoolDocumentosPeriodoService
                   )
                   AND ca.estado_contrato IN (1,2,3,4)
              ),
+             contratos_periodo AS (
+                SELECT id_tienda, id_contrato_arriendo, es_liquidacion FROM contratos_periodo_base
+                UNION
+                SELECT sf.id_tienda, sf.id_contrato_arriendo, 1
+                FROM servicios_facturados sf
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM contratos_periodo_base cp
+                    WHERE cp.id_contrato_arriendo = sf.id_contrato_arriendo
+                )
+                UNION
+                SELECT ca.id_tienda, ca.id_contrato_arriendo, 1
+                FROM dbo.msp_cargos_salida cs
+                INNER JOIN dbo.msp_contratos_arriendo ca ON ca.id_contrato_arriendo = cs.id_contrato_arriendo
+                WHERE cs.estado_cargo IN (1,2)
+                  AND cs.id_documento_cobro IS NULL
+                  AND ISNULL(cs.periodo_referencia, @periodo) = @periodo
+                  AND cs.monto_cargo > 0
+                  AND NOT EXISTS (
+                    SELECT 1 FROM contratos_periodo_base cp
+                    WHERE cp.id_contrato_arriendo = ca.id_contrato_arriendo
+                  )
+             ),
              base AS (
                 SELECT
                     @periodo AS periodo_facturacion,
                     cp.id_tienda,
                     cp.id_contrato_arriendo,
-                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'LUZ' THEN 1 ELSE 0 END) AS requiere_luz,
-                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'GAS' THEN 1 ELSE 0 END) AS requiere_gas,
-                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'AGUA' THEN 1 ELSE 0 END) AS requiere_agua
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'LUZ' OR sf.tiene_luz = 1 THEN 1 ELSE 0 END) AS requiere_luz,
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'GAS' OR sf.tiene_gas = 1 THEN 1 ELSE 0 END) AS requiere_gas,
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'AGUA' OR sf.tiene_agua = 1 THEN 1 ELSE 0 END) AS requiere_agua
                 FROM contratos_periodo cp
+                LEFT JOIN servicios_facturados sf
+                    ON sf.id_contrato_arriendo = cp.id_contrato_arriendo
                 LEFT JOIN dbo.msp_contrato_locales cl
                     ON cl.id_contrato_arriendo = cp.id_contrato_arriendo
                    AND cl.estado_relacion IN (1,2)
@@ -716,7 +830,11 @@ final class PoolDocumentosPeriodoService
                         WHEN ISNULL(b.requiere_luz, 0) = 1 AND ISNULL(b.requiere_gas, 0) = 1 AND ISNULL(b.requiere_agua, 0) = 1 THEN N'LUZ_GAS_AGUA'
                         WHEN ISNULL(b.requiere_luz, 0) = 1 AND ISNULL(b.requiere_gas, 0) = 1 THEN N'LUZ_GAS'
                         WHEN ISNULL(b.requiere_luz, 0) = 1 AND ISNULL(b.requiere_agua, 0) = 1 THEN N'LUZ_AGUA'
-                        ELSE N'LUZ'
+                        WHEN ISNULL(b.requiere_gas, 0) = 1 AND ISNULL(b.requiere_agua, 0) = 1 THEN N'GAS_AGUA'
+                        WHEN ISNULL(b.requiere_gas, 0) = 1 THEN N'GAS'
+                        WHEN ISNULL(b.requiere_agua, 0) = 1 THEN N'AGUA'
+                        WHEN ISNULL(b.requiere_luz, 0) = 1 THEN N'LUZ'
+                        ELSE N'SIN_SERVICIO'
                     END AS perfil_servicios
                 FROM base b
              ) AS source
@@ -806,29 +924,16 @@ final class PoolDocumentosPeriodoService
                         ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
                     WHERE cl.id_local = m.id_local
                       AND cl.estado_relacion IN (1,2)
-                      AND cl.fecha_inicio <= EOMONTH(@periodo)
-                      AND (
-                            cl.fecha_termino IS NULL
-                            OR cl.fecha_termino >= @periodo
-                            OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ISNULL(cl.fecha_termino, ca.fecha_termino_efectiva)), MONTH(ISNULL(cl.fecha_termino, ca.fecha_termino_efectiva)), 1)) = @periodo
-                      )
-                      AND ca.fecha_inicio <= EOMONTH(@periodo)
-                      AND (
-                            ca.fecha_termino_efectiva IS NULL
-                            OR ca.fecha_termino_efectiva >= @periodo
-                            OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo
-                      )
+                      AND cl.fecha_inicio <= lm.fecha_hasta_consumo
+                      AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= lm.fecha_hasta_consumo)
+                      AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= @periodo
+                           OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(cl.fecha_termino), MONTH(cl.fecha_termino), 1)) = @periodo)
+                      AND ca.fecha_inicio <= lm.fecha_hasta_consumo
+                      AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= lm.fecha_hasta_consumo)
+                      AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= @periodo
+                           OR DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo)
                       AND ca.estado_contrato IN (1,2,3,4)
-                    ORDER BY
-                        CASE
-                            WHEN ca.fecha_termino_efectiva IS NOT NULL
-                             AND ca.fecha_termino_efectiva < @periodo
-                             AND DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(ca.fecha_termino_efectiva), MONTH(ca.fecha_termino_efectiva), 1)) = @periodo
-                            THEN 0
-                            ELSE 1
-                        END,
-                        ca.fecha_inicio DESC,
-                        ca.id_contrato_arriendo DESC
+                    ORDER BY cl.fecha_inicio DESC, cl.id_contrato_local DESC
                 ) map
                 WHERE cm.periodo_facturacion = @periodo
                   AND p.estado_proceso <> 4
@@ -845,13 +950,14 @@ final class PoolDocumentosPeriodoService
                     ELSE 0
                 END,
                 p.ready_gas = CASE
-                    WHEN p.requiere_luz = 1 AND ISNULL(lpt.tiene_luz, 0) = 1
+                    WHEN (p.requiere_luz = 0 OR ISNULL(lpt.tiene_luz, 0) = 1)
                      AND p.requiere_gas = 1 AND ISNULL(lpt.tiene_gas, 0) = 1
                     THEN 1
                     ELSE 0
                 END,
                 p.ready_agua = CASE
-                    WHEN p.requiere_luz = 1 AND ISNULL(lpt.tiene_luz, 0) = 1
+                    WHEN (p.requiere_luz = 0 OR ISNULL(lpt.tiene_luz, 0) = 1)
+                     AND (p.requiere_gas = 0 OR ISNULL(lpt.tiene_gas, 0) = 1)
                      AND p.requiere_agua = 1 AND ISNULL(lpt.tiene_agua, 0) = 1
                     THEN 1
                     ELSE 0
@@ -859,7 +965,9 @@ final class PoolDocumentosPeriodoService
                 p.estado_pool = CASE
                     WHEN p.estado_pool IN (4,5) THEN p.estado_pool
                     WHEN p.id_documento_cobro IS NOT NULL THEN 3
-                    WHEN p.requiere_luz = 1 AND ISNULL(lpt.tiene_luz, 0) = 1 THEN 2
+                    WHEN (p.requiere_luz = 1 AND ISNULL(lpt.tiene_luz, 0) = 1)
+                      OR (p.requiere_gas = 1 AND ISNULL(lpt.tiene_gas, 0) = 1)
+                      OR (p.requiere_agua = 1 AND ISNULL(lpt.tiene_agua, 0) = 1) THEN 2
                     ELSE 1
                 END,
                 p.motivo_pendiente = CASE
@@ -924,6 +1032,103 @@ final class PoolDocumentosPeriodoService
         );
         $bindDocStmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
         $bindDocStmt->execute();
+    }
+
+    private static function syncLateServices(PDO $conn, string $periodoFacturacion): void
+    {
+        if (!msp2TableExists($conn, 'msp_liquidacion_servicios')
+            || !msp2TableExists($conn, 'msp_liquidacion_servicio_consumos')) {
+            return;
+        }
+
+        $stmt = $conn->prepare(
+            "DECLARE @periodo DATE = :periodo;
+             ;WITH tardios AS (
+                SELECT
+                    ca.id_tienda,
+                    ca.id_contrato_arriendo,
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'LUZ' THEN 1 ELSE 0 END) AS tiene_luz,
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'GAS' THEN 1 ELSE 0 END) AS tiene_gas,
+                    MAX(CASE WHEN UPPER(ts.codigo_servicio) = N'AGUA' THEN 1 ELSE 0 END) AS tiene_agua,
+                    MAX(c.id_documento_cobro) AS id_documento_cobro
+                FROM dbo.msp_liquidacion_servicio_consumos c
+                INNER JOIN dbo.msp_liquidacion_servicios ls
+                    ON ls.id_liquidacion_servicio = c.id_liquidacion_servicio
+                INNER JOIN dbo.msp_contrato_locales cl
+                    ON cl.id_contrato_local = ls.id_contrato_local
+                INNER JOIN dbo.msp_contratos_arriendo ca
+                    ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
+                INNER JOIN dbo.msp_tipos_servicio ts
+                    ON ts.id_tipo_servicio = ls.id_tipo_servicio
+                WHERE c.periodo_emision = @periodo
+                  AND c.estado_consumo IN (1,2)
+                  AND ls.estado_liquidacion IN (1,2,3)
+                  AND c.monto_asignado > 0
+                GROUP BY ca.id_tienda, ca.id_contrato_arriendo
+             )
+             MERGE dbo.msp_pool_documentos_periodo AS target
+             USING tardios AS source
+                ON target.periodo_facturacion = @periodo
+               AND target.id_tienda = source.id_tienda
+               AND target.id_contrato_arriendo = source.id_contrato_arriendo
+             WHEN MATCHED THEN
+                UPDATE SET
+                    target.requiere_luz = CASE WHEN source.tiene_luz = 1 THEN 1 ELSE target.requiere_luz END,
+                    target.requiere_gas = CASE WHEN source.tiene_gas = 1 THEN 1 ELSE target.requiere_gas END,
+                    target.requiere_agua = CASE WHEN source.tiene_agua = 1 THEN 1 ELSE target.requiere_agua END,
+                    target.tiene_luz = CASE WHEN source.tiene_luz = 1 THEN 1 ELSE target.tiene_luz END,
+                    target.tiene_gas = CASE WHEN source.tiene_gas = 1 THEN 1 ELSE target.tiene_gas END,
+                    target.tiene_agua = CASE WHEN source.tiene_agua = 1 THEN 1 ELSE target.tiene_agua END,
+                    target.ready_luz = CASE WHEN source.tiene_luz = 1 THEN 1 ELSE target.ready_luz END,
+                    target.ready_gas = CASE WHEN source.tiene_gas = 1 THEN 1 ELSE target.ready_gas END,
+                    target.ready_agua = CASE WHEN source.tiene_agua = 1 THEN 1 ELSE target.ready_agua END,
+                    target.perfil_servicios = CASE
+                        WHEN (target.requiere_luz = 1 OR source.tiene_luz = 1)
+                         AND (target.requiere_gas = 1 OR source.tiene_gas = 1)
+                         AND (target.requiere_agua = 1 OR source.tiene_agua = 1) THEN N'LUZ_GAS_AGUA'
+                        WHEN (target.requiere_luz = 1 OR source.tiene_luz = 1)
+                         AND (target.requiere_gas = 1 OR source.tiene_gas = 1) THEN N'LUZ_GAS'
+                        WHEN (target.requiere_luz = 1 OR source.tiene_luz = 1)
+                         AND (target.requiere_agua = 1 OR source.tiene_agua = 1) THEN N'LUZ_AGUA'
+                        WHEN (target.requiere_gas = 1 OR source.tiene_gas = 1)
+                         AND (target.requiere_agua = 1 OR source.tiene_agua = 1) THEN N'GAS_AGUA'
+                        WHEN target.requiere_luz = 1 OR source.tiene_luz = 1 THEN N'LUZ'
+                        WHEN target.requiere_gas = 1 OR source.tiene_gas = 1 THEN N'GAS'
+                        ELSE N'AGUA'
+                    END,
+                    target.id_documento_cobro = COALESCE(source.id_documento_cobro, target.id_documento_cobro),
+                    target.estado_pool = CASE WHEN source.id_documento_cobro IS NULL THEN 2 ELSE 3 END,
+                    target.motivo_pendiente = CASE WHEN source.id_documento_cobro IS NULL THEN N'Servicio tardío listo para emitir.' ELSE NULL END,
+                    target.updated_at = SYSDATETIME()
+             WHEN NOT MATCHED BY TARGET THEN
+                INSERT (
+                    periodo_facturacion, id_tienda, id_contrato_arriendo, estado_pool, perfil_servicios,
+                    requiere_luz, requiere_gas, requiere_agua, tiene_luz, tiene_gas, tiene_agua,
+                    ready_luz, ready_gas, ready_agua, id_documento_cobro, motivo_pendiente,
+                    created_at, updated_at
+                )
+                VALUES (
+                    @periodo, source.id_tienda, source.id_contrato_arriendo,
+                    CASE WHEN source.id_documento_cobro IS NULL THEN 2 ELSE 3 END,
+                    CASE
+                        WHEN source.tiene_luz = 1 AND source.tiene_gas = 1 AND source.tiene_agua = 1 THEN N'LUZ_GAS_AGUA'
+                        WHEN source.tiene_luz = 1 AND source.tiene_gas = 1 THEN N'LUZ_GAS'
+                        WHEN source.tiene_luz = 1 AND source.tiene_agua = 1 THEN N'LUZ_AGUA'
+                        WHEN source.tiene_gas = 1 AND source.tiene_agua = 1 THEN N'GAS_AGUA'
+                        WHEN source.tiene_luz = 1 THEN N'LUZ'
+                        WHEN source.tiene_gas = 1 THEN N'GAS'
+                        ELSE N'AGUA'
+                    END,
+                    source.tiene_luz, source.tiene_gas, source.tiene_agua,
+                    source.tiene_luz, source.tiene_gas, source.tiene_agua,
+                    source.tiene_luz, source.tiene_gas, source.tiene_agua,
+                    source.id_documento_cobro,
+                    CASE WHEN source.id_documento_cobro IS NULL THEN N'Servicio tardío listo para emitir.' ELSE NULL END,
+                    SYSDATETIME(), SYSDATETIME()
+                );"
+        );
+        $stmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
+        $stmt->execute();
     }
 
     private static function normalizeLoteStageConsistency(PDO $conn, string $periodoFacturacion): void

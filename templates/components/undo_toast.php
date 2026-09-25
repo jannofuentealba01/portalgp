@@ -63,7 +63,7 @@ if (!function_exists('gpRenderUndoToastAssets')) {
         }
         $rendered = true;
         ?>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const init = () => {
                 document.querySelectorAll('[data-gp-undo-toast]').forEach((toastEl) => {

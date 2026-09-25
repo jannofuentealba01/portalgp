@@ -263,6 +263,7 @@ try {
     $requiredTables = ['msp_contratos_arriendo', 'msp_contrato_locales', 'msp_tiendas', 'msp_arrendatarios', 'msp_locales'];
     if ($garantiasSolicitadasCount > 0) {
         $requiredTables[] = 'msp_garantias';
+        $requiredTables[] = 'msp_ocupacion_locales';
     }
     foreach ($requiredTables as $tableName) {
         if (!msp2TableExists($conn, $tableName)) {
@@ -542,6 +543,7 @@ try {
         throw new RuntimeException('No fue posible determinar el contrato recién creado.');
     }
 
+    $garantiasPendientes = [];
     $ordenVisual = 1;
     foreach ($codLocales as $codigo) {
         $idLocal = (int) $idsLocal[$codigo];
@@ -585,23 +587,11 @@ try {
             && is_array($garantiaConfig)
             && (($garantiaConfig['habilitada'] ?? false) === true)
         ) {
-            $stmtInsertGarantia->bindValue(':id_contrato_arriendo', $idContrato, PDO::PARAM_INT);
-            $stmtInsertGarantia->bindValue(':id_local', $idLocal, PDO::PARAM_INT);
-            if ($tieneColumnaGarantiaContratoLocal) {
-                $stmtInsertGarantia->bindValue(':id_contrato_local', $idContratoLocal, PDO::PARAM_INT);
-            }
-            $stmtInsertGarantia->bindValue(':fecha_constitucion', (string) ($garantiaConfig['fecha_constitucion'] ?? $fechaInicioIso), PDO::PARAM_STR);
-            $stmtInsertGarantia->bindValue(':monto_inicial', (string) ($garantiaConfig['monto'] ?? '0'), PDO::PARAM_STR);
-            $obsGar = $garantiaConfig['observaciones'] ?? null;
-            $stmtInsertGarantia->bindValue(':observaciones', $obsGar, $obsGar !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-            if ($tieneColumnaGarantiaMedioRecepcion) {
-                $stmtInsertGarantia->bindValue(':medio_recepcion', $garantiaMedioRecepcion, PDO::PARAM_STR);
-            }
-            if ($tieneColumnaGarantiaReferenciaRecepcion) {
-                $refRecepcion = $garantiaReferenciaRecepcion !== '' ? $garantiaReferenciaRecepcion : null;
-                $stmtInsertGarantia->bindValue(':referencia_recepcion', $refRecepcion, $refRecepcion !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-            }
-            $stmtInsertGarantia->execute();
+            $garantiasPendientes[] = [
+                'id_local' => $idLocal,
+                'id_contrato_local' => $idContratoLocal,
+                'config' => $garantiaConfig,
+            ];
         }
 
         $ordenVisual++;
@@ -634,6 +624,39 @@ try {
         }
 
         msp2SyncLocalStatuses($conn, $localesImpactados);
+    }
+
+    /*
+     * La validación SQL de garantías todavía comprueba la relación legacy
+     * tienda-local en msp_ocupacion_locales. Por eso la garantía se inserta
+     * después de sincronizar la ocupación, pero dentro de la misma transacción.
+     */
+    foreach ($garantiasPendientes as $garantiaPendiente) {
+        if (!$stmtInsertGarantia instanceof PDOStatement) {
+            throw new RuntimeException('No fue posible preparar el registro de garantía.');
+        }
+
+        $garantiaConfig = $garantiaPendiente['config'];
+        $idLocalGarantia = (int) $garantiaPendiente['id_local'];
+        $idContratoLocalGarantia = (int) $garantiaPendiente['id_contrato_local'];
+
+        $stmtInsertGarantia->bindValue(':id_contrato_arriendo', $idContrato, PDO::PARAM_INT);
+        $stmtInsertGarantia->bindValue(':id_local', $idLocalGarantia, PDO::PARAM_INT);
+        if ($tieneColumnaGarantiaContratoLocal) {
+            $stmtInsertGarantia->bindValue(':id_contrato_local', $idContratoLocalGarantia, PDO::PARAM_INT);
+        }
+        $stmtInsertGarantia->bindValue(':fecha_constitucion', (string) ($garantiaConfig['fecha_constitucion'] ?? $fechaInicioIso), PDO::PARAM_STR);
+        $stmtInsertGarantia->bindValue(':monto_inicial', (string) ($garantiaConfig['monto'] ?? '0'), PDO::PARAM_STR);
+        $obsGar = $garantiaConfig['observaciones'] ?? null;
+        $stmtInsertGarantia->bindValue(':observaciones', $obsGar, $obsGar !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        if ($tieneColumnaGarantiaMedioRecepcion) {
+            $stmtInsertGarantia->bindValue(':medio_recepcion', $garantiaMedioRecepcion, PDO::PARAM_STR);
+        }
+        if ($tieneColumnaGarantiaReferenciaRecepcion) {
+            $refRecepcion = $garantiaReferenciaRecepcion !== '' ? $garantiaReferenciaRecepcion : null;
+            $stmtInsertGarantia->bindValue(':referencia_recepcion', $refRecepcion, $refRecepcion !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        }
+        $stmtInsertGarantia->execute();
     }
 
     if ($stmtInsertHistorial instanceof PDOStatement) {

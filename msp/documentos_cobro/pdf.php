@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 
-msp2RequireAccess();
+$pdfLibraryMode = defined('MSP2_DOCUMENTO_COBRO_PDF_LIBRARY') && MSP2_DOCUMENTO_COBRO_PDF_LIBRARY;
+if (!$pdfLibraryMode) {
+    msp2RequireAccess();
+}
 
 function msp2BuildDompdfDebugInfo(string $autoloadPath): string
 {
@@ -69,6 +72,9 @@ function msp2DompdfUnavailable(string $reason, string $autoloadPath, ?Throwable 
         $detail .= PHP_EOL . get_class($exception) . ': ' . $exception->getMessage();
     }
     error_log('[PortalGP][msp.documentos_cobro.pdf] ' . pgpRedactLogMessage($detail));
+    if (defined('MSP2_DOCUMENTO_COBRO_PDF_LIBRARY') && MSP2_DOCUMENTO_COBRO_PDF_LIBRARY) {
+        throw new RuntimeException('No fue posible generar el documento PDF.', 0, $exception);
+    }
     http_response_code(500);
     echo 'No fue posible generar el documento PDF. Revisa el registro privado del servidor.';
     exit();
@@ -155,6 +161,7 @@ try {
     msp2DompdfUnavailable('No fue posible validar la clase Dompdf.', $autoloadPath, $dompdfCheckError);
 }
 
+if (!$pdfLibraryMode) {
 $idDocumento = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
 ]);
@@ -203,6 +210,7 @@ if (
     http_response_code(403);
     echo 'El enlace del PDF no es válido o expiró. Vuelve a abrirlo desde la aplicación.';
     exit();
+}
 }
 
 function pdfMonto(mixed $value): string
@@ -340,6 +348,8 @@ function pdfBuildFilename(array $documento, array $arriendoDetalles, array $elec
     return implode('_', $parts) . '.pdf';
 }
 
+function msp2BuildDocumentoCobroDetailedPdf(PDO $conn, int $idDocumento, ?string $uuidDocumento = null): array
+{
 try {
     $requiredTables = [
         'msp_documentos_cobro',
@@ -643,9 +653,7 @@ try {
         $pagosHistoricos = $stmtPagos->fetchAll();
     }
 } catch (Throwable $e) {
-    http_response_code(500);
-    echo msp2Escape(pgpPublicOrBusinessException($e, 'msp.documentos_cobro.pdf_data', 'No fue posible cargar el documento de cobro.'));
-    exit();
+    throw new RuntimeException('No fue posible cargar el documento de cobro.', 0, $e);
 }
 
 $ivaArriendo = round((float) ($documento['subtotal_arriendo'] ?? 0) * 0.19, 2);
@@ -832,6 +840,10 @@ $html = '<!DOCTYPE html>
         </table>
     </div>
 
+    ';
+
+if ((float) ($documento['subtotal_arriendo'] ?? 0) > 0.005) {
+    $html .= '
     <div class="box">
         <div class="section-title">Arriendo</div>
         <table class="items">
@@ -867,6 +879,7 @@ $html .= '<tr class="total-row">
         </tbody>
         </table>
     </div>';
+}
 
 if ($electricidadDetalles !== []) {
     $html .= '
@@ -1289,11 +1302,23 @@ try {
     $dompdf->loadHtml($html, 'UTF-8');
     $dompdf->render();
 
-    header('Cache-Control: private, no-store, max-age=0');
-    header('Pragma: no-cache');
-
-    $dompdf->stream($filename, ['Attachment' => false]);
-    exit();
+    return [$filename, $dompdf->output()];
 } catch (Throwable $e) {
-    msp2DompdfUnavailable('Error al renderizar el PDF con Dompdf.', $autoloadPath, $e);
+    throw new RuntimeException('No fue posible generar el documento PDF.', 0, $e);
+}
+}
+
+if (!$pdfLibraryMode) {
+    try {
+        [$filename, $pdfContent] = msp2BuildDocumentoCobroDetailedPdf($conn, (int) $idDocumento, $uuidDocumento);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($pdfContent));
+        header('Cache-Control: private, no-store, max-age=0');
+        header('Pragma: no-cache');
+        echo $pdfContent;
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo msp2Escape(pgpPublicOrBusinessException($e, 'msp.documentos_cobro.pdf', 'No fue posible generar el documento de cobro.'));
+    }
 }

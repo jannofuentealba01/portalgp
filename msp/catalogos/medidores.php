@@ -354,8 +354,8 @@ function msp2EstadoMedidorBadgeCatalog(?string $estado): string
         </form>
     </div>
 </div>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 document.querySelectorAll('.js-edit-medidor').forEach((button) => {
     button.addEventListener('click', () => {
         document.getElementById('edit_medidor_id').value = button.dataset.id || '';

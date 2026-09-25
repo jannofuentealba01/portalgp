@@ -86,7 +86,7 @@ if (isset($_SESSION['mensaje'])) {
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="styles.css">
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .gp-id-card {
             display: grid;
             grid-template-columns: 180px minmax(0, 1fr);
@@ -233,16 +233,14 @@ if (isset($_SESSION['mensaje'])) {
                             <div class="gp-id-photo-wrap">
                                 <img
                                     id="profile_user_photo"
-                                    class="gp-user-profile-photo"
+                                    class="gp-user-profile-photo<?php echo $urlLogo === '' ? ' d-none' : ''; ?>"
                                     src="<?php echo htmlspecialchars($urlLogo, ENT_QUOTES, 'UTF-8'); ?>"
                                     alt="Foto del usuario"
-                                    <?php echo $urlLogo === '' ? 'style="display:none;"' : ''; ?>
                                 >
                                 <div
                                     id="profile_user_fallback"
-                                    class="gp-user-profile-fallback"
+                                    class="gp-user-profile-fallback<?php echo $urlLogo !== '' ? ' d-none' : ''; ?>"
                                     aria-hidden="true"
-                                    <?php echo $urlLogo !== '' ? 'style="display:none;"' : ''; ?>
                                 ><?php echo htmlspecialchars($initial, ENT_QUOTES, 'UTF-8'); ?></div>
                             </div>
                             <div class="gp-id-main">
@@ -300,7 +298,7 @@ if (isset($_SESSION['mensaje'])) {
         </div>
     </main>
 
-    <script>
+    <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (function () {
             var photoElement = document.getElementById('profile_user_photo');
             var fallbackElement = document.getElementById('profile_user_fallback');
@@ -309,8 +307,8 @@ if (isset($_SESSION['mensaje'])) {
             }
 
             var fallback = function () {
-                photoElement.style.display = 'none';
-                fallbackElement.style.display = 'inline-flex';
+                photoElement.classList.add('d-none');
+                fallbackElement.classList.remove('d-none');
             };
 
             var src = (photoElement.getAttribute('src') || '').trim();
@@ -321,8 +319,8 @@ if (isset($_SESSION['mensaje'])) {
 
             photoElement.addEventListener('error', fallback);
             photoElement.addEventListener('load', function () {
-                photoElement.style.display = 'block';
-                fallbackElement.style.display = 'none';
+                photoElement.classList.remove('d-none');
+                fallbackElement.classList.add('d-none');
             });
 
             if (photoElement.complete && photoElement.naturalWidth === 0) {
@@ -330,7 +328,7 @@ if (isset($_SESSION['mensaje'])) {
             }
         })();
     </script>
-    <script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
     <?php include __DIR__ . '/templates/footer.php'; ?>
 </body>
 </html>

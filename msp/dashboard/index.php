@@ -1240,7 +1240,7 @@ if ($tablaExiste) {
                                     <?php foreach ($composicionDetalle as $conceptoComposicion): ?>
                                         <?php $porcentajeComposicion = $totalComposicionDetalle > 0 ? (((float) $conceptoComposicion['monto'] / $totalComposicionDetalle) * 100) : 0.0; ?>
                                         <div class="dash-composition-item">
-                                            <span class="dash-composition-dot" style="background: <?php echo msp2Escape((string) $conceptoComposicion['color']); ?>;"></span>
+                                            <span class="dash-composition-dot" <?php echo pgpCspStyleAttribute('background: ' . (string) $conceptoComposicion['color'] . ';'); ?>></span>
                                             <span>
                                                 <?php echo msp2Escape((string) $conceptoComposicion['label']); ?>
                                                 <span class="dash-composition-percent"><?php echo msp2Escape(number_format($porcentajeComposicion, 1, ',', '.')); ?>%</span>
@@ -1417,9 +1417,9 @@ if ($tablaExiste) {
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 const historialLabels = <?php echo dashboardJson($chartSeries['historial_labels']); ?>;
 const historialFacturado = <?php echo dashboardJson($chartSeries['historial_facturado']); ?>;
 const historialCobrado = <?php echo dashboardJson($chartSeries['historial_cobrado']); ?>;

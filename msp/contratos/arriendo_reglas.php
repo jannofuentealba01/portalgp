@@ -397,7 +397,7 @@ try {
                 </div>
             <?php else: ?>
                 <div class="alert alert-info">
-                    <strong>Reglas:</strong> <code>UF_ESTATICO</code> exige valor UF. <code>CLP_FIJO</code> exige valor CLP.
+                    <strong>Reglas:</strong> <code>UF_ESTATICO</code> exige el arriendo mensual expresado en UF, no el valor de la UF en pesos. <code>CLP_FIJO</code> exige el arriendo mensual en pesos.
                     En esta pantalla defines el valor base por local.
                 </div>
 
@@ -415,8 +415,8 @@ try {
                                 <tr>
                                     <th>Local</th>
                                     <th>Modalidad</th>
-                                    <th class="text-end">Valor base UF</th>
-                                    <th class="text-end">Valor base CLP</th>
+                                    <th class="text-end">Arriendo mensual (UF)</th>
+                                    <th class="text-end">Arriendo mensual (CLP)</th>
                                     <th class="text-center">Grupo</th>
                                 </tr>
                                 </thead>
@@ -629,8 +629,8 @@ try {
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const rows = Array.from(document.querySelectorAll('.js-arriendo-row'));
     const refreshRow = (row) => {

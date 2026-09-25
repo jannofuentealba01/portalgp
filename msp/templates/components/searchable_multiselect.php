@@ -26,7 +26,7 @@ if (!function_exists('msp2RenderSearchableMultiSelectAssets')) {
             msp2RenderSearchAssets();
         }
         ?>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const instances = new Map();
 

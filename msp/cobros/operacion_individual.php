@@ -230,7 +230,7 @@ function oiGenerarServicioTienda(
                         ELSE 0
                     END, 2) AS DECIMAL(18,2)) AS subtotal_variable,
                     CAST(ROUND(CASE
-                        WHEN b.codigo_servicio = N'AGUA' THEN ISNULL(b.cargo_fijo, 0) / NULLIF(b.divisor, 0)
+                        WHEN b.codigo_servicio = N'AGUA' THEN ISNULL(b.cargo_fijo, 0)
                         ELSE 0
                     END, 2) AS DECIMAL(18,2)) AS cargo_fijo,
                     CASE
@@ -1058,8 +1058,8 @@ if ($tablaExiste) {
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const formCarga = document.getElementById('form_carga_individual');
     const periodoValueEl = document.getElementById('periodo_picker_value');

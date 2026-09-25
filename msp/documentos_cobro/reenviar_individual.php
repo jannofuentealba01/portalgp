@@ -19,6 +19,7 @@ if ($redirectQueryRaw !== '' && preg_match('/^[A-Za-z0-9_\-\.\[\]%=&]*$/', $redi
 if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
     msp2Redirect($redirectTarget);
 }
+msp2RequireValidCsrfToken();
 
 $idDocumentoReenvio = filter_input(INPUT_POST, 'id_documento_cobro', FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
@@ -61,9 +62,10 @@ try {
             $idLoteReenvio,
             $periodoReenvio,
             null,
-            'web-doc-individual'
+            'web-doc-individual',
+            true
         );
-        $msg = 'Reenvío ejecutado para documento #' . (int) $idDocumentoReenvio
+        $msg = 'Reenvío del PDF ejecutado para documento #' . (int) $idDocumentoReenvio
             . ' | lote #' . $idLoteReenvio
             . ' | servicio: ' . ($codigoServicioReenvio !== '' ? $codigoServicioReenvio : '-')
             . ' | modo: ' . $modoReenvio

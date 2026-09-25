@@ -162,7 +162,7 @@ function reFetchConsumoDataset(PDO $conn, string $periodoConsumoYm): array
     $divisor = is_numeric((string) ($proceso['divisor'] ?? null)) ? (float) $proceso['divisor'] : null;
     $cargoFijo = is_numeric((string) ($proceso['cargo_fijo'] ?? null)) ? (float) $proceso['cargo_fijo'] : null;
     $tarifaVariable = 0.0;
-    foreach (['servicio_agua_potable', 'servicio_alcantarillado', 'tratamiento_aguas_servidas', 'sobreconsumo', 'interes_pf_plazo'] as $componenteAgua) {
+    foreach (['servicio_agua_potable', 'servicio_alcantarillado', 'tratamiento_aguas_servidas'] as $componenteAgua) {
         $tarifaVariable += is_numeric((string) ($proceso[$componenteAgua] ?? null)) ? (float) $proceso[$componenteAgua] : 0.0;
     }
 
@@ -212,7 +212,7 @@ function reFetchConsumoDataset(PDO $conn, string $periodoConsumoYm): array
         $montoUsado = $montoTotal !== null
             ? max(0.0, round($montoTotal, 2))
             : (($divisor !== null && $divisor > 0)
-                ? round(($consumoUsado * $tarifaVariable / $divisor) + (($cargoFijo ?? 0.0) / $divisor), 2)
+                ? round(($consumoUsado * $tarifaVariable / $divisor) + ($cargoFijo ?? 0.0), 2)
                 : 0.0);
 
         $rows[] = [
@@ -623,9 +623,9 @@ if ($periodoValido) {
                 <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const form = document.getElementById('form_reporte_consumo_periodo');
     const periodoInput = document.getElementById('reporte_consumo_periodo');
