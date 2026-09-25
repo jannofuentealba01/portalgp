@@ -47,11 +47,11 @@ $menuColumns = array_values(array_filter(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MSP – Mercado San Pedro</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/driver.js-1.3.6/driver.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
+    <style<?= pgpCspNonceAttribute() ?>>
         /* ── Hero ── */
         .mspv2-hero {
             padding: 0 0 20px 0;
@@ -402,8 +402,8 @@ $menuColumns = array_values(array_filter(
     </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js"></script>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/assets/vendor/driver.js-1.3.6/driver.js.iife.js"></script>
 <script src="<?php echo msp2Escape(msp2Url('assets/msp_tour_menu.js')); ?>"></script>
 <?php include dirname(__DIR__) . '/templates/footer.php'; ?>
 </body>
