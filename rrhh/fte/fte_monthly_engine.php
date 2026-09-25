@@ -9,6 +9,8 @@ declare(strict_types=1);
  */
 function fte_monthly_calculate(array $input): array
 {
+    $usesProratedTheoreticalHours = array_key_exists('effective_theoretical_hours', $input)
+        || array_key_exists('horas_teoricas_proporcionales', $input);
     $aliases = [
         'headcount' => ['headcount', 'dotacion'],
         'theoretical_hours_per_person' => ['theoretical_hours_per_person', 'horas_teoricas_persona'],
@@ -45,6 +47,19 @@ function fte_monthly_calculate(array $input): array
         throw new InvalidArgumentException('La dotacion debe ser un numero entero de personas.');
     }
 
+    $effectiveTheoreticalHours = null;
+    if ($usesProratedTheoreticalHours) {
+        $rawEffective = $input['effective_theoretical_hours'] ?? $input['horas_teoricas_proporcionales'] ?? null;
+        if (!is_int($rawEffective) && !is_float($rawEffective)
+            && !(is_string($rawEffective) && is_numeric(str_replace(',', '.', trim($rawEffective))))) {
+            throw new InvalidArgumentException('El valor effective_theoretical_hours debe ser numerico.');
+        }
+        $effectiveTheoreticalHours = (float)str_replace(',', '.', trim((string)$rawEffective));
+        if (!is_finite($effectiveTheoreticalHours) || $effectiveTheoreticalHours < 0) {
+            throw new InvalidArgumentException('El valor effective_theoretical_hours no puede ser negativo ni invalido.');
+        }
+    }
+
     $lossComponents = [
         'vacation_hours' => $values['vacation_hours'],
         'employment_movement_hours' => $values['employment_movement_hours'],
@@ -56,15 +71,23 @@ function fte_monthly_calculate(array $input): array
     ];
 
     $theoreticalHeadcountHours = $values['headcount'] * $values['theoretical_hours_per_person'];
-    $lostHours = array_sum($lossComponents);
-    $adjustedHours = $theoreticalHeadcountHours + $values['authorized_overtime_hours'] - $lostHours;
+    $effectiveTheoreticalHours ??= $theoreticalHeadcountHours;
+    $lossesAppliedToFte = $lossComponents;
+    if ($usesProratedTheoreticalHours) {
+        // Las horas fuera de la vigencia laboral ya fueron retiradas de las horas
+        // teoricas proporcionales. Se conservan como trazabilidad, pero no se
+        // descuentan una segunda vez del FTE.
+        $lossesAppliedToFte['employment_movement_hours'] = 0.0;
+    }
+    $lostHours = array_sum($lossesAppliedToFte);
+    $adjustedHours = $effectiveTheoreticalHours + $values['authorized_overtime_hours'] - $lostHours;
 
     $fte = $values['theoretical_hours_per_person'] > 0
         ? $adjustedHours / $values['theoretical_hours_per_person']
         : null;
     $headcountGap = $fte !== null ? $values['headcount'] - $fte : null;
-    $unavailableRate = $theoreticalHeadcountHours > 0
-        ? $lostHours / $theoreticalHeadcountHours
+    $unavailableRate = $effectiveTheoreticalHours > 0
+        ? $lostHours / $effectiveTheoreticalHours
         : null;
     $availabilityIndex = $unavailableRate !== null ? 1 - $unavailableRate : null;
     $fteToHeadcountRate = $fte !== null && $values['headcount'] > 0
@@ -72,34 +95,36 @@ function fte_monthly_calculate(array $input): array
         : null;
 
     $warnings = [];
-    if ($theoreticalHeadcountHours <= 0) {
+    if ($effectiveTheoreticalHours <= 0) {
         $warnings[] = 'ZERO_THEORETICAL_HOURS';
     }
     if ($adjustedHours < 0) {
         $warnings[] = 'NEGATIVE_ADJUSTED_HOURS';
     }
-    if ($lostHours > $theoreticalHeadcountHours + $values['authorized_overtime_hours']) {
+    if ($lostHours > $effectiveTheoreticalHours + $values['authorized_overtime_hours']) {
         $warnings[] = 'LOSSES_EXCEED_AVAILABLE_HOURS';
     }
     if ($fte !== null && $fte > $values['headcount']) {
         $warnings[] = 'FTE_EXCEEDS_HEADCOUNT';
     }
 
-    $round = static fn(?float $value, int $precision = 4): ?float => $value === null ? null : round($value, $precision);
-
+    // La precisión se conserva completa; el formato visual se aplica fuera del motor.
     return [
         'headcount' => (int)$values['headcount'],
-        'theoretical_hours_per_person' => $round($values['theoretical_hours_per_person']),
-        'theoretical_headcount_hours' => $round($theoreticalHeadcountHours),
-        'authorized_overtime_hours' => $round($values['authorized_overtime_hours']),
-        'loss_components' => array_map($round, $lossComponents),
-        'lost_hours' => $round($lostHours),
-        'adjusted_hours' => $round($adjustedHours),
-        'fte' => $round($fte),
-        'headcount_fte_gap' => $round($headcountGap),
-        'unavailable_hours_rate' => $round($unavailableRate, 6),
-        'availability_index' => $round($availabilityIndex, 6),
-        'fte_to_headcount_rate' => $round($fteToHeadcountRate, 6),
+        'theoretical_hours_per_person' => $values['theoretical_hours_per_person'],
+        'theoretical_headcount_hours' => $theoreticalHeadcountHours,
+        'effective_theoretical_hours' => $effectiveTheoreticalHours,
+        'uses_prorated_theoretical_hours' => $usesProratedTheoreticalHours,
+        'authorized_overtime_hours' => $values['authorized_overtime_hours'],
+        'loss_components' => $lossComponents,
+        'loss_components_applied_to_fte' => $lossesAppliedToFte,
+        'lost_hours' => $lostHours,
+        'adjusted_hours' => $adjustedHours,
+        'fte' => $fte,
+        'headcount_fte_gap' => $headcountGap,
+        'unavailable_hours_rate' => $unavailableRate,
+        'availability_index' => $availabilityIndex,
+        'fte_to_headcount_rate' => $fteToHeadcountRate,
         'warnings' => $warnings,
         'labels' => [
             'headcount_fte_gap' => 'Brecha Dotacion/FTE',
@@ -119,6 +144,7 @@ function fte_monthly_calculate_report(array $rows): array
     $totals = [
         'headcount' => 0,
         'theoretical_headcount_hours' => 0.0,
+        'effective_theoretical_hours' => 0.0,
         'authorized_overtime_hours' => 0.0,
         'lost_hours' => 0.0,
         'adjusted_hours' => 0.0,
@@ -156,7 +182,7 @@ function fte_monthly_calculate_report(array $rows): array
         $results[] = $calculation;
 
         $totals['headcount'] += $calculation['headcount'];
-        foreach (['theoretical_headcount_hours', 'authorized_overtime_hours', 'lost_hours', 'adjusted_hours'] as $key) {
+        foreach (['theoretical_headcount_hours', 'effective_theoretical_hours', 'authorized_overtime_hours', 'lost_hours', 'adjusted_hours'] as $key) {
             $totals[$key] += (float)$calculation[$key];
         }
         foreach ($totals['loss_components'] as $key => $unused) {
@@ -170,25 +196,19 @@ function fte_monthly_calculate_report(array $rows): array
         }
     }
 
-    $totals['fte'] = $hasCalculableFte && !$hasMissingFte ? round($totals['fte'], 4) : null;
+    $totals['fte'] = $hasCalculableFte && !$hasMissingFte ? $totals['fte'] : null;
     $totals['headcount_fte_gap'] = $totals['fte'] !== null
-        ? round($totals['headcount'] - $totals['fte'], 4)
+        ? $totals['headcount'] - $totals['fte']
         : null;
-    $totals['unavailable_hours_rate'] = $totals['theoretical_headcount_hours'] > 0
-        ? round($totals['lost_hours'] / $totals['theoretical_headcount_hours'], 6)
+    $totals['unavailable_hours_rate'] = $totals['effective_theoretical_hours'] > 0
+        ? $totals['lost_hours'] / $totals['effective_theoretical_hours']
         : null;
     $totals['availability_index'] = $totals['unavailable_hours_rate'] !== null
-        ? round(1 - $totals['unavailable_hours_rate'], 6)
+        ? 1 - $totals['unavailable_hours_rate']
         : null;
     $totals['fte_to_headcount_rate'] = $totals['fte'] !== null && $totals['headcount'] > 0
-        ? round($totals['fte'] / $totals['headcount'], 6)
+        ? $totals['fte'] / $totals['headcount']
         : null;
-    foreach (['theoretical_headcount_hours', 'authorized_overtime_hours', 'lost_hours', 'adjusted_hours'] as $key) {
-        $totals[$key] = round($totals[$key], 4);
-    }
-    foreach ($totals['loss_components'] as $key => $value) {
-        $totals['loss_components'][$key] = round($value, 4);
-    }
 
     return [
         'cost_centers' => $results,

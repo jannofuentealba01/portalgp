@@ -50,7 +50,7 @@ ob_start();
 <link rel="stylesheet" href="/portalgp/ct/contabilidad/assets/comercial.css">
 <?php require __DIR__ . '/views/list.php'; ?>
 <?php require __DIR__ . '/views/modals.php'; ?>
-<script src="/portalgp/ct/contabilidad/assets/comercial.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/ct/contabilidad/assets/comercial.js"></script>
 <?php
 $pageBodyHtml = (string) ob_get_clean();
 

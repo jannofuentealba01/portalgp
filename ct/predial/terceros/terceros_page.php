@@ -62,7 +62,7 @@ ob_start();
 <?php ctRenderSearchableSelectAssets(); ?>
 <?php require __DIR__ . '/views/list.php'; ?>
 <?php require __DIR__ . '/views/modals.php'; ?>
-<script src="/portalgp/ct/predial/terceros/assets/terceros.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/ct/predial/terceros/assets/terceros.js"></script>
 <?php
 $pageBodyHtml = (string) ob_get_clean();
 

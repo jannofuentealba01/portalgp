@@ -27,6 +27,7 @@ $activeFiles = [
     'fte_config.php',
     'fte_dashboard.php',
     'fte_grafico_asistencia.php',
+    'fte_identity.php',
     'fte_lib.php',
     'fte_mensual.php',
     'fte_monthly_report.php',
@@ -52,7 +53,13 @@ $check(str_contains($sources['fte_lib.php'], 'CURLOPT_SSL_VERIFYPEER => true'), 
 $check(str_contains($sources['fte_lib.php'], 'CURLOPT_SSL_VERIFYHOST => 2'), 'cURL valida el host TLS');
 $check(!str_contains($sources['fte_lib.php'], '$timeout, false'), 'no existe reintento con TLS deshabilitado');
 $check(!str_contains($allSources, 'innerHTML'), 'los datos externos se renderizan sin innerHTML');
-$check(!str_contains($allSources, 'localStorage'), 'los datos laborales no persisten en localStorage');
+$sourcesWithoutMonthly = $sources;
+unset($sourcesWithoutMonthly['fte_mensual.php']);
+$monthlyLocalStorageIsReferenceOnly = !str_contains(implode("\n", $sourcesWithoutMonthly), 'localStorage')
+    && str_contains($sources['fte_mensual.php'], "const referenceStorageKey='fte_monthly_excel_references_v1'")
+    && !str_contains($sources['fte_mensual.php'], 'localStorage.setItem(\'fte_attendance')
+    && !str_contains($sources['fte_mensual.php'], 'localStorage.setItem(\'fte_people');
+$check($monthlyLocalStorageIsReferenceOnly, 'localStorage conserva solo referencias manuales del Excel y no datos laborales');
 $check(!str_contains($sources['fte_dashboard.php'], 'target="_blank"'), 'las vistas secundarias conservan el sessionStorage en la misma pestaña');
 $check(!str_contains($allSources, 'cdn.jsdelivr.net'), 'los assets FTE se sirven localmente');
 $check(!str_contains($allSources, 'styles_portal.css'), 'no se solicita el asset inexistente styles_portal.css');
@@ -82,6 +89,17 @@ $inactive = fte_normalize_buk_person([
     'current_job' => ['cost_center' => 'CECO 1'],
 ]);
 $check(is_array($inactive) && $inactive['active'] === false, 'el estado inactivo real de Buk queda excluible');
+$check(
+    is_array($inactive)
+        && ($inactive['employment_dates_verified'] ?? false) === true
+        && ($inactive['employment_start_source'] ?? '') === 'Buk employee.active_since'
+        && ($inactive['employment_end_source'] ?? '') === 'Buk employee.active_until',
+    'las fechas laborales quedan identificadas como campos reales del trabajador Buk'
+);
+$check(
+    is_array($inactive) && ($inactive['active_since'] ?? null) === null,
+    'la fecha laboral nunca se infiere desde current_job'
+);
 $check(abs(fte_duration_hours('08:30:00') - 8.5) < 0.0001, 'las duraciones GeoVictoria HH:mm:ss se convierten a horas decimales');
 $attendanceFixture = [];
 fte_merge_attendance_payload($attendanceFixture, [

@@ -22,10 +22,11 @@ $calendar = ['period'=>'2026-08','theoretical_hours_per_person'=>8,'days'=>[
 $people = [['normalized_identifier'=>'19','active_since'=>'2026-01-01','cost_center_code'=>'A']];
 $history = fte_headcount_build_month($people, 2026, 8, $calendar);
 $attendance = ['19'=>[
- '2026-08-03'=>['delay_hours'=>2,'authorized_overtime_hours'=>1],
- '2026-08-08'=>['authorized_overtime_hours'=>5],
+ '2026-08-03'=>['delay_hours'=>2,'accomplished_overtime_hours'=>1],
+ '2026-08-08'=>['accomplished_overtime_hours'=>5],
 ]];
 $r = fte_monthly_build_report($calendar,$history,$people,['19'=>['2026-08-03'=>['kind'=>'Vacaciones']]],$attendance);
-audit_check($r['totals']['authorized_overtime_hours'] === 1.0, 'Excluye horas extra del sabado');
+audit_check($r['totals']['authorized_overtime_hours'] === 1.0, 'Incluye horas extra realizadas de lunes a viernes y excluye el sabado');
+audit_check(($r['overtime_definition']['excluded_weekend_hours'] ?? 0.0) === 5.0, 'Audita por separado las horas extra realizadas en sabado');
 audit_check($r['totals']['loss_components']['failure_delay_hours'] === 0.0, 'Evita doble descuento por ausencia y atraso');
 echo "$n pruebas aprobadas.\n";

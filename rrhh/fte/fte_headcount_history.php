@@ -88,10 +88,10 @@ function fte_headcount_build_month(array $people, int $year, int $month, ?array 
         $row['active_any_time_headcount'] = count($row['active_any_time_identifiers']);
         $row['end_of_month_headcount'] = count($row['end_of_month_identifiers']);
         $row['average_calendar_day_headcount'] = $calendarDayCount > 0
-            ? round($row['person_calendar_days'] / $calendarDayCount, 4)
+            ? $row['person_calendar_days'] / $calendarDayCount
             : null;
         $row['average_workday_headcount'] = $workdayCount > 0
-            ? round($row['person_workdays'] / $workdayCount, 4)
+            ? $row['person_workdays'] / $workdayCount
             : null;
         unset($row['active_any_time_identifiers'], $row['end_of_month_identifiers']);
     }
@@ -110,8 +110,8 @@ function fte_headcount_build_month(array $people, int $year, int $month, ?array 
         'month_end' => $last->format('Y-m-d'),
         'unique_people_active_any_time' => count($uniqueAny),
         'end_of_month_headcount' => (int)$lastDay['total_headcount'],
-        'average_calendar_day_headcount' => $calendarDayCount > 0 ? round($personCalendarDays / $calendarDayCount, 4) : null,
-        'average_workday_headcount' => $workdayCount > 0 ? round($personWorkdays / $workdayCount, 4) : null,
+        'average_calendar_day_headcount' => $calendarDayCount > 0 ? $personCalendarDays / $calendarDayCount : null,
+        'average_workday_headcount' => $workdayCount > 0 ? $personWorkdays / $workdayCount : null,
         'person_calendar_days' => $personCalendarDays,
         'person_workdays' => $personWorkdays,
         'unassigned_person_days' => $unassignedPersonDays,

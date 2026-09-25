@@ -19,6 +19,8 @@ $assert = static function (bool $condition, string $message) use (&$checks): voi
 
 $root = dirname(__DIR__);
 $htaccess = (string) file_get_contents($root . '/.htaccess');
+$securitySource = (string) file_get_contents($root . '/security.php');
+$generatedCsp = pgpCspPolicy('stage3-test-nonce');
 $requiredCsp = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -26,16 +28,21 @@ $requiredCsp = [
     "frame-src 'none'",
     "frame-ancestors 'self'",
     "form-action 'self'",
-    "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'nonce-stage3-test-nonce'",
+    "script-src-attr 'none'",
+    "style-src 'self' 'nonce-stage3-test-nonce'",
+    "style-src-attr 'none'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
     "connect-src 'self'",
     "worker-src 'self' blob:",
 ];
 foreach ($requiredCsp as $directive) {
-    $assert(str_contains($htaccess, $directive), 'CSP contiene ' . $directive);
+    $assert(str_contains($generatedCsp, $directive), 'CSP dinámica contiene ' . $directive);
 }
+$assert(!str_contains($generatedCsp, "'unsafe-inline'"), 'la CSP dinámica no permite unsafe-inline');
+$assert(!str_contains($htaccess, "'unsafe-inline'"), 'la política Apache para HTML estático no permite unsafe-inline');
+$assert(str_contains($securitySource, "ob_start('pgpCspFinalizeOutput')"), 'PHP protege la salida completa antes de enviarla');
 
 foreach ([
     'X-Content-Type-Options',
@@ -126,6 +133,8 @@ if (in_array('--live', $argv, true)) {
     $assetHeaders = get_headers('http://localhost/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css', true);
     $assert(is_array($loginHeaders) && str_contains((string) ($loginHeaders[0] ?? ''), '200'), 'Apache responde la página de login');
     $assert(isset($loginHeaders['Content-Security-Policy']), 'Apache entrega CSP en una página PHP');
+    $liveCsp = (string) ($loginHeaders['Content-Security-Policy'] ?? '');
+    $assert(!str_contains($liveCsp, "'unsafe-inline'") && preg_match("~'nonce-[A-Za-z0-9_-]+'~", $liveCsp) === 1, 'la CSP HTTP real usa nonce y no unsafe-inline');
     $assert((string) ($loginHeaders['Cache-Control'] ?? '') === 'no-store, private, max-age=0', 'Apache impide cachear páginas PHP');
     $assert((string) ($assetHeaders['Cache-Control'] ?? '') === 'public, max-age=604800, immutable', 'Apache permite caché inmutable de recursos estáticos');
 }

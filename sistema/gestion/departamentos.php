@@ -193,7 +193,7 @@ if ($departmentsSchemaReady) {
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .gp-table-meta {
             display: flex;
             align-items: center;
@@ -457,8 +457,8 @@ gpRenderConfirmActionModal([
 ]);
 ?>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 document.getElementById('editDepartmentModal').addEventListener('show.bs.modal', function (event) {
     var button = event.relatedTarget;
     var payload = button ? button.getAttribute('data-department') : null;

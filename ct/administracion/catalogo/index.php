@@ -64,7 +64,7 @@ $items = [
 
 ob_start();
 ?>
-<style>
+<style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
     .ct-catalogo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .ct-catalogo-card {
         border: 1px solid #dbe3ed;

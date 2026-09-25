@@ -30,3 +30,7 @@
 /GUIA_CODEX_HACER_FUNCIONAR_FTE_PORTALGP*.md
 /git
 /ql*
+
+# Herramientas locales de diagnóstico o reinicio; no publicar ni desplegar.
+/_analyze_geovictoria_aug.mjs
+/msp/db/dev_reset_operacion_desde_2026_04.sql

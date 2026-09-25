@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['eliminar_permiso'])) 
     </div>
 </div>
 
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 function abrirModalEdicion(permiso) {
     document.getElementById('edit_id').value = permiso.id;
     document.getElementById('edit_nombre_permiso').value = permiso.nombre_permiso;
@@ -131,7 +131,7 @@ function cerrarModalEdicion() {
 }
 </script>
 
-<style>
+<style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 .container {
     max-width: 800px;
     margin: 50px auto;

@@ -28,7 +28,7 @@ include __DIR__ . '/../../templates/header.php';
   <title>Ausencias FTE</title>
   <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.3/css/bootstrap.min.css">
   <link rel="stylesheet" href="../../styles.css">
-  <style>
+  <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
     body.ph-portal.no-sidebar .content-wrapper { padding-top: 0.35rem !important; }
     .portal-shell { padding-top: 0 !important; overflow: visible !important; }
     .fte-content-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
@@ -224,8 +224,8 @@ include __DIR__ . '/../../templates/header.php';
 </main>
 
 <?php include __DIR__ . '/../../templates/footer.php'; ?>
-<script src="fte_ui.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="fte_ui.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (function(){
   const loading = document.getElementById('loading');
   const errorBox = document.getElementById('errorBox');

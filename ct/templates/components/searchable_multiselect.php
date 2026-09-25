@@ -23,7 +23,7 @@ if (!function_exists('ctRenderSearchableMultiSelectAssets')) {
         }
         $assetsRendered = true;
         ?>
-        <script>
+        <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const instances = new Map();
 

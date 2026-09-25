@@ -29,7 +29,7 @@ include __DIR__ . '/../../templates/header.php';
   <title>FTE GeoVictoria + Buk</title>
   <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.3/css/bootstrap.min.css">
   <link rel="stylesheet" href="../../styles.css">
-  <style>
+  <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
     body.ph-portal.no-sidebar .content-wrapper { padding-top: 0.35rem !important; }
     .portal-shell { padding-top: 0 !important; overflow: visible !important; }
     .fte-content-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
@@ -305,7 +305,7 @@ include __DIR__ . '/../../templates/header.php';
 
       <div id="warnings" class="d-flex flex-wrap gap-2 mb-3"></div>
 
-      <div id="loading" class="alert alert-info d-none">Consultando datos. GeoVictoria puede tardar si hay muchos trabajadores.</div>
+      <div id="loading" class="alert alert-info d-none">Consultando datos. El límite es de 45 segundos hasta 7 días y de 90 segundos entre 8 y 31 días.</div>
       <div id="errorBox" class="alert alert-danger d-none"></div>
 
       <div class="row g-3">
@@ -363,8 +363,8 @@ include __DIR__ . '/../../templates/header.php';
 </main>
 
 <?php include __DIR__ . '/../../templates/footer.php'; ?>
-<script src="fte_ui.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="fte_ui.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (function(){
   const apiUrl = 'fte_api.php';
   const cecoList = document.getElementById('cecoList');
@@ -458,6 +458,18 @@ include __DIR__ . '/../../templates/header.php';
   function setBusy(value){
     loading.classList.toggle('d-none', !value);
     document.getElementById('btnLoad').disabled = value;
+  }
+
+  function attendanceRangeTimeoutMs(){
+    const fromValue = document.getElementById('from_date').value;
+    const toValue = document.getElementById('to_date').value;
+    const from = new Date(`${fromValue}T00:00:00`);
+    const to = new Date(`${toValue}T00:00:00`);
+    if (!fromValue || !toValue || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) return 0;
+    const days = Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
+    if (days >= 1 && days <= 7) return 45000;
+    if (days >= 8 && days <= 31) return 90000;
+    return 0;
   }
 
   function showError(message){
@@ -659,10 +671,20 @@ include __DIR__ . '/../../templates/header.php';
       return;
     }
     setBusy(true);
+    const controller = new AbortController();
+    const timeoutMs = attendanceRangeTimeoutMs();
+    const timeoutSeconds = Math.round(timeoutMs / 1000);
+    const timeoutId = timeoutMs > 0 ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
     try {
-      const response = await fetch(`${apiUrl}?${params('dashboard')}`, { credentials: 'same-origin' });
+      const response = await fetch(`${apiUrl}?${params('dashboard')}`, {
+        credentials: 'same-origin',
+        signal: controller.signal,
+      });
       const payload = await response.json();
-      if (!payload.ok) throw new Error(payload.error || 'No se pudo cargar el dashboard.');
+      if (!payload.ok) {
+        const reference = payload.reference ? ` Referencia: ${payload.reference}.` : '';
+        throw new Error(`${payload.error || 'No se pudo cargar el dashboard.'}${reference}`);
+      }
       const data = payload.data;
       if (activeDetailCeco && !data.summaries.some((row) => row.cost_center_code === activeDetailCeco)) {
         activeDetailCeco = '';
@@ -673,8 +695,11 @@ include __DIR__ . '/../../templates/header.php';
       renderPeople();
       saveDashboardPayload(data);
     } catch (error) {
-      showError(error.message);
+      showError(error.name === 'AbortError'
+        ? `La consulta supero el tiempo maximo de ${timeoutSeconds} segundos. Intenta nuevamente o reduce los centros de costo seleccionados.`
+        : error.message);
     } finally {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
       setBusy(false);
     }
   }

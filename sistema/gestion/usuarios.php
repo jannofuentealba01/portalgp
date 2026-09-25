@@ -584,7 +584,7 @@ unset($user);
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
-    <style>
+    <style<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         .gp-table-meta {
             display: flex;
             align-items: center;
@@ -1441,10 +1441,10 @@ gpRenderConfirmActionModal([
 ]);
 ?>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php gpRenderSearchableSelectAssets(); ?>
 <?php gpRenderSearchableMultiSelectAssets(); ?>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 function validatePasswordPair(passwordId, confirmId, options) {
     var passwordInput = document.getElementById(passwordId);
     var confirmInput = document.getElementById(confirmId);
@@ -1596,18 +1596,18 @@ function setUserProfileImage(urlLogo, fullName, username) {
     fallbackElement.textContent = initial;
 
     if (cleanUrl === '') {
-        photoElement.style.display = 'none';
-        fallbackElement.style.display = 'inline-flex';
+        photoElement.classList.add('d-none');
+        fallbackElement.classList.remove('d-none');
         photoElement.removeAttribute('src');
         return;
     }
 
-    photoElement.style.display = 'block';
-    fallbackElement.style.display = 'none';
+    photoElement.classList.remove('d-none');
+    fallbackElement.classList.add('d-none');
     photoElement.src = cleanUrl;
     photoElement.onerror = function () {
-        photoElement.style.display = 'none';
-        fallbackElement.style.display = 'inline-flex';
+        photoElement.classList.add('d-none');
+        fallbackElement.classList.remove('d-none');
     };
 }
 
