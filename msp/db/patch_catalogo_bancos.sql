@@ -74,7 +74,9 @@ VALUES
 MERGE dbo.msp_bancos AS target
 USING @seed AS source
     ON target.nombre_banco = source.nombre_banco
-WHEN MATCHED THEN
+WHEN MATCHED AND
+     ISNULL(target.codigo_banco, N'')
+        <> ISNULL(COALESCE(source.codigo_banco, target.codigo_banco), N'') THEN
     UPDATE SET
         codigo_banco = COALESCE(source.codigo_banco, target.codigo_banco),
         updated_at = SYSDATETIME()
@@ -82,4 +84,3 @@ WHEN NOT MATCHED BY TARGET THEN
     INSERT (nombre_banco, codigo_banco, activo, created_at, updated_at)
     VALUES (source.nombre_banco, source.codigo_banco, 1, SYSDATETIME(), SYSDATETIME());
 GO
-

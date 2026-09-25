@@ -2116,7 +2116,7 @@ if ($totalPaginasDocumentos > 1) {
                                 $modalidadLabels = [];
                                 foreach ($arriendoModalidadResumen as $codigoModalidad => $countModalidad) {
                                     $labelModalidad = match ($codigoModalidad) {
-                                        'UF_ESTATICO' => 'UF fijo x m²',
+                                        'UF_ESTATICO' => 'UF mensual fija',
                                         'DINAMICO_MENSUAL' => 'UF mensual',
                                         'CLP_FIJO' => 'CLP fijo contrato',
                                         'SIN_REGLA' => 'Sin regla',
@@ -2139,13 +2139,12 @@ if ($totalPaginasDocumentos > 1) {
                                             $codigoLocal = '#' . (int) ($arriendoRow['id_contrato_local'] ?? 0);
                                         }
                                         $codigoModalidad = strtoupper(trim((string) ($arriendoRow['codigo_modalidad'] ?? '')));
-                                        $metros2 = (float) ($arriendoRow['metros_cuadrados'] ?? 0);
                                         $valorUf = (float) ($arriendoRow['valor_base_uf'] ?? 0);
                                         $valorClp = (float) ($arriendoRow['valor_base_clp'] ?? 0);
                                         $detalleModalidad = match ($codigoModalidad) {
                                             'UF_ESTATICO' => $valorUf > 0
-                                                ? (msp2FichaFmtUf($valorUf, 2) . ($metros2 > 0 ? (' x ' . msp2FichaFmtNumero($metros2, 2) . ' m²') : ''))
-                                                : 'UF fijo x m²',
+                                                ? msp2FichaFmtUf($valorUf, 2)
+                                                : 'UF mensual fija',
                                             'DINAMICO_MENSUAL' => 'UF mensual (valor por período)',
                                             'CLP_FIJO' => $valorClp > 0
                                                 ? ('Monto fijo contrato: ' . msp2FichaFmtMonto($valorClp))
@@ -2676,7 +2675,7 @@ if ($totalPaginasDocumentos > 1) {
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

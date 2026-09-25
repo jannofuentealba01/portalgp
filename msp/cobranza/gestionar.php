@@ -132,6 +132,6 @@ $pagoUrl = msp2Url('cobranza/registrar_pago_contrato.php?' . http_build_query([
     <?php endif; ?>
 </div></main>
 <?php if(is_array($data)) include __DIR__.'/formularios_gestion.php'; ?>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body></html>

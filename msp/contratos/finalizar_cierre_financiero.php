@@ -68,6 +68,31 @@ try {
         }
     }
 
+    if (msp2TableExists($conn, 'msp_liquidacion_servicios')
+        && msp2TableExists($conn, 'msp_liquidacion_servicio_consumos')) {
+        $stmtServiciosTardios = $conn->prepare(
+            'SELECT
+                SUM(CASE WHEN ls.estado_liquidacion IN (1,2) THEN 1 ELSE 0 END) AS servicios_abiertos,
+                SUM(CASE WHEN c.estado_consumo = 1 THEN 1 ELSE 0 END) AS consumos_sin_emitir
+             FROM dbo.msp_liquidacion_servicios ls
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_local = ls.id_contrato_local
+             LEFT JOIN dbo.msp_liquidacion_servicio_consumos c
+                ON c.id_liquidacion_servicio = ls.id_liquidacion_servicio
+               AND c.estado_consumo <> 3
+             WHERE cl.id_contrato_arriendo = :id_contrato_arriendo'
+        );
+        $stmtServiciosTardios->bindValue(':id_contrato_arriendo', $idContratoArriendo, PDO::PARAM_INT);
+        $stmtServiciosTardios->execute();
+        $serviciosTardios = $stmtServiciosTardios->fetch(PDO::FETCH_ASSOC) ?: [];
+        if ((int) ($serviciosTardios['consumos_sin_emitir'] ?? 0) > 0) {
+            throw new RuntimeException('No se puede cerrar financieramente: existen servicios tardíos registrados que todavía no fueron emitidos.');
+        }
+        if ((int) ($serviciosTardios['servicios_abiertos'] ?? 0) > 0) {
+            throw new RuntimeException('No se puede cerrar financieramente: confirma como conciliados o marca como no aplicables todos los servicios de la liquidación.');
+        }
+    }
+
     $stmtContrato = $conn->prepare(
         'SELECT id_tienda, estado_contrato, fecha_inicio, fecha_termino_efectiva
          FROM dbo.msp_contratos_arriendo

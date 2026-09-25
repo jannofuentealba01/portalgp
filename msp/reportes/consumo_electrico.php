@@ -580,9 +580,9 @@ if ($periodoValido) {
                 <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const form = document.getElementById('form_reporte_consumo_periodo');
     const periodoInput = document.getElementById('reporte_consumo_periodo');

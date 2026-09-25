@@ -742,16 +742,23 @@ function msp2CargoEstadoBadge(int $estado): string
                                                 </a>
                                             <?php endif; ?>
                                             <?php if ($moduloCargosHabilitado && !$tiendaDesactivada): ?>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-warning btn-sm js-cargo-tienda"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#modalCrearCargo"
-                                                    data-id="<?php echo $idTienda; ?>"
-                                                    data-label="<?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>"
-                                                    aria-label="Registrar cargo en <?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>">
-                                                    <i class="bi bi-cash-coin" aria-hidden="true"></i>
-                                                </button>
+                                                <?php
+                                                $ajustesParams = [
+                                                    'id_tienda' => $idTienda,
+                                                    'id_arrendatario' => (int) $tienda['id_arrendatario'],
+                                                    'return_to' => 'tiendas/index.php',
+                                                ];
+                                                if ($contratoData !== null && (int) ($contratoData['id_contrato_arriendo'] ?? 0) > 0) {
+                                                    $ajustesParams['id_contrato_arriendo'] = (int) $contratoData['id_contrato_arriendo'];
+                                                }
+                                                ?>
+                                                <a
+                                                    class="btn btn-outline-warning btn-sm"
+                                                    href="<?php echo msp2Escape(msp2Url('cobranza/ajustes.php?' . http_build_query($ajustesParams, '', '&', PHP_QUERY_RFC3986))); ?>"
+                                                    aria-label="Abrir ajustes de cobranza para <?php echo msp2Escape((string) $tienda['nombre_comercial']); ?>"
+                                                    title="Ajustes de cobranza">
+                                                    <i class="bi bi-sliders2 me-1" aria-hidden="true"></i>Ajustes
+                                                </a>
                                             <?php endif; ?>
                                             <?php if ($moduloCargosHabilitado): ?>
                                                 <button
@@ -1368,8 +1375,8 @@ function msp2CargoEstadoBadge(int $estado): string
 
 <?php include dirname(__DIR__) . '/templates/components/undo_toast.php'; ?>
 <?php msp2RenderSearchAssets(); ?>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const cargosPorTienda = <?php echo $cargosPorTiendaJson !== false ? $cargosPorTiendaJson : '{}'; ?>;
     const anularCargoAction = '<?php echo msp2Escape(msp2Url('tiendas/anular_cargo.php')); ?>';

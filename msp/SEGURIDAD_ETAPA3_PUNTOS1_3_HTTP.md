@@ -17,7 +17,7 @@ La política activa incluye:
 - `script-src`, `style-src`, `img-src`, `font-src` y `connect-src`.
 - `form-action`, `media-src`, `worker-src` y `manifest-src`.
 
-Scripts, estilos y fuentes se restringen al mismo origen. `object-src` y `frame-src` están bloqueados. Las imágenes HTTPS continúan permitidas porque el sistema admite fotografías configurables. Debido a que las vistas existentes aún contienen scripts, estilos y eventos inline, `script-src` y `style-src` mantienen temporalmente `'unsafe-inline'`; retirarlo requiere una migración separada del frontend y no corresponde a estos tres puntos.
+Scripts, estilos y fuentes se restringen al mismo origen. `object-src` y `frame-src` están bloqueados. Las imágenes HTTPS continúan permitidas porque el sistema admite fotografías configurables. La compatibilidad temporal con `'unsafe-inline'` utilizada en esta primera entrega fue retirada el 15 de septiembre de 2026: las plantillas confiables declaran el nonce por respuesta y los atributos heredados se limitan a una lista de hashes generada desde el código fuente. El cierre está documentado en `SEGURIDAD_CSP_ESTRICTA_2026-09-15.md`.
 
 ## Punto 2 — Bootstrap, JavaScript, fuentes y CDN
 
@@ -53,8 +53,10 @@ pruebas están documentados en `SEGURIDAD_ETAPA3_CIERRE_COMPLETO.md`.
 
 ## Verificación
 
-- `tests/security_stage3_http.php --live`: **47/47** comprobaciones.
-- Sintaxis PHP de todos los archivos afectados: **90/90**.
+- `tests/security_stage3_http.php`: **48/48** comprobaciones con la política estricta actual.
+- `tests/security_csp_strict.php`: **25/25** comprobaciones específicas.
+- `tests/security_csp_browser.js`: **43/43** vistas reales sin violaciones.
+- Sintaxis PHP de todos los archivos modificados: sin errores.
 - Recursos locales servidos por Apache: **15/15** con respuesta HTTP 200.
 - Regresión de seguridad de la etapa 2: **27/27**.
 - Regresión MSP: **21/21**.

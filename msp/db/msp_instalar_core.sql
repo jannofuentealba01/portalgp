@@ -181,6 +181,8 @@ PRINT '==== MSP install: cierre financiero con deuda histórica ====';
 
 -- Centro documental, vacancias e integración final del cierre
 :r $(MSP_DB_DIR)\patch_liquidacion_final.sql
+:r $(MSP_DB_DIR)\patch_servicios_tardios_liquidacion.sql
+:r $(MSP_DB_DIR)\patch_servicios_tardios_integracion.sql
 :r $(MSP_DB_DIR)\patch_comercial_vacancia_documentos.sql
 :r $(MSP_DB_DIR)\patch_cierre_integracion_final.sql
 

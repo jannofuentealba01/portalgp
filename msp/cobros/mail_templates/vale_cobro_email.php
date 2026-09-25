@@ -777,13 +777,13 @@ function omBuildCobroEmailContent(PDO $conn, array $arrRow, array $docs, string 
             . '</tr>'
             . '</table>'
             . '<table class="vale-v2-top" role="presentation">'
-            . '<tr><td colspan="2" class="vale-v2-title">MES DE ARRIENDO ' . htmlspecialchars($periodoTitle, ENT_QUOTES, 'UTF-8') . '</td></tr>'
+            . '<tr><td colspan="2" class="vale-v2-title">' . ($totArriendoConIva > 0.005 ? 'MES DE ARRIENDO ' : 'COBRO DEL PERÍODO ') . htmlspecialchars($periodoTitle, ENT_QUOTES, 'UTF-8') . '</td></tr>'
             . '<tr><td class="vale-v2-label">ARRENDATARIO</td><td class="vale-v2-value">' . htmlspecialchars($nombreArr, ENT_QUOTES, 'UTF-8') . '</td></tr>'
             . '<tr><td class="vale-v2-label">N° LOCAL</td><td class="vale-v2-value vale-v2-center">' . htmlspecialchars($localLabel, ENT_QUOTES, 'UTF-8') . '</td></tr>'
             . '<tr><td class="vale-v2-total-label">TOTAL A PAGAR</td><td class="vale-v2-total-value">' . omEmailFmtMoneyPayable($totalPagarConIvaArriendo) . '</td></tr>'
             . '</table>'
             . '<table class="vale-v2-summary" role="presentation">'
-            . '<tr><td class="sum-label">Arriendo ' . htmlspecialchars($periodoTitle, ENT_QUOTES, 'UTF-8') . '</td><td class="sum-value">' . omEmailFmtMoneyPayable($totArriendoConIva) . '</td></tr>'
+            . ($totArriendoConIva > 0.005 ? '<tr><td class="sum-label">Arriendo ' . htmlspecialchars($periodoTitle, ENT_QUOTES, 'UTF-8') . '</td><td class="sum-value">' . omEmailFmtMoneyPayable($totArriendoConIva) . '</td></tr>' : '')
             . $resumenServiciosHtml
             . '</table>'
             . '<div class="vale-v2-detail-wrap">' . $detailBlockHtml . '</div>'
@@ -793,7 +793,7 @@ function omBuildCobroEmailContent(PDO $conn, array $arrRow, array $docs, string 
             . ' | Local: ' . $localLabel
             . ' | Total: ' . omEmailFmtMoneyPayable($totalPagarConIvaArriendo)
             . ' | Saldo favor aplicado: ' . omEmailFmtMoney($saldoFavorAplicadoDocumento)
-            . ' | Arriendo : ' . omEmailFmtMoneyPayable($totArriendoConIva)
+            . ($totArriendoConIva > 0.005 ? ' | Arriendo: ' . omEmailFmtMoneyPayable($totArriendoConIva) : '')
             . ' | Luz: ' . omEmailFmtMoney($totLuz)
             . ' | Gas: ' . omEmailFmtMoneyPayable($totGas)
             . ' | Agua: ' . omEmailFmtMoneyPayable($totAgua)

@@ -6855,7 +6855,7 @@ if (is_array($stageGenerationSnapshot)) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MSP | Generar Facturación</title>
+    <title>MSP | Generar documentos de cobro</title>
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
@@ -6873,10 +6873,30 @@ if (is_array($stageGenerationSnapshot)) {
                     <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm">
                         <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al menú MSP
                     </a>
-                    <div>
-                        <h1 class="h4 mb-1">Generar documento de cobro</h1>
+                    <div class="flex-grow-1">
+                        <h1 class="h4 mb-1">Generar documentos de cobro</h1>
                     </div>
-                    <span class="omw-chip"><i class="bi bi-calendar3"></i>Periodo <?php echo msp2Escape($periodoActualYmUi); ?></span>
+                    <div class="d-flex flex-wrap justify-content-end align-items-center gap-2">
+                        <span class="omw-chip"><i class="bi bi-calendar3"></i>Periodo <?php echo msp2Escape($periodoActualYmUi); ?></span>
+                        <a
+                            class="btn btn-outline-secondary btn-sm"
+                            href="<?php echo msp2Escape(msp2Url(
+                                'correcciones/index.php?periodo_facturacion=' . rawurlencode($periodoActualYm)
+                                . '&return_to=' . rawurlencode('cobros/operacion_mensual.php?periodo=' . $periodoActualYm)
+                            )); ?>">
+                            <i class="bi bi-wrench-adjustable me-1" aria-hidden="true"></i>Corregir operación
+                        </a>
+                        <?php if (msp2CurrentUserHasPermission('MSP Cierre Mensual')): ?>
+                            <a
+                                class="btn btn-outline-secondary btn-sm"
+                                href="<?php echo msp2Escape(msp2Url(
+                                    'cierre_mensual/index.php?filtroTexto=' . rawurlencode($periodoActualYm)
+                                    . '&return_to=' . rawurlencode('cobros/operacion_mensual.php?periodo=' . $periodoActualYm)
+                                )); ?>">
+                                <i class="bi bi-calendar-check me-1" aria-hidden="true"></i>Registro de cierre
+                            </a>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
 
@@ -7465,7 +7485,7 @@ if (is_array($stageGenerationSnapshot)) {
                                         <div class="col-12">
                                             <div class="small text-muted">
                                                 Fórmula AGUA aplicada por medidor:
-                                                <strong>monto = ((consumo_local * (SAP + SAL + TAS)) / divisor) + CargoFijo</strong>.
+                                                <strong>monto = ((consumo local x (SAP + SAL + TAS)) / divisor) + cargo fijo completo por medidor</strong>.
                                                 El <code>divisor</code> se calcula automáticamente como <code>lectura_general_actual - lectura_general_anterior</code>.
                                             </div>
                                         </div>
@@ -8472,7 +8492,7 @@ if (is_array($stageGenerationSnapshot)) {
                                             <input type="hidden" name="accion" value="generar_cobros">
                                             <input type="hidden" name="periodo" value="<?php echo msp2Escape($periodoActualYm); ?>">
                                             <input type="hidden" name="servicios_presentes" value="1">
-                                            <h3 class="h6">Generar documento de cobro</h3>
+                                            <h3 class="h6">Generar documentos de cobro</h3>
                                             <div class="small text-muted mb-2">Puedes generar cobros parciales seleccionando solo los servicios disponibles.</div>
                                             <div class="d-flex flex-wrap gap-3 mb-2">
                                                 <?php foreach ($serviceCodes as $code): ?>
@@ -9270,7 +9290,7 @@ if (is_array($stageGenerationSnapshot)) {
         </div>
     </div>
 </main>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const initialFocus = <?php echo pgpJsonForHtml($focusAnchorQuery, '""'); ?>;
     const wizardButtons = Array.from(document.querySelectorAll('.omw-step-btn'));
@@ -10384,7 +10404,7 @@ if (is_array($stageGenerationSnapshot)) {
     setWizardStep(focusStep);
 })();
 </script>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__) . '/templates/components/confirm_action_modal.php'; ?>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>

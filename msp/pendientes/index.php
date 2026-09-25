@@ -25,6 +25,7 @@ $filtros = [
     'contrato' => trim((string) ($_GET['contrato'] ?? '')),
     'local' => trim((string) ($_GET['local'] ?? '')),
     'agrupar' => true,
+    'modulos_permitidos' => msp2PendingAllowedModules(),
 ];
 if (preg_match('/^\d{4}-\d{2}$/', $filtros['periodo']) === 1) {
     $filtros['periodo'] .= '-01';
@@ -46,7 +47,6 @@ $diagnosticos = [];
 $errorCarga = null;
 try {
     $motor = new PendientesService($conn);
-    $resumen = $motor->resumen();
     $pendientes = $motor->buscar($filtros);
     if ($vista === 'hoy') {
         $hoy = date('Y-m-d');
@@ -55,6 +55,7 @@ try {
                 || (string) ($item['fecha_origen'] ?? '') === $hoy;
         }));
     }
+    $resumen = $motor->resumir($pendientes);
     $diagnosticos = $motor->diagnosticos();
 } catch (Throwable $exception) {
     $errorCarga = 'No fue posible cargar la Bandeja de pendientes.';
@@ -72,6 +73,7 @@ try {
 $modulos = [
     'GARANTIA' => 'Garantías',
     'OPERACION_MENSUAL' => 'Operación mensual',
+    'CIERRE_MENSUAL' => 'Cierre mensual',
     'LECTURAS' => 'Lecturas y servicios',
     'COBRANZA' => 'Cobranza',
     'TESORERIA' => 'Tesorería y caja',
@@ -79,6 +81,12 @@ $modulos = [
     'LOCALES' => 'Locales',
     'CONTABILIDAD' => 'Contabilidad',
 ];
+$modulosPermitidos = msp2PendingAllowedModules();
+$modulos = array_filter(
+    $modulos,
+    static fn (string $label, string $codigo): bool => in_array($codigo, $modulosPermitidos, true),
+    ARRAY_FILTER_USE_BOTH
+);
 $prioridadClases = [
     'CRITICA' => ['danger', 'Crítica'],
     'ALTA' => ['warning', 'Alta'],
@@ -267,7 +275,7 @@ function pendientesAgregarRetorno(string $url, string $returnPath): string
         </div>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

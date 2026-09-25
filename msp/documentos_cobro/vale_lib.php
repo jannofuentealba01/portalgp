@@ -588,6 +588,10 @@ function msp2DocumentoCobroValeHtml(array $data): string
         </table>
     </div>
 
+    ';
+
+    if ((float) ($documento['subtotal_arriendo'] ?? 0) > 0.005) {
+        $html .= '
     <div class="box">
         <div class="section-title">Arriendo</div>
         <table class="items">
@@ -623,6 +627,7 @@ function msp2DocumentoCobroValeHtml(array $data): string
             </tbody>
             </table>
         </div>';
+    }
 
     if ($electricidadDetalles !== []) {
         $html .= '
@@ -889,7 +894,9 @@ function msp2DocumentoCobroValeResumenHtml(array $data): string
     $localesLabel = $localesList !== [] ? implode(' / ', $localesList) : '-';
 
     $rows = [];
-    $rows[] = ['Arriendo (incluye IVA 19%)', $arriendoConIva];
+    if ($arriendoConIva > 0.005) {
+        $rows[] = ['Arriendo (incluye IVA 19%)', $arriendoConIva];
+    }
     if ($totalElectricidad > 0.005) {
         $rows[] = ['Consumo electricidad', $totalElectricidad];
     }

@@ -49,17 +49,48 @@ final class PendientesService
     public function buscar(array $filtros = []): array
     {
         $this->diagnosticos = [];
-        $pendientes = array_merge(
-            $this->colectar('GARANTIAS', fn (): array => $this->consultarGarantias()),
-            $this->colectar('OPERACION_MENSUAL', fn (): array => $this->consultarOperacionMensual()),
-            $this->colectar('LECTURAS', fn (): array => $this->consultarLecturas()),
-            $this->colectar('COBRANZA', fn (): array => $this->consultarCobranza()),
-            $this->colectar('TESORERIA', fn (): array => $this->consultarTesoreria()),
-            $this->colectar('CONTRATOS', fn (): array => $this->consultarContratos()),
-            $this->colectar('CONTRATOS', fn (): array => $this->consultarTerminoLiquidacion()),
-            $this->colectar('LOCALES', fn (): array => $this->consultarLocales()),
-            $this->colectar('CONTABILIDAD', fn (): array => $this->consultarContabilidad())
-        );
+        $permitidos = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $modulo): string => strtoupper(trim((string) $modulo)),
+            is_array($filtros['modulos_permitidos'] ?? null) ? $filtros['modulos_permitidos'] : []
+        ))));
+        $permite = static fn (string ...$modulos): bool => $permitidos === [] || array_intersect($modulos, $permitidos) !== [];
+
+        $pendientes = [];
+        if ($permite('GARANTIA')) {
+            $pendientes = array_merge($pendientes, $this->colectar('GARANTIAS', fn (): array => $this->consultarGarantias()));
+        }
+        if ($permite('OPERACION_MENSUAL', 'CIERRE_MENSUAL')) {
+            $pendientes = array_merge($pendientes, $this->colectar('OPERACION_MENSUAL', fn (): array => $this->consultarOperacionMensual()));
+        }
+        if ($permite('LECTURAS')) {
+            $pendientes = array_merge($pendientes, $this->colectar('LECTURAS', fn (): array => $this->consultarLecturas()));
+        }
+        if ($permite('COBRANZA')) {
+            $pendientes = array_merge($pendientes, $this->colectar('COBRANZA', fn (): array => $this->consultarCobranza()));
+        }
+        if ($permite('TESORERIA')) {
+            $pendientes = array_merge($pendientes, $this->colectar('TESORERIA', fn (): array => $this->consultarTesoreria()));
+        }
+        if ($permite('CONTRATOS')) {
+            $pendientes = array_merge(
+                $pendientes,
+                $this->colectar('CONTRATOS', fn (): array => $this->consultarContratos()),
+                $this->colectar('CONTRATOS', fn (): array => $this->consultarTerminoLiquidacion())
+            );
+        }
+        if ($permite('LOCALES')) {
+            $pendientes = array_merge($pendientes, $this->colectar('LOCALES', fn (): array => $this->consultarLocales()));
+        }
+        if ($permite('CONTABILIDAD')) {
+            $pendientes = array_merge($pendientes, $this->colectar('CONTABILIDAD', fn (): array => $this->consultarContabilidad()));
+        }
+
+        if ($permitidos !== []) {
+            $pendientes = array_values(array_filter(
+                $pendientes,
+                static fn (array $pendiente): bool => in_array(strtoupper((string) ($pendiente['modulo_origen'] ?? '')), $permitidos, true)
+            ));
+        }
 
         $pendientes = array_values(array_filter(
             $pendientes,
@@ -78,7 +109,12 @@ final class PendientesService
 
     public function resumen(array $filtros = []): array
     {
-        $items = $this->buscar($filtros);
+        return $this->resumir($this->buscar($filtros));
+    }
+
+    /** @param array<int,array<string,mixed>> $items */
+    public function resumir(array $items): array
+    {
         $resumen = [
             'total' => count($items),
             'CRITICA' => 0,
@@ -306,7 +342,6 @@ final class PendientesService
         $items = [];
         $tieneGestion = $this->table('msp_cobranza_compromisos') && $this->table('msp_cobranza_gestiones');
         if ($tieneGestion) {
-            (new CobranzaGestionService($this->conn))->evaluarCompromisos();
             $sqlCompromisos = "SELECT cp.id_compromiso_pago,cp.id_contrato_arriendo,cp.monto_comprometido,cp.monto_pagado_evaluado,
                                       cp.fecha_comprometida,cp.estado,a.nombre_locatario,a.rut,t.nombre_comercial
                                FROM dbo.msp_cobranza_compromisos cp

@@ -677,8 +677,8 @@ function formatoPagoPeriodo(?string $value): string
     </div>
 </div>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     document.querySelectorAll('.js-anular-pago').forEach((button) => {
         button.addEventListener('click', () => {

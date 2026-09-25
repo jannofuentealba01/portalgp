@@ -1061,7 +1061,8 @@ final class EnvioLotesProgramadosService
         int $idLote,
         string $periodoFacturacion,
         ?int $forceBatchSize = null,
-        string $workerId = 'manual-force'
+        string $workerId = 'manual-force',
+        bool $enviarPdfDetallado = false
     ): array {
         if ($idLote <= 0) {
             throw new RuntimeException('Lote inválido para ejecutar.');
@@ -1101,7 +1102,7 @@ final class EnvioLotesProgramadosService
             throw new RuntimeException('El lote no está disponible para forzar envío en su estado actual.');
         }
 
-        return self::processSingleLote($conn, $idLote, $forceBatchSize);
+        return self::processSingleLote($conn, $idLote, $forceBatchSize, $enviarPdfDetallado);
     }
 
     public static function cancelActiveLotesByPeriodo(PDO $conn, string $periodoFacturacion): int
@@ -1373,6 +1374,7 @@ final class EnvioLotesProgramadosService
                 $correoJoin
                 WHERE dc.periodo_facturacion = @periodo
                   AND dc.estado_documento <> 5
+                  AND dc.monto_total > 0
                   AND NOT EXISTS (
                     SELECT 1
                     FROM dbo.msp_documentos_cobro_detalle dcd
@@ -1461,26 +1463,7 @@ final class EnvioLotesProgramadosService
             $correoJoin
             WHERE dc.periodo_facturacion = @periodo
               AND dc.estado_documento <> 5
-              AND EXISTS (
-                SELECT 1
-                FROM dbo.msp_medidores m
-                INNER JOIN dbo.msp_tipos_servicio ts
-                    ON ts.id_tipo_servicio = m.id_tipo_servicio
-                INNER JOIN dbo.msp_contrato_locales cl
-                    ON cl.id_local = m.id_local
-                INNER JOIN dbo.msp_contratos_arriendo ca
-                    ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
-                WHERE ca.id_tienda = dc.id_tienda
-                  AND UPPER(ts.codigo_servicio) = :servicio
-                  AND m.estado_medidor = 1
-                  AND m.fecha_retiro IS NULL
-                  AND cl.estado_relacion = 1
-                  AND cl.fecha_inicio <= EOMONTH(@periodo)
-                  AND (cl.fecha_termino IS NULL OR cl.fecha_termino >= @periodo)
-                  AND ca.fecha_inicio <= EOMONTH(@periodo)
-                  AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva >= @periodo)
-                  AND ca.estado_contrato IN (1,2,3)
-              )
+              AND dc.monto_total > 0
             GROUP BY
                 a.id_arrendatario,
                 a.nombre_locatario,
@@ -1492,7 +1475,6 @@ final class EnvioLotesProgramadosService
         $stmt = $conn->prepare($sql);
         $stmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
         $stmt->bindValue(':codigo_item', $codigoItem, PDO::PARAM_STR);
-        $stmt->bindValue(':servicio', $codigoServicio, PDO::PARAM_STR);
         $stmt->execute();
         $rows = $stmt->fetchAll() ?: [];
         if ($rows === []) {
@@ -1590,7 +1572,7 @@ final class EnvioLotesProgramadosService
         }
     }
 
-    private static function processSingleLote(PDO $conn, int $idLote, ?int $forceBatchSize = null): array
+    private static function processSingleLote(PDO $conn, int $idLote, ?int $forceBatchSize = null, bool $enviarPdfDetallado = false): array
     {
         $loteStmt = $conn->prepare(
             'SELECT
@@ -1679,12 +1661,14 @@ final class EnvioLotesProgramadosService
                 $omitidosBatch++;
                 continue;
             }
-            $docs = self::filterDocsAlreadySentInOtherLotes(
-                $conn,
-                $docs,
-                $idLote,
-                (string) ($lote['periodo_facturacion'] ?? '')
-            );
+            if (!$enviarPdfDetallado) {
+                $docs = self::filterDocsAlreadySentInOtherLotes(
+                    $conn,
+                    $docs,
+                    $idLote,
+                    (string) ($lote['periodo_facturacion'] ?? '')
+                );
+            }
             if ($docs === []) {
                 self::markDestinatario(
                     $conn,
@@ -1712,7 +1696,8 @@ final class EnvioLotesProgramadosService
                     $arrRow,
                     $docs,
                     (new DateTimeImmutable((string) ($lote['periodo_facturacion'] ?? 'now')))->format('Y-m'),
-                    strtolower(trim((string) ($lote['modo_destino'] ?? 'real'))) === 'demo'
+                    strtolower(trim((string) ($lote['modo_destino'] ?? 'real'))) === 'demo',
+                    $enviarPdfDetallado
                 );
                 self::markDestinatario(
                     $conn,
@@ -1925,14 +1910,29 @@ final class EnvioLotesProgramadosService
         array $arrRow,
         array $docs,
         string $periodoYm,
-        bool $permitirDemo = false
+        bool $permitirDemo = false,
+        bool $enviarPdfDetallado = false
     ): void
     {
         if (!$permitirDemo && !msp2MailTenantDeliveryEnabled($conn)) {
             throw new RuntimeException('El envío real a correos de arrendatarios está deshabilitado en MSP.');
         }
 
-        [$subject, $body, $altBody] = omBuildCobroEmailContent($conn, $arrRow, $docs, $periodoYm);
+        if ($enviarPdfDetallado) {
+            $numeros = array_map(
+                static fn (array $doc): string => trim((string) ($doc['numero_documento'] ?? '')),
+                $docs
+            );
+            $numeros = array_values(array_filter($numeros, static fn (string $numero): bool => $numero !== ''));
+            $referencia = $numeros !== [] ? implode(', ', $numeros) : $periodoYm;
+            $subject = '[MSP] Documento de cobro ' . $referencia;
+            $body = '<p>Estimado/a,</p><p>Adjuntamos su documento de cobro ';
+            $body .= htmlspecialchars($referencia, ENT_QUOTES, 'UTF-8');
+            $body .= ' en formato PDF.</p><p>Saludos,<br>Mercado San Pedro</p>';
+            $altBody = 'Adjuntamos su documento de cobro ' . $referencia . ' en formato PDF. Mercado San Pedro.';
+        } else {
+            [$subject, $body, $altBody] = omBuildCobroEmailContent($conn, $arrRow, $docs, $periodoYm);
+        }
 
         $mail = omBuildSmtpMailerFromEnv();
         $mail->addAddress($correoDestino);
@@ -1949,8 +1949,16 @@ final class EnvioLotesProgramadosService
             if ($docId <= 0) {
                 continue;
             }
-            [$valeFilename, $valePdf] = msp2BuildDocumentoCobroValeResumenPdf($conn, $docId);
-            $mail->addStringAttachment($valePdf, $valeFilename, 'base64', 'application/pdf');
+            if ($enviarPdfDetallado) {
+                if (!defined('MSP2_DOCUMENTO_COBRO_PDF_LIBRARY')) {
+                    define('MSP2_DOCUMENTO_COBRO_PDF_LIBRARY', true);
+                }
+                require_once dirname(__DIR__, 2) . '/documentos_cobro/pdf.php';
+                [$filename, $pdf] = msp2BuildDocumentoCobroDetailedPdf($conn, $docId);
+            } else {
+                [$filename, $pdf] = msp2BuildDocumentoCobroValeResumenPdf($conn, $docId);
+            }
+            $mail->addStringAttachment($pdf, $filename, 'base64', 'application/pdf');
         }
 
         $mail->send();
@@ -2087,8 +2095,8 @@ final class EnvioLotesProgramadosService
 
         $filtroEtapa = match ($etapa) {
             'LUZ' => "ISNULL(docf.has_luz_item, 0) = 1 AND ISNULL(docf.has_gas_item, 0) = 0 AND ISNULL(docf.has_agua_item, 0) = 0",
-            'GAS' => "ISNULL(docf.has_luz_item, 0) = 1 AND ISNULL(docf.has_gas_item, 0) = 1 AND ISNULL(docf.has_agua_item, 0) = 0",
-            'AGUA' => "ISNULL(docf.has_luz_item, 0) = 1 AND ISNULL(docf.has_agua_item, 0) = 1",
+            'GAS' => "ISNULL(docf.has_gas_item, 0) = 1 AND ISNULL(docf.has_agua_item, 0) = 0",
+            'AGUA' => "ISNULL(docf.has_agua_item, 0) = 1",
             default => '1 = 0',
         };
 
@@ -2118,6 +2126,7 @@ final class EnvioLotesProgramadosService
                    AND el.estado_lote <> :estado_cancelado
                 WHERE dc.periodo_facturacion = @periodo
                   AND dc.estado_documento <> 5
+                  AND dc.monto_total > 0
                   AND el.id_lote_envio IS NULL
                   AND ($filtroEtapa)
             )

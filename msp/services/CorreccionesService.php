@@ -195,10 +195,35 @@ final class CorreccionesService
         if (strtoupper((string) ($corr['estado_correccion'] ?? '')) !== 'APROBADA') {
             throw new RuntimeException('Solo se puede ejecutar una corrección aprobada.');
         }
-        if (strtoupper((string) ($corr['nivel_correcion'] ?? '')) !== 'EDICION_SIMPLE') {
+        $nivel = strtoupper((string) ($corr['nivel_correcion'] ?? ''));
+        $tipo = strtoupper((string) ($corr['tipo_correccion'] ?? ''));
+        if ($tipo === 'ARRIENDO_PERIODO' && in_array($nivel, ['REGENERACION_CONTROLADA', 'AUTORIZACION'], true)) {
+            require_once __DIR__ . '/ArriendoCorreccionService.php';
+            return ArriendoCorreccionService::ejecutar($conn, $corr, $usuario);
+        }
+        if ($tipo === 'LECTURA' && in_array($nivel, ['REGENERACION_CONTROLADA', 'AUTORIZACION'], true)) {
+            $analisis = json_decode((string) ($corr['resultado_analisis'] ?? ''), true);
+            $registro = is_array($analisis) && is_array($analisis['registro_exacto'] ?? null)
+                ? $analisis['registro_exacto']
+                : [];
+            $servicio = strtoupper(trim((string) ($registro['servicio'] ?? '')));
+            if ($servicio === 'LUZ') {
+                require_once __DIR__ . '/ElectricidadCorreccionService.php';
+                return ElectricidadCorreccionService::ejecutar($conn, $corr, $usuario);
+            }
+            if ($servicio === 'GAS') {
+                require_once __DIR__ . '/GasCorreccionService.php';
+                return GasCorreccionService::ejecutar($conn, $corr, $usuario);
+            }
+            if ($servicio === 'AGUA') {
+                require_once __DIR__ . '/AguaCorreccionService.php';
+                return AguaCorreccionService::ejecutar($conn, $corr, $usuario);
+            }
+            throw new RuntimeException('La corrección controlada de lectura todavía no está disponible para el servicio seleccionado.');
+        }
+        if ($nivel !== 'EDICION_SIMPLE') {
             throw new RuntimeException('Esta corrección requiere una estrategia financiera controlada y todavía no puede ejecutarse automáticamente.');
         }
-        $tipo = strtoupper((string) ($corr['tipo_correccion'] ?? ''));
         if ($tipo === 'CARGO') { return self::ejecutarCargoSimple($conn, $corr, $usuario); }
         if ($tipo === 'ARRIENDO_PERIODO') { return self::ejecutarArriendoSimple($conn, $corr, $usuario); }
         if ($tipo !== 'LECTURA') { throw new RuntimeException('La corrección seleccionada no tiene una estrategia de ejecución segura.'); }
@@ -281,13 +306,13 @@ final class CorreccionesService
                         subtotal_variable=ROUND(CASE
                             WHEN ts.codigo_servicio=N'LUZ' THEN :consumo_luz*ISNULL(pl.valor_kwh,0)
                             WHEN ts.codigo_servicio=N'GAS' THEN :consumo_gas*ISNULL(pg.factor,0)*ISNULL(pg.valor_litro,0)
-                            WHEN ts.codigo_servicio=N'AGUA' THEN :consumo_agua*((ISNULL(pa.servicio_agua_potable,0)+ISNULL(pa.servicio_alcantarillado,0)+ISNULL(pa.tratamiento_aguas_servidas,0)+ISNULL(pa.sobreconsumo,0)+ISNULL(pa.interes_pf_plazo,0))/NULLIF(pa.divisor,0))
+                            WHEN ts.codigo_servicio=N'AGUA' THEN :consumo_agua*((ISNULL(pa.servicio_agua_potable,0)+ISNULL(pa.servicio_alcantarillado,0)+ISNULL(pa.tratamiento_aguas_servidas,0))/NULLIF(pa.divisor,0))
                             ELSE 0 END,2),
-                        cargo_fijo=ROUND(CASE WHEN ts.codigo_servicio=N'AGUA' THEN ISNULL(pa.cargo_fijo,0)/NULLIF(pa.divisor,0) ELSE 0 END,2),
+                        cargo_fijo=ROUND(CASE WHEN ts.codigo_servicio=N'AGUA' THEN ISNULL(pa.cargo_fijo,0) ELSE 0 END,2),
                         monto_total=ROUND(CASE
                             WHEN ts.codigo_servicio=N'LUZ' THEN :consumo_luz_total*ISNULL(pl.valor_kwh,0)
                             WHEN ts.codigo_servicio=N'GAS' THEN :consumo_gas_total*ISNULL(pg.factor,0)*ISNULL(pg.valor_litro,0)
-                            WHEN ts.codigo_servicio=N'AGUA' THEN :consumo_agua_total*((ISNULL(pa.servicio_agua_potable,0)+ISNULL(pa.servicio_alcantarillado,0)+ISNULL(pa.tratamiento_aguas_servidas,0)+ISNULL(pa.sobreconsumo,0)+ISNULL(pa.interes_pf_plazo,0))/NULLIF(pa.divisor,0))+ISNULL(pa.cargo_fijo,0)/NULLIF(pa.divisor,0)
+                            WHEN ts.codigo_servicio=N'AGUA' THEN :consumo_agua_total*((ISNULL(pa.servicio_agua_potable,0)+ISNULL(pa.servicio_alcantarillado,0)+ISNULL(pa.tratamiento_aguas_servidas,0))/NULLIF(pa.divisor,0))+ISNULL(pa.cargo_fijo,0)
                             ELSE 0 END,2),
                         detalle_calculo=N'Corrección selectiva de lectura',fecha_calculo=SYSDATETIME()
                      FROM dbo.msp_cobros_servicios cs
@@ -386,21 +411,43 @@ final class CorreccionesService
         $idSnapshot = (int) ($corr['id_registro_origen'] ?? 0);
         $idContrato = (int) ($corr['id_contrato_arriendo'] ?? 0);
         $nuevo = self::valorLectura($corr['valor_nuevo'] ?? null);
-        if ($idSnapshot <= 0 || $idContrato <= 0 || $nuevo === null || $nuevo <= 0) {
+        if ($idSnapshot <= 0 || $idContrato <= 0 || $nuevo === null || $nuevo < 0) {
             throw new RuntimeException('La corrección de arriendo no contiene un monto válido.');
         }
-        $q=$conn->prepare('SELECT * FROM dbo.msp_arriendo_local_snapshot_periodo WHERE id_snapshot_arriendo=:s AND id_contrato_arriendo=:c');
+        $q=$conn->prepare('SELECT s.*,cm.estado_cierre FROM dbo.msp_arriendo_local_snapshot_periodo s LEFT JOIN dbo.msp_cierre_mensual cm ON cm.periodo_facturacion=s.periodo_facturacion WHERE s.id_snapshot_arriendo=:s AND s.id_contrato_arriendo=:c AND s.estado_snapshot IN(1,2,3)');
         $q->execute([':s'=>$idSnapshot, ':c'=>$idContrato]);
         $snapshot=$q->fetch(PDO::FETCH_ASSOC);
         if (!$snapshot) { throw new RuntimeException('El arriendo mensual ya no existe o no pertenece al contrato.'); }
+        if (in_array((int)($snapshot['estado_cierre'] ?? 0), [3,5], true)) {
+            throw new RuntimeException('El período se cerró después del análisis. Debe reabrirse o utilizar una corrección autorizada.');
+        }
         $montoEsperado=self::valorCampo($corr['valor_anterior'] ?? null,'monto_neto_clp');
         if ($montoEsperado !== null && abs((float)$snapshot['monto_neto_clp']-$montoEsperado)>0.01) {
             throw new RuntimeException('El arriendo mensual cambió después del análisis. Vuelve a analizar la corrección.');
         }
-        $qDoc=$conn->prepare('SELECT COUNT(*) FROM dbo.msp_documentos_cobro WHERE id_contrato_arriendo=:c AND periodo_facturacion=:p');
+        $qDoc=$conn->prepare('SELECT COUNT(*) FROM dbo.msp_documentos_cobro WHERE id_contrato_arriendo=:c AND periodo_facturacion=:p AND estado_documento<>5');
         $qDoc->execute([':c'=>$idContrato, ':p'=>(string)$snapshot['periodo_facturacion']]);
         if ((int)$qDoc->fetchColumn() > 0) {
             throw new RuntimeException('El arriendo ya tiene documento. Requiere regeneración o ajuste financiero controlado.');
+        }
+        $analisis = json_decode((string)($corr['resultado_analisis'] ?? ''), true);
+        $registroExacto = is_array($analisis) && is_array($analisis['registro_exacto'] ?? null)
+            ? $analisis['registro_exacto']
+            : [];
+        $nuevaUfBase = array_key_exists('valor_uf_base_nuevo', $registroExacto)
+            ? (float)$registroExacto['valor_uf_base_nuevo']
+            : null;
+        $valorUfPeriodo = array_key_exists('valor_uf_periodo_correccion', $registroExacto)
+            ? (float)$registroExacto['valor_uf_periodo_correccion']
+            : (float)($snapshot['valor_uf_periodo'] ?? 0);
+        if ($nuevaUfBase !== null) {
+            if ($nuevaUfBase < 0 || $valorUfPeriodo <= 0) {
+                throw new RuntimeException('La corrección de UF Base perdió sus datos de cálculo. Vuelve a registrarla.');
+            }
+            $netoCalculado = round($nuevaUfBase * $valorUfPeriodo, 2);
+            if (abs($netoCalculado - $nuevo) > 0.01) {
+                throw new RuntimeException('El monto recalculado no coincide con la UF Base registrada. Vuelve a analizar la corrección.');
+            }
         }
         $netoAnterior=(float)$snapshot['monto_neto_clp'];
         $tasaIva=$netoAnterior > 0 ? ((float)$snapshot['monto_iva_clp']/$netoAnterior) : 0.19;
@@ -417,11 +464,27 @@ final class CorreccionesService
                 $ins=$conn->prepare('INSERT dbo.msp_arriendo_ajustes_periodo(id_contrato_local,periodo_facturacion,monto_correcto_clp,motivo,id_correccion,usuario_registro) VALUES(:cl,:p,:m,:motivo,:c,:u)');
                 $ins->execute([':cl'=>(int)$snapshot['id_contrato_local'], ':p'=>(string)$snapshot['periodo_facturacion'], ':m'=>$nuevo, ':motivo'=>(string)$corr['motivo'], ':c'=>$idCorreccion, ':u'=>$usuario]);
             }
-            $upd=$conn->prepare("UPDATE dbo.msp_arriendo_local_snapshot_periodo SET monto_neto_clp=:n,monto_iva_clp=:i,monto_total_clp=:t,fuente_calculo=N'CORRECCION_SELECTIVA',fecha_actualizacion=SYSDATETIME() WHERE id_snapshot_arriendo=:s");
-            $upd->execute([':n'=>$nuevo, ':i'=>$iva, ':t'=>$total, ':s'=>$idSnapshot]);
+            $upd=$conn->prepare("UPDATE dbo.msp_arriendo_local_snapshot_periodo
+                SET valor_base_uf=CASE WHEN :actualiza_uf=1 THEN :uf ELSE valor_base_uf END,
+                    monto_neto_clp=:n,monto_iva_clp=:i,monto_total_clp=:t,
+                    fuente_calculo=N'CORRECCION_SELECTIVA',fecha_actualizacion=SYSDATETIME()
+                WHERE id_snapshot_arriendo=:s");
+            $upd->execute([
+                ':actualiza_uf'=>$nuevaUfBase !== null ? 1 : 0,
+                ':uf'=>$nuevaUfBase,
+                ':n'=>$nuevo,
+                ':i'=>$iva,
+                ':t'=>$total,
+                ':s'=>$idSnapshot,
+            ]);
             if (msp2TableExists($conn, 'msp_correcciones_impactos')) {
                 $impact=$conn->prepare("INSERT dbo.msp_correcciones_impactos(id_correccion,tipo_entidad,id_registro,accion_prevista,valor_anterior,valor_nuevo,es_financiero) VALUES(:c,N'ARRIENDO_SNAPSHOT',:r,N'UPDATE',:a,:n,0)");
-                $impact->execute([':c'=>$idCorreccion, ':r'=>$idSnapshot, ':a'=>(string)$netoAnterior, ':n'=>(string)$nuevo]);
+                $impact->execute([
+                    ':c'=>$idCorreccion,
+                    ':r'=>$idSnapshot,
+                    ':a'=>json_encode(['monto_neto_clp'=>$netoAnterior,'valor_base_uf'=>$snapshot['valor_base_uf'] ?? null], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    ':n'=>json_encode(['monto_neto_clp'=>$nuevo,'valor_base_uf'=>$nuevaUfBase], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ]);
             }
             self::cambiarEstado($conn,$idCorreccion,'EJECUTADA',$usuario,'Arriendo mensual corregido sin modificar la regla contractual ni otros períodos.');
             if ($transaccionPropia) { $conn->commit(); }
@@ -429,7 +492,7 @@ final class CorreccionesService
             if ($transaccionPropia && $conn->inTransaction()) { $conn->rollBack(); }
             throw $e;
         }
-        return ['id_snapshot'=>$idSnapshot,'monto_anterior'=>$netoAnterior,'monto_nuevo'=>$nuevo];
+        return ['id_snapshot'=>$idSnapshot,'monto_anterior'=>$netoAnterior,'monto_nuevo'=>$nuevo,'uf_base_nueva'=>$nuevaUfBase];
     }
 
     private static function valorLectura(mixed $raw): ?float

@@ -231,6 +231,46 @@ try {
         );
     }
 
+    $stmtInicializarServiciosLiquidacion = null;
+    $serviciosLiquidacionInicializados = 0;
+    if (
+        msp2TableExists($conn, 'msp_liquidacion_servicios')
+        && msp2TableExists($conn, 'msp_medidores')
+        && msp2TableExists($conn, 'msp_tipos_servicio')
+    ) {
+        $stmtInicializarServiciosLiquidacion = $conn->prepare(
+            'INSERT INTO dbo.msp_liquidacion_servicios (
+                id_contrato_local,
+                id_tipo_servicio,
+                id_medidor,
+                fecha_termino_operativo,
+                estado_liquidacion,
+                observaciones,
+                id_usuario_creacion,
+                id_usuario_actualizacion
+             )
+             SELECT
+                :id_contrato_local,
+                m.id_tipo_servicio,
+                m.id_medidor,
+                :fecha_termino,
+                1,
+                N\'Pendiente creado al registrar el término operativo.\',
+                :id_usuario_creacion,
+                :id_usuario_actualizacion
+             FROM dbo.msp_medidores m
+             WHERE m.id_local = :id_local
+               AND (m.fecha_instalacion IS NULL OR m.fecha_instalacion <= :fecha_instalacion)
+               AND (m.fecha_retiro IS NULL OR m.fecha_retiro >= :fecha_retiro)
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.msp_liquidacion_servicios ls
+                    WHERE ls.id_contrato_local = :id_contrato_local_existente
+                      AND ls.id_medidor = m.id_medidor
+               )'
+        );
+    }
+
     $conn->beginTransaction();
 
     foreach ($relacionesActivas as $relacion) {
@@ -256,6 +296,19 @@ try {
             $stmtLiberarLocal->bindValue(':fecha_control_inicio', $fechaTerminoEfectivaIso, PDO::PARAM_STR);
             $stmtLiberarLocal->bindValue(':fecha_control_termino', $fechaTerminoEfectivaIso, PDO::PARAM_STR);
             $stmtLiberarLocal->execute();
+        }
+
+        if ($stmtInicializarServiciosLiquidacion instanceof PDOStatement) {
+            $stmtInicializarServiciosLiquidacion->bindValue(':id_contrato_local', (int) $relacion['id_contrato_local'], PDO::PARAM_INT);
+            $stmtInicializarServiciosLiquidacion->bindValue(':fecha_termino', $fechaTerminoEfectivaIso, PDO::PARAM_STR);
+            $stmtInicializarServiciosLiquidacion->bindValue(':id_usuario_creacion', $idUsuarioSesion, PDO::PARAM_INT);
+            $stmtInicializarServiciosLiquidacion->bindValue(':id_usuario_actualizacion', $idUsuarioSesion, PDO::PARAM_INT);
+            $stmtInicializarServiciosLiquidacion->bindValue(':id_local', (int) $relacion['id_local'], PDO::PARAM_INT);
+            $stmtInicializarServiciosLiquidacion->bindValue(':fecha_instalacion', $fechaTerminoEfectivaIso, PDO::PARAM_STR);
+            $stmtInicializarServiciosLiquidacion->bindValue(':fecha_retiro', $fechaTerminoEfectivaIso, PDO::PARAM_STR);
+            $stmtInicializarServiciosLiquidacion->bindValue(':id_contrato_local_existente', (int) $relacion['id_contrato_local'], PDO::PARAM_INT);
+            $stmtInicializarServiciosLiquidacion->execute();
+            $serviciosLiquidacionInicializados += $stmtInicializarServiciosLiquidacion->rowCount();
         }
     }
 
@@ -289,6 +342,7 @@ try {
             'estado_nuevo' => 3,
             'fecha_termino_efectiva' => $fechaTerminoEfectivaIso,
             'relaciones_cerradas' => count($relacionesActivas),
+            'servicios_liquidacion_inicializados' => $serviciosLiquidacionInicializados,
             'tienda_cerrada' => !$hayOtroContratoActivo,
             'otro_contrato_activo' => $hayOtroContratoActivo,
         ];

@@ -537,7 +537,7 @@ if ($tablaExiste) {
                     <span class="badge text-bg-primary"><?php echo count($matrizPorArrendatario); ?> arrendatarios</span>
                 </div>
                 <div class="table-responsive cxp-matrix-wrap gp-table-matrix-wrap">
-                    <table class="table table-sm table-hover mb-0 cxp-matrix gp-table-matrix" style="min-width: <?php echo 435 + (count($periodosMatriz) * 125); ?>px;">
+                    <table class="table table-sm table-hover mb-0 cxp-matrix gp-table-matrix" <?php echo pgpCspStyleAttribute('min-width: ' . (435 + (count($periodosMatriz) * 125)) . 'px;'); ?>>
                         <thead>
                             <tr>
                                 <th class="cxp-tenant">Arrendatario</th>
@@ -699,9 +699,9 @@ if ($tablaExiste) {
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/chart.js-4.4.3/chart.umd.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 document.querySelectorAll('.ag-parent').forEach(function (r) {
   r.addEventListener('click', function () {
     const g = r.getAttribute('data-g');

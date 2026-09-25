@@ -143,7 +143,18 @@ BEGIN
     ) AS src
     ON tgt.codigo_regla = src.codigo_regla
    AND tgt.fecha_inicio_vigencia = src.fecha_inicio_vigencia
-    WHEN MATCHED THEN
+    WHEN MATCHED AND (
+           ISNULL(tgt.nombre_regla, N'') <> ISNULL(src.nombre_regla, N'')
+        OR ISNULL(tgt.descripcion_regla, N'') <> ISNULL(src.descripcion_regla, N'')
+        OR tgt.id_tipo_item_documento <> src.id_tipo_item_documento
+        OR tgt.modo_calculo <> src.modo_calculo
+        OR tgt.monto_unitario <> src.monto_unitario
+        OR ISNULL(tgt.fecha_fin_vigencia, CONVERT(DATE, '19000101'))
+             <> ISNULL(src.fecha_fin_vigencia, CONVERT(DATE, '19000101'))
+        OR tgt.dias_gracia <> src.dias_gracia
+        OR tgt.orden_aplicacion <> src.orden_aplicacion
+        OR tgt.activo <> src.activo
+    ) THEN
         UPDATE SET
             nombre_regla = src.nombre_regla,
             descripcion_regla = src.descripcion_regla,

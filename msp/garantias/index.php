@@ -5,6 +5,10 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 msp2RequireAccess();
 
 $q = msp2SearchQuery($_GET['q'] ?? '');
+$idContratoContexto = filter_input(INPUT_GET, 'id_contrato_arriendo', FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1],
+]);
+$idContratoContexto = is_int($idContratoContexto) ? $idContratoContexto : 0;
 $resultados = [];
 $error = null;
 $totales = ['garantias' => 0, 'pactado' => 0.0, 'recibido' => 0.0, 'disponible' => 0.0];
@@ -31,18 +35,23 @@ try {
         'disponible' => (float) ($totalesRow['disponible'] ?? 0),
     ];
 
-    if ($q !== '') {
-        $search = msp2BuildSearchCondition($q, [
-            'g.nombre_locatario',
-            'g.rut',
-            "REPLACE(REPLACE(REPLACE(g.rut,N'.',N''),N'-',N''),N' ',N'')",
-            'g.nombre_comercial',
-            'g.cdo_local',
-            "REPLACE(REPLACE(g.cdo_local,N'-',N''),N'.',N'')",
-            'g.desc_local_busqueda',
-            'g.id_contrato_arriendo',
-            'g.ids_garantia_busqueda',
-        ], 'garantias_buscar', "EXISTS(SELECT 1 FROM dbo.msp_vw_garantias_control_integral gx WHERE gx.id_contrato_arriendo=g.id_contrato_arriendo AND gx.id_garantia={{id}})");
+    if ($q !== '' || $idContratoContexto > 0) {
+        $search = $idContratoContexto > 0
+            ? [
+                'sql' => 'g.id_contrato_arriendo = :id_contrato_contexto',
+                'params' => [':id_contrato_contexto' => $idContratoContexto],
+            ]
+            : msp2BuildSearchCondition($q, [
+                'g.nombre_locatario',
+                'g.rut',
+                "REPLACE(REPLACE(REPLACE(g.rut,N'.',N''),N'-',N''),N' ',N'')",
+                'g.nombre_comercial',
+                'g.cdo_local',
+                "REPLACE(REPLACE(g.cdo_local,N'-',N''),N'.',N'')",
+                'g.desc_local_busqueda',
+                'g.id_contrato_arriendo',
+                'g.ids_garantia_busqueda',
+            ], 'garantias_buscar', "EXISTS(SELECT 1 FROM dbo.msp_vw_garantias_control_integral gx WHERE gx.id_contrato_arriendo=g.id_contrato_arriendo AND gx.id_garantia={{id}})");
         $stmt = $conn->prepare(
             "WITH garantia_consolidada AS (
                 SELECT
@@ -74,7 +83,10 @@ try {
         }
         $stmt->execute();
         $resultados = $stmt->fetchAll() ?: [];
-        usort($resultados, static function (array $a, array $b) use ($q): int {
+        usort($resultados, static function (array $a, array $b) use ($q, $idContratoContexto): int {
+            if ($idContratoContexto > 0) {
+                return (int) ($b['alerta_nivel'] ?? 0) <=> (int) ($a['alerta_nivel'] ?? 0);
+            }
             $comparacion = msp2SearchRelevance($q, [
                 (string) ($a['nombre_comercial'] ?? ''),
                 (string) ($a['nombre_locatario'] ?? ''),
@@ -127,13 +139,26 @@ try {
                 <div class="col-lg-9"><input class="form-control" type="search" name="q" value="<?php echo msp2Escape($q); ?>" placeholder="Arrendatario, RUT, contrato, garantía, tienda o local; ej.: ivon A-1 o #7" autofocus></div>
                 <div class="col-lg-3 d-flex gap-2" data-gp-filter-actions><button class="btn btn-primary flex-grow-1">Buscar</button><?php if ($q !== ''): ?><a class="btn btn-outline-secondary" href="<?php echo msp2Escape(msp2Url('garantias/index.php')); ?>">Limpiar</a><?php endif; ?></div>
             </form>
+            <?php if ($idContratoContexto > 0): ?>
+                <div class="alert alert-info py-2 mt-2 mb-0">
+                    Mostrando la garantía vinculada al contrato <strong>#<?php echo $idContratoContexto; ?></strong>.
+                    <a class="alert-link ms-1" href="<?php echo msp2Escape(msp2Url('garantias/index.php')); ?>">Ver búsqueda general</a>
+                </div>
+            <?php endif; ?>
             
         </div>
     </div>
 
-    <?php if ($q !== ''): ?>
+    <?php if ($q !== '' || $idContratoContexto > 0): ?>
         <div class="card shadow-sm mb-4">
-            <div class="card-header fw-semibold">Resultados para “<?php echo msp2Escape($q); ?>” (<?php echo count($resultados); ?>)</div>
+            <div class="card-header fw-semibold">
+                <?php if ($idContratoContexto > 0): ?>
+                    Garantía del contrato #<?php echo $idContratoContexto; ?>
+                <?php else: ?>
+                    Resultados para “<?php echo msp2Escape($q); ?>”
+                <?php endif; ?>
+                (<?php echo count($resultados); ?>)
+            </div>
 
             <div class="table-responsive garantias-resultados-wrap"><table class="table table-hover align-middle mb-0 garantias-resultados-table gp-table-compact gp-table-mobile-cards msp-guarantees-hub-table">
                 <colgroup>
@@ -205,7 +230,7 @@ try {
 
 
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 

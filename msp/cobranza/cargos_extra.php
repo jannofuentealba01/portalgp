@@ -20,6 +20,11 @@ $periodoYm = trim((string) ($_GET['periodo'] ?? $_POST['periodo'] ?? ''));
 if (!preg_match('/^\d{4}-\d{2}$/', $periodoYm)) {
     $periodoYm = (new DateTimeImmutable('today'))->format('Y-m');
 }
+$contextTiendaId = filter_input(INPUT_GET, 'id_tienda', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$contextContratoId = filter_input(INPUT_GET, 'id_contrato_arriendo', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$contextTiendaId = is_int($contextTiendaId) ? $contextTiendaId : 0;
+$contextContratoId = is_int($contextContratoId) ? $contextContratoId : 0;
+$contextoSeleccionError = null;
 
 function ceParseMonthToFirstDay(string $periodo): ?string
 {
@@ -387,6 +392,7 @@ if ($tablaExiste) {
                 SELECT
                     cl.id_contrato_arriendo,
                     cl.id_local,
+                    ca.id_tienda,
                     loc.cdo_local,
                     t.nombre_comercial,
                     " . ($hasArrendatarios
@@ -421,6 +427,7 @@ if ($tablaExiste) {
              SELECT
                 id_contrato_arriendo,
                 id_local,
+                id_tienda,
                 cdo_local,
                 nombre_comercial,
                 nombre_arrendatario
@@ -431,6 +438,18 @@ if ($tablaExiste) {
         $targetsStmt->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
         $targetsStmt->execute();
         $targets = $targetsStmt->fetchAll() ?: [];
+        if ($contextTiendaId > 0 || $contextContratoId > 0) {
+            $targets = array_values(array_filter(
+                $targets,
+                static function (array $target) use ($contextTiendaId, $contextContratoId): bool {
+                    return ($contextTiendaId <= 0 || (int) ($target['id_tienda'] ?? 0) === $contextTiendaId)
+                        && ($contextContratoId <= 0 || (int) ($target['id_contrato_arriendo'] ?? 0) === $contextContratoId);
+                }
+            ));
+            if ($targets === []) {
+                $contextoSeleccionError = 'La tienda o el contrato seleccionado no tiene locales vigentes para este período.';
+            }
+        }
 
         $pendStmt = $conn->prepare(
             "DECLARE @periodo DATE = :periodo;
@@ -568,12 +587,23 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
                     </div>
                 </div>
                     <form method="get" class="row g-2 align-items-end msp-management-filters msp-extra-charges-period" id="form_periodo_cargos_extra">
+                        <?php if ($contextTiendaId > 0): ?><input type="hidden" name="id_tienda" value="<?php echo $contextTiendaId; ?>"><?php endif; ?>
+                        <?php if ($contextContratoId > 0): ?><input type="hidden" name="id_contrato_arriendo" value="<?php echo $contextContratoId; ?>"><?php endif; ?>
                         <div class="col-12 col-md-3">
                             <label class="form-label">Periodo</label>
                             <input type="month" class="form-control" id="periodo_cargos_extra" name="periodo" value="<?php echo msp2Escape($periodoYm); ?>" required>
                             <div class="ce-subtle mt-1">Define el período operativo de cobranza.</div>
                         </div>
                     </form>
+
+                    <?php if ($contextoSeleccionError !== null): ?>
+                        <div class="alert alert-warning py-2 mb-2"><?php echo msp2Escape($contextoSeleccionError); ?></div>
+                    <?php elseif (($contextTiendaId > 0 || $contextContratoId > 0) && $targets !== []): ?>
+                        <div class="alert alert-info py-2 mb-2">
+                            Ajuste contextual para <strong><?php echo msp2Escape((string) ($targets[0]['nombre_comercial'] ?? 'tienda seleccionada')); ?></strong>.
+                            <?php echo count($targets) === 1 ? 'El local quedó seleccionado.' : 'Selecciona uno de sus ' . count($targets) . ' locales vigentes.'; ?>
+                        </div>
+                    <?php endif; ?>
 
                     <form method="post" class="msp-extra-charge-entry mb-3" id="form_cargo_extra_rapido">
                                 <input type="hidden" name="accion" value="crear_cargo_extra">
@@ -605,6 +635,9 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
                                             ),
                                         ];
                                     }
+                                    $targetPreselected = count($targetOptions) === 1
+                                        ? (string) ($targetOptions[0]['value'] ?? '')
+                                        : '';
                                     msp2RenderSearchableSelectField([
                                         'wrapper_class' => 'col-12 col-lg-4',
                                         'label' => 'Local / Arrendatario',
@@ -621,6 +654,7 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
                                         'empty_message' => 'No hay locales/contratos vigentes para este período.',
                                         'button_class' => 'btn btn-outline-secondary dropdown-toggle w-100 text-start ce-picker-btn',
                                         'required' => true,
+                                        'value' => $targetPreselected,
                                         'options' => $targetOptions,
                                     ]);
                                     ?>
@@ -885,8 +919,8 @@ $manualAdjustDateRangeUi = ceFmtFecha($manualAdjustDateMin) . ' al ' . ceFmtFech
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const quickExtraForm = document.getElementById('form_cargo_extra_rapido');
     const extraTargetInput = document.getElementById('target_contrato_local');

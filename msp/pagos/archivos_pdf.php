@@ -592,8 +592,8 @@ unset($queryBase['pagina']);
     </div>
 </main>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((element) => {
     new bootstrap.Tooltip(element);
 });

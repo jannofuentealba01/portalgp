@@ -48,7 +48,7 @@ if (!function_exists('msp2RenderSearchableSelectAssets')) {
             msp2RenderSearchAssets();
         }
         ?>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const initSearchableSelect = (root) => {
                 if (!(root instanceof HTMLElement)) {
@@ -313,7 +313,7 @@ if (!function_exists('msp2RenderSearchableSelectField')) {
                         data-searchable-filter
                         class="form-control form-control-sm mb-2"
                         placeholder="<?php echo msp2SearchableSelectEscape($filterPlaceholder); ?>">
-                    <div class="list-group list-group-flush msp-searchable-select-list" id="<?php echo msp2SearchableSelectEscape($listId); ?>" data-searchable-list style="max-height: <?php echo msp2SearchableSelectEscape($listMaxHeight); ?>;">
+                    <div class="list-group list-group-flush msp-searchable-select-list" id="<?php echo msp2SearchableSelectEscape($listId); ?>" data-searchable-list <?php echo pgpCspStyleAttribute('max-height: ' . $listMaxHeight . ';'); ?>>
                         <?php if ($items === []): ?>
                             <div class="small text-muted px-2 py-1"><?php echo msp2SearchableSelectEscape($emptyMessage); ?></div>
                         <?php else: ?>

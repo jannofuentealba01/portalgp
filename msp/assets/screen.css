@@ -620,3 +620,154 @@ body.msp-mail-sending-open {
             0%, 70% { opacity: 1; }
             100% { opacity: 0; }
         }
+.gp-pending-nav {
+  position: relative;
+}
+
+.gp-pending-details {
+  position: relative;
+}
+
+.gp-pending-summary {
+  gap: .35rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.gp-pending-summary::-webkit-details-marker {
+  display: none;
+}
+
+.gp-pending-badge {
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 .28rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: .68rem;
+  line-height: 1;
+}
+
+.gp-pending-badge-unavailable {
+  background: var(--color-warning);
+}
+
+.gp-pending-panel {
+  position: absolute;
+  z-index: 1080;
+  top: calc(100% + .4rem);
+  right: 0;
+  width: min(23rem, calc(100vw - 1rem));
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-md);
+}
+
+.gp-pending-panel-head,
+.gp-pending-all {
+  min-height: 2.6rem;
+  padding: .6rem .75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.gp-pending-panel-head {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gp-pending-panel-head span {
+  color: var(--color-text-muted);
+  font-size: .78rem;
+}
+
+.gp-pending-items {
+  display: grid;
+}
+
+.gp-pending-item {
+  min-width: 0;
+  padding: .58rem .7rem;
+  display: grid;
+  grid-template-columns: .55rem minmax(0, 1fr) 1rem;
+  align-items: start;
+  gap: .48rem;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.gp-pending-item:hover {
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+}
+
+.gp-pending-item strong,
+.gp-pending-item small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.gp-pending-item strong {
+  font-size: .82rem;
+  line-height: 1.25;
+}
+
+.gp-pending-item small {
+  margin-top: .15rem;
+  color: var(--color-text-muted);
+  font-size: .73rem;
+  line-height: 1.25;
+}
+
+.gp-pending-dot {
+  width: .48rem;
+  height: .48rem;
+  margin-top: .25rem;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.gp-pending-dot-critica {
+  background: var(--color-danger);
+}
+
+.gp-pending-dot-alta {
+  background: var(--color-warning);
+}
+
+.gp-pending-dot-informativa {
+  background: var(--color-text-muted);
+}
+
+.gp-pending-empty {
+  margin: 0;
+  padding: .9rem .75rem;
+  color: var(--color-text-muted);
+  font-size: .8rem;
+}
+
+.gp-pending-all {
+  justify-content: flex-end;
+  font-size: .8rem;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .gp-pending-summary-text {
+    display: none;
+  }
+
+  .gp-pending-panel {
+    position: fixed;
+    top: 3.3rem;
+    right: .5rem;
+  }
+}

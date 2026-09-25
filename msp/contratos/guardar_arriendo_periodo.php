@@ -39,6 +39,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 $periodoYm = trim((string) ($_POST['periodo'] ?? ''));
 $filtroTexto = msp2NormalizeText((string) ($_POST['filtro'] ?? ''));
 $soloPendientes = (string) ($_POST['solo_pendientes'] ?? '') === '1';
+$confirmarArriendoCero = (string) ($_POST['confirmar_arriendo_cero'] ?? '') === '1';
 
 $periodoFacturacion = msp2GuardarArriendoPeriodoParseMonthToFirstDay($periodoYm);
 if ($periodoFacturacion === null) {
@@ -151,6 +152,14 @@ try {
          )"
     );
 
+    $stmtPeriodoActual = $conn->prepare(
+        "SELECT TOP (1) valor_periodo_clp, valor_periodo_uf
+         FROM dbo.msp_contrato_local_arriendo_periodo
+         WHERE id_contrato_local = :id_contrato_local
+           AND periodo_facturacion = :periodo
+           AND estado_periodo = 1"
+    );
+
     $conn->beginTransaction();
 
     $insertados = 0;
@@ -218,6 +227,21 @@ try {
                 $omitidos++;
             }
             continue;
+        }
+
+        $valorEfectivo = $valorClp ?? $valorUf;
+        if ($valorEfectivo !== null && (float) $valorEfectivo === 0.0) {
+            $stmtPeriodoActual->bindValue(':id_contrato_local', $idContratoLocal, PDO::PARAM_INT);
+            $stmtPeriodoActual->bindValue(':periodo', $periodoFacturacion, PDO::PARAM_STR);
+            $stmtPeriodoActual->execute();
+            $periodoActual = $stmtPeriodoActual->fetch(PDO::FETCH_ASSOC);
+            $valorAnterior = is_array($periodoActual)
+                ? ($periodoActual['valor_periodo_clp'] ?? $periodoActual['valor_periodo_uf'] ?? null)
+                : null;
+            $anteriorEraCero = $valorAnterior !== null && (float) $valorAnterior === 0.0;
+            if (!$anteriorEraCero && !$confirmarArriendoCero) {
+                throw new RuntimeException('Confirma expresamente el arriendo en 0 del contrato-local #' . $idContratoLocal . '.');
+            }
         }
 
         $descuentoFinal = $descuentoClp ?? number_format(0, 2, '.', '');

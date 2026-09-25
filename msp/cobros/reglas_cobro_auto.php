@@ -572,8 +572,8 @@ $totalInactivas = $totalReglas - $totalActivas;
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 document.addEventListener('DOMContentLoaded', function () {
     const shouldOpenForm = <?php echo $formData['id_regla_cobro_auto'] > 0 ? 'true' : 'false'; ?>;
     if (!shouldOpenForm) {

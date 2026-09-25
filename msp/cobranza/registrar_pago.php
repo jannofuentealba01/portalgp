@@ -1074,8 +1074,8 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
     </div>
 </div>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
     const escapeHtmlText = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
         '&': '&amp;',
         '<': '&lt;',
@@ -1510,15 +1510,15 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                 default:              return 'bi-tag-fill';
             }
         };
-        const conceptoColor = (codigo) => {
+        const conceptoColorClass = (codigo) => {
             switch (codigo) {
-                case 'ARRIENDO':      return '#4f46e5';
-                case 'SERVICIO_LUZ':  return '#d97706';
-                case 'SERVICIO_GAS':  return '#dc2626';
-                case 'SERVICIO_AGUA': return '#2563eb';
-                case 'MULTA':         return '#ea580c';
-                case 'DANO':          return '#7c3aed';
-                default:              return '#6b7280';
+                case 'ARRIENDO':      return 'v2-concept-icon--rent';
+                case 'SERVICIO_LUZ':  return 'v2-concept-icon--electricity';
+                case 'SERVICIO_GAS':  return 'v2-concept-icon--gas';
+                case 'SERVICIO_AGUA': return 'v2-concept-icon--water';
+                case 'MULTA':         return 'v2-concept-icon--fine';
+                case 'DANO':          return 'v2-concept-icon--damage';
+                default:              return 'v2-concept-icon--default';
             }
         };
 
@@ -1604,15 +1604,15 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                 const nombre = String(c.nombre_item || 'Concepto');
                 const saldo  = parseDot(c.saldo || 0);
                 const icon   = conceptoIcon(codigo);
-                const color  = conceptoColor(codigo);
+                const colorClass = conceptoColorClass(codigo);
                 return `<tr data-v2-id="${id}" data-v2-saldo="${saldo.toFixed(2)}">
                     <td class="ps-3 py-2">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="bi ${icon}" style="color:${color};font-size:1.05em;flex-shrink:0;" aria-hidden="true"></i>
-                            <span class="fw-semibold" style="font-size:.92rem;">${escapeHtmlText(nombre)}</span>
+                            <i class="bi ${icon} v2-concept-icon ${colorClass}" aria-hidden="true"></i>
+                            <span class="fw-semibold v2-concept-name">${escapeHtmlText(nombre)}</span>
                         </div>
                     </td>
-                    <td class="text-end py-2 pe-3" style="font-size:.85rem;color:var(--color-text-muted);white-space:nowrap;">${fmtMoney(saldo)}</td>
+                    <td class="text-end py-2 pe-3 v2-concept-balance">${fmtMoney(saldo)}</td>
                     <td class="py-2">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">$</span>
@@ -1621,7 +1621,7 @@ $envioArrendatariosHabilitado = msp2MailTenantDeliveryEnabled($conn);
                         </div>
                     </td>
                     <td class="text-center py-2 pe-2">
-                        <span class="badge text-bg-secondary v2-saldo-badge" style="font-size:.72em;">${fmtMoney(saldo)} pend.</span>
+                        <span class="badge text-bg-secondary v2-saldo-badge">${fmtMoney(saldo)} pend.</span>
                     </td>
                 </tr>`;
             }).join('');

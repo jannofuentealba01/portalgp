@@ -23,4 +23,4 @@ declare(strict_types=1);
         </div>
     </div>
 </div>
-<script src="<?php echo msp2Escape(msp2Url('assets/msp_confirm_action.js')); ?>"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="<?php echo msp2Escape(msp2Url('assets/msp_confirm_action.js')); ?>"></script>

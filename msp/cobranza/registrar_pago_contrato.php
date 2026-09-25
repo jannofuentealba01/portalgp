@@ -676,6 +676,7 @@ if (!is_string($pdfDownloadUrlsJson)) {
 $fechaPagoMinima = '2025-12-31';
 $fechaPagoMaxima = date('Y-m-d');
 $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $fechaPagoMinima;
+$pagoContratoSolicitudId = 'PC-' . strtoupper(bin2hex(random_bytes(16)));
 ?>
 <!DOCTYPE html>
 <html lang="es" class="h-100">
@@ -999,6 +1000,7 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
             <input type="hidden" name="descargar_pdfs_pago" value="0">
             <input type="hidden" name="demo_email_confirmado" value="">
             <input type="hidden" name="demo_email_override" value="">
+            <input type="hidden" name="referencia_operacion" value="<?php echo msp2Escape($pagoContratoSolicitudId); ?>">
 
             <div class="modal-header" style="background:var(--color-surface);border-bottom:1px solid var(--color-border);">
                 <div>
@@ -1255,8 +1257,8 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
 </div>
 <?php endif; ?>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const formFiltro = document.getElementById('form_pago_contrato_filtro');
     const arrInput = document.getElementById('id_arrendatario');
@@ -1732,6 +1734,10 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                 }
                 return;
             }
+            if (formPagoContrato.dataset.paymentSubmitting === '1') {
+                event.preventDefault();
+                return;
+            }
             const monto = montoInput instanceof HTMLInputElement ? parse(montoInput.value) : 0;
             if (monto <= 0) {
                 event.preventDefault();
@@ -1775,8 +1781,16 @@ $fechaPagoDefault = $fechaPagoMaxima >= $fechaPagoMinima ? $fechaPagoMaxima : $f
                     } else if (bancoChequeInp instanceof HTMLInputElement) {
                         bancoChequeInp.focus();
                     }
+                    return;
                 }
             }
+
+            formPagoContrato.dataset.paymentSubmitting = '1';
+            [submitBtn, confirmarComprobanteOmitirBtn, confirmarComprobanteEnviarBtn].forEach((button) => {
+                if (button instanceof HTMLButtonElement) {
+                    button.disabled = true;
+                }
+            });
             const enviarComprobanteInput = formPagoContrato.querySelector('input[name="enviar_comprobante"]');
             const enviaraCorreo = !(enviarComprobanteInput instanceof HTMLInputElement) || enviarComprobanteInput.value !== '0';
             if (enviaraCorreo) {

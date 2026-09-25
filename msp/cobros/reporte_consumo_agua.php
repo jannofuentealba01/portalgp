@@ -59,7 +59,7 @@ try {
     $divisor = (float) ($process['divisor'] ?? 0);
     $fixedCharge = (float) ($process['cargo_fijo'] ?? 0);
     $variableRate = 0.0;
-    foreach (['servicio_agua_potable', 'servicio_alcantarillado', 'tratamiento_aguas_servidas', 'sobreconsumo', 'interes_pf_plazo'] as $component) {
+    foreach (['servicio_agua_potable', 'servicio_alcantarillado', 'tratamiento_aguas_servidas'] as $component) {
         $variableRate += (float) ($process[$component] ?? 0);
     }
 
@@ -90,7 +90,7 @@ try {
             : max(0.0, $current - $previous);
         $amount = is_numeric((string) ($row['monto_total'] ?? null))
             ? max(0.0, (float) $row['monto_total'])
-            : ($divisor > 0 ? (($consumption * $variableRate / $divisor) + ($fixedCharge / $divisor)) : 0.0);
+            : ($divisor > 0 ? (($consumption * $variableRate / $divisor) + $fixedCharge) : 0.0);
         $rows[] = [(string) ($row['cod_local'] ?? ''), (string) ($row['codigo_medidor'] ?? ''), $previous, $current, $consumption, round($amount, 2)];
         $totalConsumption += $consumption;
         $totalAmount += $amount;

@@ -948,8 +948,6 @@ $fmtFecha = static function (mixed $value): string {
                                 'list_id' => 'crear_locales_list',
                                 'selected_container_id' => 'crear_locales_container',
                                 'required' => true,
-                                'sum_target_id' => 'crear_arriendo_ref',
-                                'sum_prefix' => 'Suma referencia UF locales (legado): ',
                                 'options' => $crearLocalesOptions,
                             ]);
                             ?>
@@ -961,8 +959,8 @@ $fmtFecha = static function (mixed $value): string {
                                         <tr>
                                             <th>Local</th>
                                             <th>Modalidad</th>
-                                            <th class="text-end">Valor base UF</th>
-                                            <th class="text-end">Valor base CLP</th>
+                                            <th class="text-end">Arriendo mensual (UF)</th>
+                                            <th class="text-end">Arriendo mensual (CLP)</th>
                                             <th>Monto y observaciones garantía</th>
                                         </tr>
                                     </thead>
@@ -973,7 +971,7 @@ $fmtFecha = static function (mixed $value): string {
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="form-text">Configura cada local. <code>CLP_FIJO</code> corresponde al monto mensual del contrato.</div>
+                            <div class="form-text">Ingresa el arriendo mensual pactado para cada local. En UF se indica la cantidad de UF, no su valor actual en pesos; MSP realiza la conversión con la UF del período.</div>
                         </div>
                         <div class="col-12 col-md-5 col-xl-3">
                             <label for="crear_garantia_medio_recepcion" class="form-label">Recepción garantía</label>
@@ -990,9 +988,9 @@ $fmtFecha = static function (mixed $value): string {
                             <input type="date" class="form-control" id="crear_fecha_termino" name="fecha_termino_pactada">
                         </div>
                         <div class="col-12 col-xl-5">
-                            <label for="crear_monto_arriendo" class="form-label">Arriendo base de referencia (UF)</label>
-                            <input type="text" class="form-control" id="crear_monto_arriendo" name="monto_arriendo_pactado" placeholder="0,00" inputmode="decimal" autocomplete="off" data-money-decimals="2">
-                            <div class="form-text" id="crear_arriendo_ref">Referencia UF de locales: -</div>
+                            <label for="crear_monto_arriendo" class="form-label" id="crear_monto_arriendo_label">Total mensual calculado</label>
+                            <input type="text" class="form-control bg-light" id="crear_monto_arriendo" name="monto_arriendo_pactado" placeholder="0,00" inputmode="decimal" autocomplete="off" data-money-decimals="2" readonly aria-readonly="true">
+                            <div class="form-text" id="crear_arriendo_ref">Se calcula automáticamente desde la ficha de cobro por local.</div>
                         </div>
                     </div>
                 </div>
@@ -1123,8 +1121,6 @@ $fmtFecha = static function (mixed $value): string {
                                 'list_id' => 'edit_locales_list',
                                 'selected_container_id' => 'edit_locales_container',
                                 'required' => true,
-                                'sum_target_id' => 'edit_arriendo_ref',
-                                'sum_prefix' => 'Suma referencia UF locales (legado): ',
                                 'options' => $editLocalesOptions,
                             ]);
                             ?>
@@ -1137,8 +1133,8 @@ $fmtFecha = static function (mixed $value): string {
                                         <tr>
                                             <th>Local</th>
                                             <th>Modalidad</th>
-                                            <th class="text-end">Valor base UF</th>
-                                            <th class="text-end">Valor base CLP</th>
+                                            <th class="text-end">Arriendo mensual (UF)</th>
+                                            <th class="text-end">Arriendo mensual (CLP)</th>
                                             <th>Monto y observaciones garantía</th>
                                         </tr>
                                     </thead>
@@ -1149,7 +1145,7 @@ $fmtFecha = static function (mixed $value): string {
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="form-text">La configuración reemplaza la regla default por contrato-local en cada local activo del contrato.</div>
+                            <div class="form-text">Ingresa el arriendo mensual pactado para cada local. En UF se indica la cantidad de UF, no su valor actual en pesos; MSP realiza la conversión con la UF del período.</div>
                         </div>
                         <div class="col-12 col-md-4">
                             <label for="edit_garantia_medio_recepcion" class="form-label">Medio recepción garantía</label>
@@ -1166,9 +1162,9 @@ $fmtFecha = static function (mixed $value): string {
                             <input type="date" class="form-control" id="edit_fecha_termino" name="fecha_termino_pactada">
                         </div>
                         <div class="col-12 col-md-6">
-                            <label for="edit_monto_arriendo" class="form-label">Arriendo base ref. contrato (UF)</label>
-                            <input type="text" class="form-control" id="edit_monto_arriendo" name="monto_arriendo_pactado" placeholder="0,00" inputmode="decimal" autocomplete="off" data-money-decimals="2">
-                            <div class="form-text" id="edit_arriendo_ref">Suma referencia UF locales (legado): -</div>
+                            <label for="edit_monto_arriendo" class="form-label" id="edit_monto_arriendo_label">Total mensual calculado</label>
+                            <input type="text" class="form-control bg-light" id="edit_monto_arriendo" name="monto_arriendo_pactado" placeholder="0,00" inputmode="decimal" autocomplete="off" data-money-decimals="2" readonly aria-readonly="true">
+                            <div class="form-text" id="edit_arriendo_ref">Se calcula automáticamente desde la ficha de cobro por local.</div>
                         </div>
                     </div>
                 </div>
@@ -1422,8 +1418,8 @@ $fmtFecha = static function (mixed $value): string {
         </form>
     </div>
 </div>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const currentLocalDate = () => new Date();
     const toInputDateValue = (date) => {
@@ -1803,6 +1799,7 @@ $fmtFecha = static function (mixed $value): string {
         body.querySelectorAll('tr[data-code-key]').forEach((row) => applyContratoLocalRowMode(row));
         syncClpFijoContratoRows(prefix, arriendoState);
         applyClpFijoContratoVisualMode(prefix);
+        refreshArriendoContractReference(prefix);
     };
 
     const parseMoneyNumber = (rawValue) => {
@@ -1845,6 +1842,60 @@ $fmtFecha = static function (mixed $value): string {
         const factor = d === 0 ? 1 : 100;
         const rounded = Math.round(parsed * factor) / factor;
         return numberFormatter[d].format(rounded);
+    };
+
+    const refreshArriendoContractReference = (prefix) => {
+        const body = document.getElementById(`${prefix}_arriendo_locales_body`);
+        const totalInput = document.getElementById(`${prefix}_monto_arriendo`);
+        const totalLabel = document.getElementById(`${prefix}_monto_arriendo_label`);
+        const totalHelp = document.getElementById(`${prefix}_arriendo_ref`);
+        if (!(body instanceof HTMLElement) || !(totalInput instanceof HTMLInputElement)) return;
+
+        const rows = Array.from(body.querySelectorAll('tr[data-code-key]'));
+        if (rows.length === 0) {
+            totalInput.value = '';
+            totalInput.dataset.moneyDecimals = '2';
+            if (totalLabel instanceof HTMLElement) totalLabel.textContent = 'Total mensual calculado';
+            if (totalHelp instanceof HTMLElement) totalHelp.textContent = 'Se calcula automáticamente desde la ficha de cobro por local.';
+            return;
+        }
+
+        const modalidades = rows.map((row) => {
+            const modalidadEl = row.querySelector('.js-arriendo-modalidad');
+            return modalidadEl instanceof HTMLSelectElement ? ensureModalidad(modalidadEl.value) : 'UF_ESTATICO';
+        });
+        const soloClp = modalidades.every((modalidad) => modalidad === 'CLP_FIJO');
+
+        if (soloClp) {
+            const clpEl = rows[0].querySelector('.js-arriendo-valor-clp');
+            const totalClp = clpEl instanceof HTMLInputElement ? parseMoneyNumber(clpEl.value) : null;
+            totalInput.dataset.moneyDecimals = '0';
+            totalInput.value = totalClp !== null ? formatNumberValue(String(totalClp), 0) : '';
+            if (totalLabel instanceof HTMLElement) totalLabel.textContent = 'Total mensual calculado (CLP)';
+            if (totalHelp instanceof HTMLElement) totalHelp.textContent = 'Se toma automáticamente del arriendo mensual en pesos definido para el contrato.';
+            return;
+        }
+
+        let totalUf = 0;
+        let tieneUf = false;
+        rows.forEach((row, index) => {
+            if (modalidades[index] !== 'UF_ESTATICO') return;
+            const ufEl = row.querySelector('.js-arriendo-valor-uf');
+            const valorUf = ufEl instanceof HTMLInputElement ? parseMoneyNumber(ufEl.value) : null;
+            if (valorUf === null) return;
+            totalUf += valorUf;
+            tieneUf = true;
+        });
+
+        totalInput.dataset.moneyDecimals = '2';
+        totalInput.value = tieneUf ? formatNumberValue(String(totalUf), 2) : '';
+        if (totalLabel instanceof HTMLElement) totalLabel.textContent = 'Total mensual calculado (UF)';
+        if (totalHelp instanceof HTMLElement) {
+            const tieneClp = modalidades.some((modalidad) => modalidad === 'CLP_FIJO');
+            totalHelp.textContent = tieneClp
+                ? 'Suma automática de los arriendos en UF; los importes CLP permanecen en sus reglas por local.'
+                : 'Suma automática de los arriendos mensuales en UF. No corresponde al valor de la UF en pesos.';
+        }
     };
 
     const formatMoneyInputValue = (inputEl, decimals = 2) => {
@@ -2024,6 +2075,14 @@ $fmtFecha = static function (mixed $value): string {
             if (target.classList.contains('js-arriendo-valor-clp') || target.classList.contains('js-arriendo-descuento')) {
                 syncClpFijoContratoRows('crear', crearArriendoState);
             }
+            refreshArriendoContractReference('crear');
+        });
+        crearArriendoBody.addEventListener('input', (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+            if (target.classList.contains('js-arriendo-valor-uf') || target.classList.contains('js-arriendo-valor-clp')) {
+                refreshArriendoContractReference('crear');
+            }
         });
     }
 
@@ -2083,6 +2142,14 @@ $fmtFecha = static function (mixed $value): string {
             if (target.classList.contains('js-arriendo-valor-clp') || target.classList.contains('js-arriendo-descuento')) {
                 syncClpFijoContratoRows('edit', editArriendoState);
             }
+            refreshArriendoContractReference('edit');
+        });
+        editArriendoBody.addEventListener('input', (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+            if (target.classList.contains('js-arriendo-valor-uf') || target.classList.contains('js-arriendo-valor-clp')) {
+                refreshArriendoContractReference('edit');
+            }
         });
     }
 
@@ -2128,6 +2195,7 @@ $fmtFecha = static function (mixed $value): string {
                 if (error instanceof HTMLElement) error.classList.remove('d-none');
                 return;
             }
+            refreshArriendoContractReference('crear');
             crearForm.querySelectorAll('input[data-money-decimals]').forEach((inputEl) => normalizeMoneyInputForSubmit(inputEl));
         });
     }
@@ -2144,6 +2212,7 @@ $fmtFecha = static function (mixed $value): string {
                 if (error instanceof HTMLElement) error.classList.remove('d-none');
                 return;
             }
+            refreshArriendoContractReference('edit');
             editForm.querySelectorAll('input[data-money-decimals]').forEach((inputEl) => normalizeMoneyInputForSubmit(inputEl));
         });
     }

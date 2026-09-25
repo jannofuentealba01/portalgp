@@ -1,6 +1,6 @@
 # Plan de Implementacion: SRI + CSP en MSP
 
-> Estado al 07-09-2026: el riesgo de CDN se resolvió vendorizando localmente todos los recursos frontend con versiones fijas y huellas SHA-256. CSP está activa en modo enforcing con compatibilidad temporal para código inline. El inventario vigente está en `assets/vendor/README.md` y la evidencia en `SEGURIDAD_ETAPA3_PUNTOS1_3_HTTP.md`.
+> Estado al 15-09-2026: el riesgo de CDN se resolvió vendorizando localmente todos los recursos frontend con versiones fijas y huellas SHA-256. CSP está activa en modo enforcing sin `'unsafe-inline'`; las plantillas PHP declaran un nonce por respuesta y los atributos heredados se limitan a hashes generados desde código fuente confiable. El inventario vigente está en `assets/vendor/README.md` y la evidencia final en `SEGURIDAD_CSP_ESTRICTA_2026-09-15.md`.
 
 ## Objetivo
 Reducir riesgo de supply-chain y XSS en frontend aplicando:
@@ -90,7 +90,7 @@ Reducir riesgo de supply-chain y XSS en frontend aplicando:
 - [x] Recursos de CDN sustituidos por copias locales versionadas con SHA-256; SRI ya no aplica a esas cargas same-origin.
 - [x] CSP configurada y activa en modo enforcing compatible.
 - [ ] Endpoint de reportes CSP, si se decide habilitar telemetría en producción.
-- [ ] Migración posterior de scripts y estilos inline para retirar `'unsafe-inline'`.
+- [x] Scripts y estilos inline protegidos por nonce, y atributos heredados por hashes exactos; se retiró `'unsafe-inline'`.
 - [x] CSP en modo enforce.
 - [x] Pruebas automáticas y HTTP de login, assets y cabeceras.
 

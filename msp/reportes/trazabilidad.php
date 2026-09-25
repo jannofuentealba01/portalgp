@@ -495,7 +495,7 @@ if ($tablaExiste && $totalPaginas > 1) {
         <?php endif; ?>
     </div>
 </main>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

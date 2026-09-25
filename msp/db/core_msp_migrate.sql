@@ -94,6 +94,8 @@ PRINT '==== Cobranza, correcciones y soporte ====';
 
 PRINT '==== Cierre, vacancias y trazabilidad final ====';
 :r $(MSP_DB_DIR)\patch_liquidacion_final.sql
+:r $(MSP_DB_DIR)\patch_servicios_tardios_liquidacion.sql
+:r $(MSP_DB_DIR)\patch_servicios_tardios_integracion.sql
 :r $(MSP_DB_DIR)\patch_cierre_deuda_historica.sql
 :r $(MSP_DB_DIR)\patch_comercial_vacancia_documentos.sql
 :r $(MSP_DB_DIR)\patch_cierre_integracion_final.sql

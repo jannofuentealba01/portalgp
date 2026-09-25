@@ -47,7 +47,7 @@ if (!function_exists('msp2RenderMontoClpAssets')) {
         }
         $assetsRendered = true;
         ?>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
         (() => {
             const bindMontoClpInputs = () => {
                 const montoInputs = Array.from(document.querySelectorAll('.js-monto-clp')).filter((el) => el instanceof HTMLInputElement);

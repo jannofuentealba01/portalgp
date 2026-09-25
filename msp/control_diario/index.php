@@ -30,6 +30,16 @@ if ($requestedYear < 2020 || $requestedYear > 2100) {
     $requestedYear = (int) date('Y');
 }
 $selectedYear = $requestedYear;
+$returnDetailLocal = filter_input(INPUT_GET, 'detalle_local', FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1],
+]);
+$returnDetailArrendatario = filter_input(INPUT_GET, 'detalle_arrendatario', FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1],
+]);
+$returnDetailLocal = $returnDetailLocal !== false && $returnDetailLocal !== null ? (int) $returnDetailLocal : 0;
+$returnDetailArrendatario = $returnDetailArrendatario !== false && $returnDetailArrendatario !== null
+    ? (int) $returnDetailArrendatario
+    : 0;
 $availableYears = [];
 $availablePeriodsByYear = [];
 
@@ -63,6 +73,9 @@ foreach ($monthNames as $monthNumber => $monthLabel) {
 $rows = [];
 $serviceTotalsByLocalMonth = [];
 $serviceTotalsByTiendaMonth = [];
+$electricityReadingsByTiendaMonth = [];
+$gasReadingsByTiendaMonth = [];
+$waterReadingsByTiendaMonth = [];
 $reservaByTiendaMonth = [];
 $reservaBreakdownByTiendaMonth = [];
 $docStatusByTiendaMonth = [];
@@ -70,10 +83,18 @@ $docTotalByTiendaMonth = [];
 $docIdByTiendaMonth = [];
 $docNumberByTiendaMonth = [];
 $arriendoNetoByTiendaMonth = [];
+$operationalStateByTiendaMonth = [];
 $clpFijoContratoByTienda = [];
 $garantiaAplicadaByTiendaMonth = [];
 $clpFijoFallbackByTiendaMonth = [];
 $ufFallbackByTiendaMonth = [];
+$rentSnapshotsByTiendaMonth = [];
+$canCorrectElectricity = msp2CurrentUserHasPermission('MSP Operacion', 'escritura')
+    && msp2TableExists($conn, 'msp_correcciones')
+    && msp2TableExists($conn, 'msp_correcciones_impactos');
+$canCorrectGas = $canCorrectElectricity;
+$canCorrectWater = $canCorrectElectricity;
+$canCorrectRent = $canCorrectElectricity;
 
 function msp2ControlDiarioLocalSortWeight(string $code): array
 {
@@ -301,6 +322,466 @@ try {
         }
     }
     $perfMark('carga_servicios');
+
+    if ($canCorrectElectricity
+        && $canLoadServicios
+        && msp2TableExists($conn, 'msp_proceso_cobro_luz')
+        && msp2TableExists($conn, 'msp_documentos_cobro')
+        && msp2TableExists($conn, 'msp_documentos_cobro_detalle')) {
+        $dependenciasProtegidasSql = [];
+        $dependenciasDocumento = [
+            'msp_pagos' => 'id_documento_cobro',
+            'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
+            'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
+            'msp_movimientos_garantia' => 'id_documento_cobro',
+            'msp_envio_lote_documentos' => 'id_documento_cobro',
+            'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
+            'msp_pago_contrato_archivos' => 'id_documento_cobro',
+        ];
+        foreach ($dependenciasDocumento as $tablaDependencia => $columnaDependencia) {
+            if (!msp2TableExists($conn, $tablaDependencia)
+                || !msp2ColumnExists($conn, $tablaDependencia, $columnaDependencia)) {
+                continue;
+            }
+            $dependenciasProtegidasSql[] = 'EXISTS (SELECT 1 FROM dbo.' . $tablaDependencia
+                . ' dep WHERE dep.' . $columnaDependencia . '=doc.id_documento_cobro)';
+        }
+        $proteccionSql = $dependenciasProtegidasSql === []
+            ? 'CAST(0 AS BIT)'
+            : 'CAST(CASE WHEN ' . implode(' OR ', $dependenciasProtegidasSql) . ' THEN 1 ELSE 0 END AS BIT)';
+        $asientoSql = msp2TableExists($conn, 'msp_acc_asientos')
+            ? "CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.msp_acc_asientos acc WHERE acc.tabla_origen=N'msp_documentos_cobro' AND acc.id_origen=doc.id_documento_cobro AND acc.estado_asiento=1) THEN 1 ELSE 0 END AS BIT)"
+            : 'CAST(0 AS BIT)';
+
+        $lecturasElectricidadStmt = $conn->prepare(
+            "SELECT
+                COALESCE(doc.id_tienda, contrato_periodo.id_tienda) AS id_tienda,
+                COALESCE(doc.id_contrato_arriendo, contrato_periodo.id_contrato_arriendo) AS id_contrato_arriendo,
+                lm.id_lectura,lm.id_medidor,m.id_local,l.cdo_local,m.codigo_medidor,
+                CONVERT(char(7),cm.periodo_facturacion,126) AS periodo_ym,
+                lm.lectura_anterior,lm.lectura_actual,
+                COALESCE(cs.consumo_cobrado,lm.consumo_informado,lm.lectura_actual-ISNULL(lm.lectura_anterior,0)) AS consumo,
+                pl.valor_kwh,cs.id_cobro_servicio,cs.monto_total AS monto_cobro,
+                doc.id_documento_cobro,doc.numero_documento,doc.monto_documento,
+                doc.saldo_pendiente,doc.estado_documento,cm.estado_cierre,
+                siguiente.id_lectura AS id_lectura_siguiente,
+                siguiente.lectura_actual AS lectura_siguiente,
+                $proteccionSql AS tiene_dependencias_protegidas,
+                $asientoSql AS tiene_asiento_activo
+             FROM dbo.msp_lecturas_medidores lm
+             INNER JOIN dbo.msp_medidores m ON m.id_medidor=lm.id_medidor
+             INNER JOIN dbo.msp_locales l ON l.id_local=m.id_local
+             INNER JOIN dbo.msp_procesos_cobro_servicio p ON p.id_proceso_cobro=lm.id_proceso_cobro
+             INNER JOIN dbo.msp_cierre_mensual cm ON cm.id_cierre_mensual=p.id_cierre_mensual
+             INNER JOIN dbo.msp_tipos_servicio ts ON ts.id_tipo_servicio=p.id_tipo_servicio
+             INNER JOIN dbo.msp_proceso_cobro_luz pl ON pl.id_proceso_cobro=p.id_proceso_cobro
+             LEFT JOIN dbo.msp_cobros_servicios cs ON cs.id_lectura=lm.id_lectura
+             OUTER APPLY (
+                SELECT TOP(1) dc.id_documento_cobro,dc.id_tienda,dc.id_contrato_arriendo,
+                    dc.numero_documento,dc.monto_total AS monto_documento,
+                    dc.saldo_pendiente,dc.estado_documento
+                FROM dbo.msp_documentos_cobro_detalle dcd
+                INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro=dcd.id_documento_cobro
+                WHERE dcd.id_cobro_servicio=cs.id_cobro_servicio
+                ORDER BY CASE WHEN dc.estado_documento=5 THEN 1 ELSE 0 END,dc.id_documento_cobro DESC
+             ) doc
+             OUTER APPLY (
+                SELECT TOP(1) ca.id_tienda,ca.id_contrato_arriendo
+                FROM dbo.msp_contrato_locales cl
+                INNER JOIN dbo.msp_contratos_arriendo ca ON ca.id_contrato_arriendo=cl.id_contrato_arriendo
+                WHERE cl.id_local=m.id_local
+                  AND cl.estado_relacion IN (1,2)
+                  AND cl.fecha_inicio<=EOMONTH(cm.periodo_facturacion)
+                  AND (cl.fecha_termino IS NULL OR cl.fecha_termino>=cm.periodo_facturacion)
+                  AND ca.fecha_inicio<=EOMONTH(cm.periodo_facturacion)
+                  AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva>=cm.periodo_facturacion)
+                  AND ca.estado_contrato IN (1,2,3,4)
+                ORDER BY ca.fecha_inicio DESC,ca.id_contrato_arriendo DESC
+             ) contrato_periodo
+             OUTER APPLY (
+                SELECT TOP(1) lm_sig.id_lectura,lm_sig.lectura_actual
+                FROM dbo.msp_lecturas_medidores lm_sig
+                WHERE lm_sig.id_medidor=lm.id_medidor
+                  AND lm_sig.periodo_facturacion>lm.periodo_facturacion
+                ORDER BY lm_sig.periodo_facturacion,lm_sig.id_lectura
+             ) siguiente
+             WHERE YEAR(cm.periodo_facturacion)=:anio_lecturas
+               AND UPPER(ts.codigo_servicio)=N'LUZ'
+               AND COALESCE(doc.id_tienda,contrato_periodo.id_tienda) IS NOT NULL
+             ORDER BY cm.periodo_facturacion,l.cdo_local,m.codigo_medidor,lm.id_lectura"
+        );
+        $lecturasElectricidadStmt->bindValue(':anio_lecturas', $selectedYear, PDO::PARAM_INT);
+        $lecturasElectricidadStmt->execute();
+        while (($lecturaElectricidad = $lecturasElectricidadStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $idTiendaLectura = (int) ($lecturaElectricidad['id_tienda'] ?? 0);
+            $periodoLectura = trim((string) ($lecturaElectricidad['periodo_ym'] ?? ''));
+            $idDocumentoLectura = (int) ($lecturaElectricidad['id_documento_cobro'] ?? 0);
+            if ($idTiendaLectura <= 0 || $periodoLectura === '' || !isset($months[$periodoLectura])) {
+                continue;
+            }
+            $nivelCorreccion = 'EDICION_SIMPLE';
+            if ($idDocumentoLectura > 0) {
+                if ((int) ($lecturaElectricidad['estado_documento'] ?? 0) === 5) {
+                    $nivelCorreccion = 'REVISION';
+                } elseif ((int) ($lecturaElectricidad['tiene_dependencias_protegidas'] ?? 0) === 1) {
+                    $nivelCorreccion = 'AJUSTE_FINANCIERO';
+                } elseif ((int) ($lecturaElectricidad['tiene_asiento_activo'] ?? 0) === 1) {
+                    $nivelCorreccion = 'AUTORIZACION';
+                } else {
+                    $nivelCorreccion = 'REGENERACION_CONTROLADA';
+                }
+            } elseif (in_array((int) ($lecturaElectricidad['estado_cierre'] ?? 0), [3, 5], true)) {
+                // Una lectura de un período cerrado nunca se modifica como edición simple,
+                // aunque aún no exista un documento asociado.
+                $nivelCorreccion = 'AUTORIZACION';
+            }
+            $puedeAplicar = in_array($nivelCorreccion, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
+                || ($nivelCorreccion === 'AUTORIZACION'
+                    && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
+                        || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura')));
+            $payloadLectura = [
+                'id_lectura' => (int) ($lecturaElectricidad['id_lectura'] ?? 0),
+                'id_contrato_arriendo' => (int) ($lecturaElectricidad['id_contrato_arriendo'] ?? 0),
+                'id_local' => (int) ($lecturaElectricidad['id_local'] ?? 0),
+                'local' => (string) ($lecturaElectricidad['cdo_local'] ?? ''),
+                'medidor' => (string) ($lecturaElectricidad['codigo_medidor'] ?? ''),
+                'periodo' => $periodoLectura,
+                'lectura_anterior' => round((float) ($lecturaElectricidad['lectura_anterior'] ?? 0), 4),
+                'lectura_actual' => round((float) ($lecturaElectricidad['lectura_actual'] ?? 0), 4),
+                'consumo' => round((float) ($lecturaElectricidad['consumo'] ?? 0), 4),
+                'valor_kwh' => round((float) ($lecturaElectricidad['valor_kwh'] ?? 0), 6),
+                'monto' => round((float) ($lecturaElectricidad['monto_cobro'] ?? 0), 2),
+                'id_documento' => $idDocumentoLectura,
+                'numero_documento' => (string) ($lecturaElectricidad['numero_documento'] ?? ''),
+                'monto_documento' => round((float) ($lecturaElectricidad['monto_documento'] ?? 0), 2),
+                'saldo_documento' => round((float) ($lecturaElectricidad['saldo_pendiente'] ?? 0), 2),
+                'estado_documento' => (int) ($lecturaElectricidad['estado_documento'] ?? 0),
+                'estado_cierre' => (int) ($lecturaElectricidad['estado_cierre'] ?? 0),
+                'lectura_siguiente' => $lecturaElectricidad['lectura_siguiente'] !== null
+                    ? round((float) $lecturaElectricidad['lectura_siguiente'], 4)
+                    : null,
+                'nivel' => $nivelCorreccion,
+                'puede_aplicar' => $puedeAplicar,
+            ];
+            $electricityReadingsByTiendaMonth[$idTiendaLectura][$periodoLectura][] = $payloadLectura;
+        }
+    }
+    $perfMark('carga_lecturas_electricidad_corregibles');
+
+    if ($canCorrectGas
+        && $canLoadServicios
+        && msp2TableExists($conn, 'msp_proceso_cobro_gas')
+        && msp2TableExists($conn, 'msp_documentos_cobro')
+        && msp2TableExists($conn, 'msp_documentos_cobro_detalle')) {
+        $dependenciasGasSql = [];
+        $dependenciasDocumentoGas = [
+            'msp_pagos' => 'id_documento_cobro',
+            'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
+            'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
+            'msp_movimientos_garantia' => 'id_documento_cobro',
+            'msp_envio_lote_documentos' => 'id_documento_cobro',
+            'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
+            'msp_pago_contrato_archivos' => 'id_documento_cobro',
+        ];
+        foreach ($dependenciasDocumentoGas as $tablaDependencia => $columnaDependencia) {
+            if (!msp2TableExists($conn, $tablaDependencia)
+                || !msp2ColumnExists($conn, $tablaDependencia, $columnaDependencia)) {
+                continue;
+            }
+            $dependenciasGasSql[] = 'EXISTS (SELECT 1 FROM dbo.' . $tablaDependencia
+                . ' dep WHERE dep.' . $columnaDependencia . '=doc.id_documento_cobro)';
+        }
+        $proteccionGasSql = $dependenciasGasSql === []
+            ? 'CAST(0 AS BIT)'
+            : 'CAST(CASE WHEN ' . implode(' OR ', $dependenciasGasSql) . ' THEN 1 ELSE 0 END AS BIT)';
+        $asientoGasSql = msp2TableExists($conn, 'msp_acc_asientos')
+            ? "CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.msp_acc_asientos acc WHERE acc.tabla_origen=N'msp_documentos_cobro' AND acc.id_origen=doc.id_documento_cobro AND acc.estado_asiento=1) THEN 1 ELSE 0 END AS BIT)"
+            : 'CAST(0 AS BIT)';
+
+        $lecturasGasStmt = $conn->prepare(
+            "SELECT
+                COALESCE(doc.id_tienda, contrato_periodo.id_tienda) AS id_tienda,
+                COALESCE(doc.id_contrato_arriendo, contrato_periodo.id_contrato_arriendo) AS id_contrato_arriendo,
+                lm.id_lectura,lm.id_medidor,m.id_local,l.cdo_local,m.codigo_medidor,
+                CONVERT(char(7),cm.periodo_facturacion,126) AS periodo_ym,
+                lm.lectura_anterior,lm.lectura_actual,
+                COALESCE(cs.consumo_cobrado,lm.consumo_informado,lm.lectura_actual-ISNULL(lm.lectura_anterior,0)) AS consumo,
+                pg.factor,pg.valor_litro,cs.id_cobro_servicio,cs.monto_total AS monto_cobro,
+                doc.id_documento_cobro,doc.numero_documento,doc.monto_documento,
+                doc.saldo_pendiente,doc.estado_documento,cm.estado_cierre,
+                siguiente.id_lectura AS id_lectura_siguiente,
+                siguiente.lectura_actual AS lectura_siguiente,
+                $proteccionGasSql AS tiene_dependencias_protegidas,
+                $asientoGasSql AS tiene_asiento_activo
+             FROM dbo.msp_lecturas_medidores lm
+             INNER JOIN dbo.msp_medidores m ON m.id_medidor=lm.id_medidor
+             INNER JOIN dbo.msp_locales l ON l.id_local=m.id_local
+             INNER JOIN dbo.msp_procesos_cobro_servicio p ON p.id_proceso_cobro=lm.id_proceso_cobro
+             INNER JOIN dbo.msp_cierre_mensual cm ON cm.id_cierre_mensual=p.id_cierre_mensual
+             INNER JOIN dbo.msp_tipos_servicio ts ON ts.id_tipo_servicio=p.id_tipo_servicio
+             INNER JOIN dbo.msp_proceso_cobro_gas pg ON pg.id_proceso_cobro=p.id_proceso_cobro
+             LEFT JOIN dbo.msp_cobros_servicios cs ON cs.id_lectura=lm.id_lectura
+             OUTER APPLY (
+                SELECT TOP(1) dc.id_documento_cobro,dc.id_tienda,dc.id_contrato_arriendo,
+                    dc.numero_documento,dc.monto_total AS monto_documento,
+                    dc.saldo_pendiente,dc.estado_documento
+                FROM dbo.msp_documentos_cobro_detalle dcd
+                INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro=dcd.id_documento_cobro
+                WHERE dcd.id_cobro_servicio=cs.id_cobro_servicio
+                ORDER BY CASE WHEN dc.estado_documento=5 THEN 1 ELSE 0 END,dc.id_documento_cobro DESC
+             ) doc
+             OUTER APPLY (
+                SELECT TOP(1) ca.id_tienda,ca.id_contrato_arriendo
+                FROM dbo.msp_contrato_locales cl
+                INNER JOIN dbo.msp_contratos_arriendo ca ON ca.id_contrato_arriendo=cl.id_contrato_arriendo
+                WHERE cl.id_local=m.id_local
+                  AND cl.estado_relacion IN (1,2)
+                  AND cl.fecha_inicio<=EOMONTH(cm.periodo_facturacion)
+                  AND (cl.fecha_termino IS NULL OR cl.fecha_termino>=cm.periodo_facturacion)
+                  AND ca.fecha_inicio<=EOMONTH(cm.periodo_facturacion)
+                  AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva>=cm.periodo_facturacion)
+                  AND ca.estado_contrato IN (1,2,3,4)
+                ORDER BY ca.fecha_inicio DESC,ca.id_contrato_arriendo DESC
+             ) contrato_periodo
+             OUTER APPLY (
+                SELECT TOP(1) lm_sig.id_lectura,lm_sig.lectura_actual
+                FROM dbo.msp_lecturas_medidores lm_sig
+                WHERE lm_sig.id_medidor=lm.id_medidor
+                  AND lm_sig.periodo_facturacion>lm.periodo_facturacion
+                ORDER BY lm_sig.periodo_facturacion,lm_sig.id_lectura
+             ) siguiente
+             WHERE YEAR(cm.periodo_facturacion)=:anio_lecturas_gas
+               AND UPPER(ts.codigo_servicio)=N'GAS'
+               AND COALESCE(doc.id_tienda,contrato_periodo.id_tienda) IS NOT NULL
+             ORDER BY cm.periodo_facturacion,l.cdo_local,m.codigo_medidor,lm.id_lectura"
+        );
+        $lecturasGasStmt->bindValue(':anio_lecturas_gas', $selectedYear, PDO::PARAM_INT);
+        $lecturasGasStmt->execute();
+        while (($lecturaGas = $lecturasGasStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $idTiendaLectura = (int) ($lecturaGas['id_tienda'] ?? 0);
+            $periodoLectura = trim((string) ($lecturaGas['periodo_ym'] ?? ''));
+            $idDocumentoLectura = (int) ($lecturaGas['id_documento_cobro'] ?? 0);
+            if ($idTiendaLectura <= 0 || $periodoLectura === '' || !isset($months[$periodoLectura])) {
+                continue;
+            }
+            $nivelCorreccion = 'EDICION_SIMPLE';
+            if ($idDocumentoLectura > 0) {
+                if ((int) ($lecturaGas['estado_documento'] ?? 0) === 5) {
+                    $nivelCorreccion = 'REVISION';
+                } elseif ((int) ($lecturaGas['tiene_dependencias_protegidas'] ?? 0) === 1) {
+                    $nivelCorreccion = 'AJUSTE_FINANCIERO';
+                } elseif ((int) ($lecturaGas['tiene_asiento_activo'] ?? 0) === 1) {
+                    $nivelCorreccion = 'AUTORIZACION';
+                } else {
+                    $nivelCorreccion = 'REGENERACION_CONTROLADA';
+                }
+            } elseif (in_array((int) ($lecturaGas['estado_cierre'] ?? 0), [3, 5], true)) {
+                $nivelCorreccion = 'AUTORIZACION';
+            }
+            $puedeAplicar = in_array($nivelCorreccion, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
+                || ($nivelCorreccion === 'AUTORIZACION'
+                    && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
+                        || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura')));
+            $gasReadingsByTiendaMonth[$idTiendaLectura][$periodoLectura][] = [
+                'id_lectura' => (int) ($lecturaGas['id_lectura'] ?? 0),
+                'id_contrato_arriendo' => (int) ($lecturaGas['id_contrato_arriendo'] ?? 0),
+                'id_local' => (int) ($lecturaGas['id_local'] ?? 0),
+                'local' => (string) ($lecturaGas['cdo_local'] ?? ''),
+                'medidor' => (string) ($lecturaGas['codigo_medidor'] ?? ''),
+                'periodo' => $periodoLectura,
+                'lectura_anterior' => round((float) ($lecturaGas['lectura_anterior'] ?? 0), 4),
+                'lectura_actual' => round((float) ($lecturaGas['lectura_actual'] ?? 0), 4),
+                'consumo' => round((float) ($lecturaGas['consumo'] ?? 0), 4),
+                'factor' => round((float) ($lecturaGas['factor'] ?? 0), 6),
+                'valor_litro' => round((float) ($lecturaGas['valor_litro'] ?? 0), 6),
+                'monto' => round((float) ($lecturaGas['monto_cobro'] ?? 0), 2),
+                'id_documento' => $idDocumentoLectura,
+                'numero_documento' => (string) ($lecturaGas['numero_documento'] ?? ''),
+                'monto_documento' => round((float) ($lecturaGas['monto_documento'] ?? 0), 2),
+                'saldo_documento' => round((float) ($lecturaGas['saldo_pendiente'] ?? 0), 2),
+                'estado_documento' => (int) ($lecturaGas['estado_documento'] ?? 0),
+                'estado_cierre' => (int) ($lecturaGas['estado_cierre'] ?? 0),
+                'lectura_siguiente' => $lecturaGas['lectura_siguiente'] !== null
+                    ? round((float) $lecturaGas['lectura_siguiente'], 4)
+                    : null,
+                'nivel' => $nivelCorreccion,
+                'puede_aplicar' => $puedeAplicar,
+            ];
+        }
+    }
+    $perfMark('carga_lecturas_gas_corregibles');
+
+    if ($canCorrectWater
+        && $canLoadServicios
+        && msp2TableExists($conn, 'msp_proceso_cobro_agua')
+        && msp2TableExists($conn, 'msp_documentos_cobro')
+        && msp2TableExists($conn, 'msp_documentos_cobro_detalle')) {
+        $dependenciasAguaSql = [];
+        $dependenciasDocumentoAgua = [
+            'msp_pagos' => 'id_documento_cobro',
+            'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
+            'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
+            'msp_movimientos_garantia' => 'id_documento_cobro',
+            'msp_envio_lote_documentos' => 'id_documento_cobro',
+            'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
+            'msp_pago_contrato_archivos' => 'id_documento_cobro',
+        ];
+        foreach ($dependenciasDocumentoAgua as $tablaDependencia => $columnaDependencia) {
+            if (!msp2TableExists($conn, $tablaDependencia)
+                || !msp2ColumnExists($conn, $tablaDependencia, $columnaDependencia)) {
+                continue;
+            }
+            $dependenciasAguaSql[] = 'EXISTS (SELECT 1 FROM dbo.' . $tablaDependencia
+                . ' dep WHERE dep.' . $columnaDependencia . '=doc.id_documento_cobro)';
+        }
+        $proteccionAguaSql = $dependenciasAguaSql === []
+            ? 'CAST(0 AS BIT)'
+            : 'CAST(CASE WHEN ' . implode(' OR ', $dependenciasAguaSql) . ' THEN 1 ELSE 0 END AS BIT)';
+        $asientoAguaSql = msp2TableExists($conn, 'msp_acc_asientos')
+            ? "CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.msp_acc_asientos acc WHERE acc.tabla_origen=N'msp_documentos_cobro' AND acc.id_origen=doc.id_documento_cobro AND acc.estado_asiento=1) THEN 1 ELSE 0 END AS BIT)"
+            : 'CAST(0 AS BIT)';
+
+        $lecturasAguaStmt = $conn->prepare(
+            "SELECT
+                COALESCE(doc.id_tienda, contrato_consumo.id_tienda) AS id_tienda,
+                COALESCE(doc.id_contrato_arriendo, contrato_consumo.id_contrato_arriendo) AS id_contrato_arriendo,
+                lm.id_lectura,lm.id_medidor,m.id_local,l.cdo_local,m.codigo_medidor,
+                CONVERT(char(7),cm.periodo_facturacion,126) AS periodo_ym,
+                CONVERT(char(10),lm.fecha_desde_consumo,23) AS fecha_desde_consumo,
+                CONVERT(char(10),lm.fecha_hasta_consumo,23) AS fecha_hasta_consumo,
+                lm.lectura_anterior,lm.lectura_actual,
+                COALESCE(cs.consumo_cobrado,lm.consumo_informado,lm.lectura_actual-ISNULL(lm.lectura_anterior,0)) AS consumo,
+                pa.servicio_agua_potable,pa.servicio_alcantarillado,pa.tratamiento_aguas_servidas,
+                pa.divisor,pa.cargo_fijo AS cargo_fijo_parametro,
+                cs.id_cobro_servicio,cs.subtotal_variable,cs.cargo_fijo AS cargo_fijo_cobro,
+                cs.monto_total AS monto_cobro,
+                doc.id_documento_cobro,doc.numero_documento,doc.monto_documento,
+                doc.saldo_pendiente,doc.estado_documento,cm.estado_cierre,
+                siguiente.id_lectura AS id_lectura_siguiente,
+                siguiente.lectura_actual AS lectura_siguiente,
+                $proteccionAguaSql AS tiene_dependencias_protegidas,
+                $asientoAguaSql AS tiene_asiento_activo
+             FROM dbo.msp_lecturas_medidores lm
+             INNER JOIN dbo.msp_medidores m ON m.id_medidor=lm.id_medidor
+             INNER JOIN dbo.msp_locales l ON l.id_local=m.id_local
+             INNER JOIN dbo.msp_procesos_cobro_servicio p ON p.id_proceso_cobro=lm.id_proceso_cobro
+             INNER JOIN dbo.msp_cierre_mensual cm ON cm.id_cierre_mensual=p.id_cierre_mensual
+             INNER JOIN dbo.msp_tipos_servicio ts ON ts.id_tipo_servicio=p.id_tipo_servicio
+             INNER JOIN dbo.msp_proceso_cobro_agua pa ON pa.id_proceso_cobro=p.id_proceso_cobro
+             LEFT JOIN dbo.msp_cobros_servicios cs ON cs.id_lectura=lm.id_lectura
+             OUTER APPLY (
+                SELECT TOP(1) dc.id_documento_cobro,dc.id_tienda,dc.id_contrato_arriendo,
+                    dc.numero_documento,dc.monto_total AS monto_documento,
+                    dc.saldo_pendiente,dc.estado_documento
+                FROM dbo.msp_documentos_cobro_detalle dcd
+                INNER JOIN dbo.msp_documentos_cobro dc ON dc.id_documento_cobro=dcd.id_documento_cobro
+                WHERE dcd.id_cobro_servicio=cs.id_cobro_servicio
+                ORDER BY CASE WHEN dc.estado_documento=5 THEN 1 ELSE 0 END,dc.id_documento_cobro DESC
+             ) doc
+             OUTER APPLY (
+                SELECT TOP(1) ca.id_tienda,ca.id_contrato_arriendo
+                FROM dbo.msp_contrato_locales cl
+                INNER JOIN dbo.msp_contratos_arriendo ca ON ca.id_contrato_arriendo=cl.id_contrato_arriendo
+                WHERE cl.id_local=m.id_local
+                  AND cl.estado_relacion IN (1,2)
+                  AND cl.fecha_inicio<=COALESCE(lm.fecha_hasta_consumo,lm.fecha_lectura,EOMONTH(cm.periodo_facturacion))
+                  AND (cl.fecha_termino IS NULL OR cl.fecha_termino>=COALESCE(lm.fecha_hasta_consumo,lm.fecha_lectura,cm.periodo_facturacion))
+                  AND ca.fecha_inicio<=COALESCE(lm.fecha_hasta_consumo,lm.fecha_lectura,EOMONTH(cm.periodo_facturacion))
+                  AND (ca.fecha_termino_efectiva IS NULL OR ca.fecha_termino_efectiva>=COALESCE(lm.fecha_hasta_consumo,lm.fecha_lectura,cm.periodo_facturacion))
+                  AND ca.estado_contrato IN (1,2,3,4)
+                ORDER BY ca.fecha_inicio DESC,ca.id_contrato_arriendo DESC
+             ) contrato_consumo
+             OUTER APPLY (
+                SELECT TOP(1) lm_sig.id_lectura,lm_sig.lectura_actual
+                FROM dbo.msp_lecturas_medidores lm_sig
+                WHERE lm_sig.id_medidor=lm.id_medidor
+                  AND (
+                    COALESCE(lm_sig.fecha_hasta_consumo,lm_sig.fecha_lectura,lm_sig.periodo_facturacion)
+                        > COALESCE(lm.fecha_hasta_consumo,lm.fecha_lectura,lm.periodo_facturacion)
+                    OR (
+                        COALESCE(lm_sig.fecha_hasta_consumo,lm_sig.fecha_lectura,lm_sig.periodo_facturacion)
+                            = COALESCE(lm.fecha_hasta_consumo,lm.fecha_lectura,lm.periodo_facturacion)
+                        AND lm_sig.id_lectura>lm.id_lectura
+                    )
+                  )
+                ORDER BY COALESCE(lm_sig.fecha_hasta_consumo,lm_sig.fecha_lectura,lm_sig.periodo_facturacion),
+                    lm_sig.periodo_facturacion,lm_sig.id_lectura
+             ) siguiente
+             WHERE YEAR(cm.periodo_facturacion)=:anio_lecturas_agua
+               AND UPPER(ts.codigo_servicio)=N'AGUA'
+               AND COALESCE(doc.id_tienda,contrato_consumo.id_tienda) IS NOT NULL
+             ORDER BY cm.periodo_facturacion,l.cdo_local,m.codigo_medidor,lm.id_lectura"
+        );
+        $lecturasAguaStmt->bindValue(':anio_lecturas_agua', $selectedYear, PDO::PARAM_INT);
+        $lecturasAguaStmt->execute();
+        while (($lecturaAgua = $lecturasAguaStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $idTiendaLectura = (int) ($lecturaAgua['id_tienda'] ?? 0);
+            $periodoLectura = trim((string) ($lecturaAgua['periodo_ym'] ?? ''));
+            $idDocumentoLectura = (int) ($lecturaAgua['id_documento_cobro'] ?? 0);
+            if ($idTiendaLectura <= 0 || $periodoLectura === '' || !isset($months[$periodoLectura])) {
+                continue;
+            }
+            $nivelCorreccion = 'EDICION_SIMPLE';
+            if ($idDocumentoLectura > 0) {
+                if ((int) ($lecturaAgua['estado_documento'] ?? 0) === 5) {
+                    $nivelCorreccion = 'REVISION';
+                } elseif ((int) ($lecturaAgua['tiene_dependencias_protegidas'] ?? 0) === 1) {
+                    $nivelCorreccion = 'AJUSTE_FINANCIERO';
+                } elseif ((int) ($lecturaAgua['tiene_asiento_activo'] ?? 0) === 1) {
+                    $nivelCorreccion = 'AUTORIZACION';
+                } else {
+                    $nivelCorreccion = 'REGENERACION_CONTROLADA';
+                }
+            } elseif (in_array((int) ($lecturaAgua['estado_cierre'] ?? 0), [3, 5], true)) {
+                $nivelCorreccion = 'AUTORIZACION';
+            }
+            $puedeAplicar = in_array($nivelCorreccion, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
+                || ($nivelCorreccion === 'AUTORIZACION'
+                    && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
+                        || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura')));
+            $divisorAgua = (float) ($lecturaAgua['divisor'] ?? 0);
+            $tarifaVariableAgua = $divisorAgua > 0
+                ? (
+                    (float) ($lecturaAgua['servicio_agua_potable'] ?? 0)
+                    + (float) ($lecturaAgua['servicio_alcantarillado'] ?? 0)
+                    + (float) ($lecturaAgua['tratamiento_aguas_servidas'] ?? 0)
+                ) / $divisorAgua
+                : 0.0;
+            $waterReadingsByTiendaMonth[$idTiendaLectura][$periodoLectura][] = [
+                'id_lectura' => (int) ($lecturaAgua['id_lectura'] ?? 0),
+                'id_contrato_arriendo' => (int) ($lecturaAgua['id_contrato_arriendo'] ?? 0),
+                'id_local' => (int) ($lecturaAgua['id_local'] ?? 0),
+                'local' => (string) ($lecturaAgua['cdo_local'] ?? ''),
+                'medidor' => (string) ($lecturaAgua['codigo_medidor'] ?? ''),
+                'periodo' => $periodoLectura,
+                'periodo_consumo_desde' => (string) ($lecturaAgua['fecha_desde_consumo'] ?? ''),
+                'periodo_consumo_hasta' => (string) ($lecturaAgua['fecha_hasta_consumo'] ?? ''),
+                'lectura_anterior' => round((float) ($lecturaAgua['lectura_anterior'] ?? 0), 4),
+                'lectura_actual' => round((float) ($lecturaAgua['lectura_actual'] ?? 0), 4),
+                'consumo' => round((float) ($lecturaAgua['consumo'] ?? 0), 4),
+                'servicio_agua_potable' => round((float) ($lecturaAgua['servicio_agua_potable'] ?? 0), 2),
+                'servicio_alcantarillado' => round((float) ($lecturaAgua['servicio_alcantarillado'] ?? 0), 2),
+                'tratamiento_aguas_servidas' => round((float) ($lecturaAgua['tratamiento_aguas_servidas'] ?? 0), 2),
+                'divisor' => round($divisorAgua, 6),
+                'tarifa_variable' => round($tarifaVariableAgua, 6),
+                'subtotal_variable' => round((float) ($lecturaAgua['subtotal_variable'] ?? 0), 2),
+                'cargo_fijo' => round((float) ($lecturaAgua['cargo_fijo_parametro'] ?? 0), 2),
+                'monto' => round((float) ($lecturaAgua['monto_cobro'] ?? 0), 2),
+                'id_documento' => $idDocumentoLectura,
+                'numero_documento' => (string) ($lecturaAgua['numero_documento'] ?? ''),
+                'monto_documento' => round((float) ($lecturaAgua['monto_documento'] ?? 0), 2),
+                'saldo_documento' => round((float) ($lecturaAgua['saldo_pendiente'] ?? 0), 2),
+                'estado_documento' => (int) ($lecturaAgua['estado_documento'] ?? 0),
+                'estado_cierre' => (int) ($lecturaAgua['estado_cierre'] ?? 0),
+                'lectura_siguiente' => $lecturaAgua['lectura_siguiente'] !== null
+                    ? round((float) $lecturaAgua['lectura_siguiente'], 4)
+                    : null,
+                'nivel' => $nivelCorreccion,
+                'puede_aplicar' => $puedeAplicar,
+            ];
+        }
+    }
+    $perfMark('carga_lecturas_agua_corregibles');
 
     if ($canLoadReservaCargos) {
         $serviciosDocStmt = $conn->prepare(
@@ -719,6 +1200,151 @@ try {
                 $clpFijoContratoByTienda[$idTiendaClp] = true;
             }
         }
+
+        if ($canCorrectRent
+            && msp2TableExists($conn, 'msp_contrato_locales')
+            && msp2TableExists($conn, 'msp_locales')
+            && msp2TableExists($conn, 'msp_contratos_arriendo')
+            && msp2TableExists($conn, 'msp_tipo_modalidad_arriendo')
+            && msp2TableExists($conn, 'msp_documentos_cobro')
+            && msp2TableExists($conn, 'msp_cierre_mensual')) {
+            $dependenciasRentSql = [];
+            $dependenciasDocumentoRent = [
+                'msp_pagos' => 'id_documento_cobro',
+                'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
+                'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
+                'msp_movimientos_garantia' => 'id_documento_cobro',
+                'msp_envio_lote_documentos' => 'id_documento_cobro',
+                'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
+                'msp_pago_contrato_archivos' => 'id_documento_cobro',
+            ];
+            foreach ($dependenciasDocumentoRent as $tablaDependencia => $columnaDependencia) {
+                if (!msp2TableExists($conn, $tablaDependencia)
+                    || !msp2ColumnExists($conn, $tablaDependencia, $columnaDependencia)) {
+                    continue;
+                }
+                $dependenciasRentSql[] = 'EXISTS (SELECT 1 FROM dbo.' . $tablaDependencia
+                    . ' dep WHERE dep.' . $columnaDependencia . '=doc.id_documento_cobro)';
+            }
+            $proteccionRentSql = $dependenciasRentSql === []
+                ? 'CAST(0 AS BIT)'
+                : 'CAST(CASE WHEN ' . implode(' OR ', $dependenciasRentSql) . ' THEN 1 ELSE 0 END AS BIT)';
+            $asientoRentSql = msp2TableExists($conn, 'msp_acc_asientos')
+                ? "CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.msp_acc_asientos acc WHERE acc.tabla_origen=N'msp_documentos_cobro' AND acc.id_origen=doc.id_documento_cobro AND acc.estado_asiento=1) THEN 1 ELSE 0 END AS BIT)"
+                : 'CAST(0 AS BIT)';
+            $rentSnapshotStmt = $conn->prepare(
+                "SELECT
+                    s.id_snapshot_arriendo,
+                    s.id_tienda,
+                    s.id_contrato_arriendo,
+                    s.id_contrato_local,
+                    s.id_local,
+                    CONVERT(CHAR(7), s.periodo_facturacion, 126) AS periodo_ym,
+                    l.cdo_local,
+                    ca.id_arrendatario,
+                    tm.codigo_modalidad,
+                    s.valor_base_uf,
+                    s.valor_uf_periodo,
+                    s.monto_neto_clp,
+                    s.monto_iva_clp,
+                    s.monto_total_clp,
+                    s.estado_snapshot,
+                    cm.valor_uf AS valor_uf_cierre,
+                    cm.estado_cierre,
+                    doc.id_documento_cobro,
+                    doc.numero_documento,
+                    doc.estado_documento,
+                    doc.monto_documento,
+                    doc.saldo_pendiente,
+                    $proteccionRentSql AS tiene_dependencias_protegidas,
+                    $asientoRentSql AS tiene_asiento_activo
+                 FROM dbo.msp_arriendo_local_snapshot_periodo s
+                 INNER JOIN dbo.msp_contrato_locales cl
+                    ON cl.id_contrato_local = s.id_contrato_local
+                   AND cl.id_contrato_arriendo = s.id_contrato_arriendo
+                   AND cl.id_local = s.id_local
+                 INNER JOIN dbo.msp_locales l
+                    ON l.id_local = s.id_local
+                 INNER JOIN dbo.msp_contratos_arriendo ca
+                    ON ca.id_contrato_arriendo = s.id_contrato_arriendo
+                 INNER JOIN dbo.msp_tipo_modalidad_arriendo tm
+                    ON tm.id_modalidad_arriendo = s.id_modalidad_aplicada
+                 LEFT JOIN dbo.msp_cierre_mensual cm
+                    ON cm.periodo_facturacion = s.periodo_facturacion
+                 OUTER APPLY (
+                    SELECT TOP (1) dc.id_documento_cobro, dc.numero_documento,
+                        dc.estado_documento,dc.monto_total AS monto_documento,dc.saldo_pendiente
+                    FROM dbo.msp_documentos_cobro dc
+                    WHERE dc.id_contrato_arriendo = s.id_contrato_arriendo
+                      AND dc.periodo_facturacion = s.periodo_facturacion
+                      AND dc.estado_documento <> 5
+                    ORDER BY dc.id_documento_cobro DESC
+                 ) doc
+                 WHERE YEAR(s.periodo_facturacion) = :anio_uf_edit
+                   AND s.estado_snapshot IN (1,2,3)
+                   AND tm.codigo_modalidad IN (N'UF_ESTATICO', N'DINAMICO_MENSUAL')
+                 ORDER BY s.periodo_facturacion, " . msp2LocalCodeNaturalOrderSql('l.cdo_local') . ", s.id_snapshot_arriendo"
+            );
+            $rentSnapshotStmt->bindValue(':anio_uf_edit', $selectedYear, PDO::PARAM_INT);
+            $rentSnapshotStmt->execute();
+            while (($rentSnapshotRow = $rentSnapshotStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+                $idTiendaRent = (int) ($rentSnapshotRow['id_tienda'] ?? 0);
+                $periodoRent = trim((string) ($rentSnapshotRow['periodo_ym'] ?? ''));
+                $valorUfPeriodoRent = round((float) (($rentSnapshotRow['valor_uf_periodo'] ?? null)
+                    ?: ($rentSnapshotRow['valor_uf_cierre'] ?? 0)), 6);
+                $montoNetoRent = round((float) ($rentSnapshotRow['monto_neto_clp'] ?? 0), 2);
+                $ufBaseRent = $valorUfPeriodoRent > 0
+                    ? round($montoNetoRent / $valorUfPeriodoRent, 6)
+                    : round((float) ($rentSnapshotRow['valor_base_uf'] ?? 0), 6);
+                $idDocumentoRent = (int) ($rentSnapshotRow['id_documento_cobro'] ?? 0);
+                $estadoCierreRent = (int) ($rentSnapshotRow['estado_cierre'] ?? 0);
+                $nivelCorreccionRent = 'EDICION_SIMPLE';
+                if ($idDocumentoRent > 0) {
+                    if ((int) ($rentSnapshotRow['estado_documento'] ?? 0) === 5) {
+                        $nivelCorreccionRent = 'REVISION';
+                    } elseif ((int) ($rentSnapshotRow['tiene_dependencias_protegidas'] ?? 0) === 1) {
+                        $nivelCorreccionRent = 'AJUSTE_FINANCIERO';
+                    } elseif ((int) ($rentSnapshotRow['tiene_asiento_activo'] ?? 0) === 1
+                        || in_array($estadoCierreRent, [3, 5], true)) {
+                        $nivelCorreccionRent = 'AUTORIZACION';
+                    } else {
+                        $nivelCorreccionRent = 'REGENERACION_CONTROLADA';
+                    }
+                } elseif (in_array($estadoCierreRent, [3, 5], true)) {
+                    $nivelCorreccionRent = 'AUTORIZACION';
+                }
+                $puedeAplicarRent = $valorUfPeriodoRent > 0
+                    && (in_array($nivelCorreccionRent, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
+                        || ($nivelCorreccionRent === 'AUTORIZACION'
+                            && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
+                                || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura'))));
+                if ($idTiendaRent <= 0 || $periodoRent === '' || !isset($months[$periodoRent])) {
+                    continue;
+                }
+                $rentSnapshotsByTiendaMonth[$idTiendaRent][$periodoRent][] = [
+                    'id_snapshot' => (int) ($rentSnapshotRow['id_snapshot_arriendo'] ?? 0),
+                    'id_contrato' => (int) ($rentSnapshotRow['id_contrato_arriendo'] ?? 0),
+                    'id_contrato_local' => (int) ($rentSnapshotRow['id_contrato_local'] ?? 0),
+                    'id_local' => (int) ($rentSnapshotRow['id_local'] ?? 0),
+                    'id_arrendatario' => (int) ($rentSnapshotRow['id_arrendatario'] ?? 0),
+                    'local' => trim((string) ($rentSnapshotRow['cdo_local'] ?? '')),
+                    'periodo' => $periodoRent,
+                    'modalidad' => trim((string) ($rentSnapshotRow['codigo_modalidad'] ?? '')),
+                    'uf_base' => $ufBaseRent,
+                    'valor_uf_periodo' => $valorUfPeriodoRent,
+                    'monto_neto' => $montoNetoRent,
+                    'monto_iva' => round((float) ($rentSnapshotRow['monto_iva_clp'] ?? 0), 2),
+                    'monto_total' => round((float) ($rentSnapshotRow['monto_total_clp'] ?? 0), 2),
+                    'estado_cierre' => $estadoCierreRent,
+                    'id_documento' => $idDocumentoRent,
+                    'numero_documento' => trim((string) ($rentSnapshotRow['numero_documento'] ?? '')),
+                    'monto_documento' => round((float) ($rentSnapshotRow['monto_documento'] ?? 0), 2),
+                    'saldo_documento' => round((float) ($rentSnapshotRow['saldo_pendiente'] ?? 0), 2),
+                    'nivel' => $nivelCorreccionRent,
+                    'puede_aplicar' => $puedeAplicarRent,
+                ];
+            }
+        }
     }
     $perfMark('carga_snapshots_arriendo');
 
@@ -1033,6 +1659,21 @@ try {
                   AND YEAR(cm_serv_pend.periodo_facturacion) = " . (int) $selectedYear . "
             )";
         }
+        if (msp2TableExists($conn, 'msp_liquidacion_servicios')
+            && msp2TableExists($conn, 'msp_liquidacion_servicio_consumos')) {
+            $parts[] = "EXISTS (
+                SELECT 1
+                FROM dbo.msp_liquidacion_servicios ls_tardio
+                INNER JOIN dbo.msp_contrato_locales cl_tardio
+                    ON cl_tardio.id_contrato_local = ls_tardio.id_contrato_local
+                LEFT JOIN dbo.msp_liquidacion_servicio_consumos c_tardio
+                    ON c_tardio.id_liquidacion_servicio = ls_tardio.id_liquidacion_servicio
+                   AND c_tardio.estado_consumo <> 3
+                WHERE cl_tardio.id_contrato_arriendo = {$contratoAlias}.id_contrato_arriendo
+                  AND (ls_tardio.estado_liquidacion IN (1,2)
+                       OR YEAR(c_tardio.periodo_emision) = " . (int) $selectedYear . ")
+            )";
+        }
 
         return $parts !== [] ? '(' . implode(' OR ', $parts) . ')' : '(1 = 0)';
     };
@@ -1102,6 +1743,19 @@ try {
                   AND YEAR(cm_serv_pend.periodo_facturacion) = " . (int) $selectedYear . "
             )";
         }
+        if (msp2TableExists($conn, 'msp_liquidacion_servicios')
+            && msp2TableExists($conn, 'msp_liquidacion_servicio_consumos')) {
+            $parts[] = "EXISTS (
+                SELECT 1
+                FROM dbo.msp_liquidacion_servicios ls_tardio
+                LEFT JOIN dbo.msp_liquidacion_servicio_consumos c_tardio
+                    ON c_tardio.id_liquidacion_servicio = ls_tardio.id_liquidacion_servicio
+                   AND c_tardio.estado_consumo <> 3
+                WHERE ls_tardio.id_contrato_local = {$contratoLocalAlias}.id_contrato_local
+                  AND (ls_tardio.estado_liquidacion IN (1,2)
+                       OR YEAR(c_tardio.periodo_emision) = " . (int) $selectedYear . ")
+            )";
+        }
 
         return $parts !== [] ? '(' . implode(' OR ', $parts) . ')' : '(1 = 0)';
     };
@@ -1154,6 +1808,88 @@ try {
         ];
     }
     $perfMark('carga_tiendas_base');
+
+    if (msp2TableExists($conn, 'msp_vw_control_diario_base')) {
+        $estadoOperativoStmt = $conn->prepare(
+            "SELECT
+                id_tienda,
+                id_contrato_arriendo,
+                id_arrendatario,
+                CONVERT(char(7), periodo_facturacion, 126) AS periodo_ym,
+                arrendatario,
+                rut,
+                vigente_arriendo,
+                en_liquidacion,
+                cerrado_financiero,
+                tiene_pendientes,
+                marca_termino
+             FROM dbo.msp_vw_control_diario_base
+             WHERE YEAR(periodo_facturacion) = :anio_estado
+             ORDER BY
+                id_tienda,
+                periodo_facturacion,
+                CASE WHEN vigente_arriendo = 1 THEN 0 WHEN en_liquidacion = 1 THEN 1 ELSE 2 END,
+                id_contrato_arriendo DESC"
+        );
+        $estadoOperativoStmt->bindValue(':anio_estado', $selectedYear, PDO::PARAM_INT);
+        $estadoOperativoStmt->execute();
+        while (($estadoOperativoRow = $estadoOperativoStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $idTiendaEstado = (int) ($estadoOperativoRow['id_tienda'] ?? 0);
+            $periodoEstado = trim((string) ($estadoOperativoRow['periodo_ym'] ?? ''));
+            if ($idTiendaEstado <= 0 || $periodoEstado === '' || isset($operationalStateByTiendaMonth[$idTiendaEstado][$periodoEstado])) {
+                continue;
+            }
+            $operationalStateByTiendaMonth[$idTiendaEstado][$periodoEstado] = $estadoOperativoRow;
+        }
+        $perfMark('estado_operativo_historico');
+    }
+
+    if (msp2TableExists($conn, 'msp_liquidacion_servicios')
+        && msp2TableExists($conn, 'msp_liquidacion_servicio_consumos')) {
+        $estadoTardioStmt = $conn->prepare(
+            "SELECT DISTINCT
+                ca.id_tienda,
+                ca.id_contrato_arriendo,
+                ca.id_arrendatario,
+                CONVERT(char(7), c.periodo_emision, 126) AS periodo_ym,
+                COALESCE(NULLIF(a.nombre_locatario, N''), NULLIF(a.nombre_representante, N''), N'Sin arrendatario') AS arrendatario,
+                a.rut
+             FROM dbo.msp_liquidacion_servicio_consumos c
+             INNER JOIN dbo.msp_liquidacion_servicios ls
+                ON ls.id_liquidacion_servicio = c.id_liquidacion_servicio
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_local = ls.id_contrato_local
+             INNER JOIN dbo.msp_contratos_arriendo ca
+                ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
+             INNER JOIN dbo.msp_arrendatarios a
+                ON a.id_arrendatario = ca.id_arrendatario
+             WHERE YEAR(c.periodo_emision) = :anio_tardio
+               AND c.estado_consumo IN (1,2)"
+        );
+        $estadoTardioStmt->bindValue(':anio_tardio', $selectedYear, PDO::PARAM_INT);
+        $estadoTardioStmt->execute();
+        while (($estadoTardioRow = $estadoTardioStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $idTiendaTardio = (int) ($estadoTardioRow['id_tienda'] ?? 0);
+            $periodoTardio = trim((string) ($estadoTardioRow['periodo_ym'] ?? ''));
+            if ($idTiendaTardio <= 0 || $periodoTardio === '') {
+                continue;
+            }
+            $operationalStateByTiendaMonth[$idTiendaTardio][$periodoTardio] = [
+                'id_tienda' => $idTiendaTardio,
+                'id_contrato_arriendo' => (int) ($estadoTardioRow['id_contrato_arriendo'] ?? 0),
+                'id_arrendatario' => (int) ($estadoTardioRow['id_arrendatario'] ?? 0),
+                'periodo_ym' => $periodoTardio,
+                'arrendatario' => (string) ($estadoTardioRow['arrendatario'] ?? ''),
+                'rut' => (string) ($estadoTardioRow['rut'] ?? ''),
+                'vigente_arriendo' => 0,
+                'en_liquidacion' => 1,
+                'cerrado_financiero' => 0,
+                'tiene_pendientes' => 1,
+                'marca_termino' => 'SERVICIO TARDÍO',
+            ];
+        }
+        $perfMark('estado_servicios_tardios');
+    }
 
     if ($tiendaRows !== []) {
         $tiendaIds = array_keys($tiendaRows);
@@ -1292,39 +2028,46 @@ try {
                 $rutValue = '-';
                 $monthStart = (string) ($monthPeriodMeta[$monthKey]['start'] ?? ($monthKey . '-01'));
                 $monthEnd = (string) ($monthPeriodMeta[$monthKey]['end'] ?? ($monthKey . '-31'));
+                $isLiquidacionPendiente = false;
+                $estadoOperativoMes = is_array($operationalStateByTiendaMonth[$idTienda][$monthKey] ?? null)
+                    ? $operationalStateByTiendaMonth[$idTienda][$monthKey]
+                    : null;
 
-                foreach ($contratosTienda as $contratoTiendaRow) {
-                    $fechaInicio = trim((string) ($contratoTiendaRow['fecha_inicio'] ?? ''));
-                    $fechaTermino = trim((string) ($contratoTiendaRow['fecha_termino_efectiva'] ?? ''));
-                    $estadoContratoMes = (int) ($contratoTiendaRow['estado_contrato'] ?? 0);
-                    if ($fechaInicio === '' || $fechaInicio > $monthEnd) {
-                        continue;
+                if ($estadoOperativoMes !== null) {
+                    $esVigenteMes = (bool) ($estadoOperativoMes['vigente_arriendo'] ?? false);
+                    $isLiquidacionPendiente = !$esVigenteMes
+                        && (bool) ($estadoOperativoMes['en_liquidacion'] ?? false);
+                    if ($esVigenteMes || $isLiquidacionPendiente) {
+                        $arrValue = trim((string) ($estadoOperativoMes['arrendatario'] ?? ''));
+                        $arrendatarioIdValue = (int) ($estadoOperativoMes['id_arrendatario'] ?? 0);
+                        $rutTmpRaw = trim((string) ($estadoOperativoMes['rut'] ?? ''));
+                        $rutValue = $rutTmpRaw !== '' ? msp2RutFormatDisplay($rutTmpRaw) : '-';
                     }
-                    $releaseMonthYm = null;
-                    if ($fechaTermino !== '') {
-                        $fechaTerminoDate = DateTimeImmutable::createFromFormat('Y-m-d', substr($fechaTermino, 0, 10));
-                        if ($fechaTerminoDate !== false) {
-                            $releaseMonthYm = $fechaTerminoDate->modify('first day of this month')->modify('+2 months')->format('Y-m');
+                } else {
+                    // Respaldo para instalaciones antiguas: la ocupación se determina
+                    // solo por las fechas reales, sin extenderla dos meses artificialmente.
+                    foreach ($contratosTienda as $contratoTiendaRow) {
+                        $fechaInicio = trim((string) ($contratoTiendaRow['fecha_inicio'] ?? ''));
+                        $fechaTermino = trim((string) ($contratoTiendaRow['fecha_termino_efectiva'] ?? ''));
+                        if ($fechaInicio === '' || $fechaInicio > $monthEnd) {
+                            continue;
                         }
-                    }
-                    if ($releaseMonthYm !== null && $monthKey >= $releaseMonthYm) {
-                        continue;
-                    }
-                    if ($fechaTermino !== '' && $fechaTermino < $monthStart && !in_array($estadoContratoMes, [3, 4], true)) {
-                        continue;
-                    }
+                        if ($fechaTermino !== '' && $fechaTermino < $monthStart) {
+                            continue;
+                        }
 
-                    $arrTmp = trim((string) ($contratoTiendaRow['nombre_arrendatario'] ?? ''));
-                    $rutTmpRaw = trim((string) ($contratoTiendaRow['rut'] ?? ''));
-                    $arrValue = $arrTmp;
-                    $arrendatarioIdValue = (int) ($contratoTiendaRow['id_arrendatario'] ?? 0);
-                    $rutValue = $rutTmpRaw !== '' ? msp2RutFormatDisplay($rutTmpRaw) : '-';
-                    break;
+                        $arrValue = trim((string) ($contratoTiendaRow['nombre_arrendatario'] ?? ''));
+                        $arrendatarioIdValue = (int) ($contratoTiendaRow['id_arrendatario'] ?? 0);
+                        $rutTmpRaw = trim((string) ($contratoTiendaRow['rut'] ?? ''));
+                        $rutValue = $rutTmpRaw !== '' ? msp2RutFormatDisplay($rutTmpRaw) : '-';
+                        break;
+                    }
                 }
 
                 $arrendatarioByMonth[$monthKey] = $arrValue;
                 $arrendatarioIdByMonth[$monthKey] = $arrendatarioIdValue;
                 $rutDisplayByMonth[$monthKey] = $rutValue;
+                $postTerminoByMonth[$monthKey] = $isLiquidacionPendiente;
             }
 
             foreach ($months as $monthKey => $monthData) {
@@ -1376,30 +2119,6 @@ try {
 
                 $terminoByMonth[$monthKey] = $hasTerminoContratoMes;
 
-                $hasPostTerminoContratoMes = false;
-                foreach ($contratosTienda as $contratoTiendaRow) {
-                    $fechaTermino = trim((string) ($contratoTiendaRow['fecha_termino_efectiva'] ?? ''));
-                    if ($fechaTermino === '') {
-                        continue;
-                    }
-                    $fechaTerminoDate = DateTimeImmutable::createFromFormat('Y-m-d', substr($fechaTermino, 0, 10));
-                    if ($fechaTerminoDate === false) {
-                        continue;
-                    }
-                    if ($monthKey >= $fechaTerminoDate->modify('first day of this month')->modify('+2 months')->format('Y-m')) {
-                        $hasPostTerminoContratoMes = true;
-                        break;
-                    }
-                }
-
-                $hasPostTerminoContratoMes = $hasPostTerminoContratoMes
-                    && trim((string) ($arrendatarioByMonth[$monthKey] ?? '')) === '';
-                $postTerminoByMonth[$monthKey] = $hasPostTerminoContratoMes;
-                if ($hasPostTerminoContratoMes) {
-                    $arrendatarioByMonth[$monthKey] = '';
-                    $arrendatarioIdByMonth[$monthKey] = 0;
-                    $rutDisplayByMonth[$monthKey] = '-';
-                }
             }
 
             $firstMonthKey = array_key_first($months);
@@ -1663,6 +2382,18 @@ try {
             'calc_mode' => $calcModeRow,
             'neto_fijo' => $netoFijoRow,
             'servicios' => $serviciosByMonth,
+            'electricity_readings_by_month' => is_array($electricityReadingsByTiendaMonth[$idTienda] ?? null)
+                ? $electricityReadingsByTiendaMonth[$idTienda]
+                : [],
+            'gas_readings_by_month' => is_array($gasReadingsByTiendaMonth[$idTienda] ?? null)
+                ? $gasReadingsByTiendaMonth[$idTienda]
+                : [],
+            'water_readings_by_month' => is_array($waterReadingsByTiendaMonth[$idTienda] ?? null)
+                ? $waterReadingsByTiendaMonth[$idTienda]
+                : [],
+            'rent_snapshots_by_month' => is_array($rentSnapshotsByTiendaMonth[$idTienda] ?? null)
+                ? $rentSnapshotsByTiendaMonth[$idTienda]
+                : [],
             'garantia' => $garantiaByMonth,
             'reserva' => $reservaByMonth,
             'reserva_breakdown' => $reservaBreakdownByMonth,
@@ -1696,11 +2427,24 @@ try {
             $baseRow = $rowByLocalSignature[$signature];
             $baseUfByMonth = is_array($baseRow['uf_base_by_month'] ?? null) ? $baseRow['uf_base_by_month'] : [];
             $baseArrByMonth = is_array($baseRow['arrendatario_by_month'] ?? null) ? $baseRow['arrendatario_by_month'] : [];
+            $baseArrIdByMonth = is_array($baseRow['arrendatario_id_by_month'] ?? null) ? $baseRow['arrendatario_id_by_month'] : [];
             $baseRutByMonth = is_array($baseRow['rut_display_by_month'] ?? null) ? $baseRow['rut_display_by_month'] : [];
             $baseTerminoByMonth = is_array($baseRow['termino_by_month'] ?? null) ? $baseRow['termino_by_month'] : [];
             $basePostTerminoByMonth = is_array($baseRow['post_termino_by_month'] ?? null) ? $baseRow['post_termino_by_month'] : [];
             $baseArriendoNetoByMonth = is_array($baseRow['arriendo_neto_by_month'] ?? null) ? $baseRow['arriendo_neto_by_month'] : [];
             $baseServicios = is_array($baseRow['servicios'] ?? null) ? $baseRow['servicios'] : [];
+            $baseElectricityReadings = is_array($baseRow['electricity_readings_by_month'] ?? null)
+                ? $baseRow['electricity_readings_by_month']
+                : [];
+            $baseGasReadings = is_array($baseRow['gas_readings_by_month'] ?? null)
+                ? $baseRow['gas_readings_by_month']
+                : [];
+            $baseWaterReadings = is_array($baseRow['water_readings_by_month'] ?? null)
+                ? $baseRow['water_readings_by_month']
+                : [];
+            $baseRentSnapshots = is_array($baseRow['rent_snapshots_by_month'] ?? null)
+                ? $baseRow['rent_snapshots_by_month']
+                : [];
             $baseGarantia = is_array($baseRow['garantia'] ?? null) ? $baseRow['garantia'] : [];
             $baseReserva = is_array($baseRow['reserva'] ?? null) ? $baseRow['reserva'] : [];
             $baseReservaBreakdown = is_array($baseRow['reserva_breakdown'] ?? null) ? $baseRow['reserva_breakdown'] : [];
@@ -1709,11 +2453,24 @@ try {
 
             $newUfByMonth = is_array($rowItem['uf_base_by_month'] ?? null) ? $rowItem['uf_base_by_month'] : [];
             $newArrByMonth = is_array($rowItem['arrendatario_by_month'] ?? null) ? $rowItem['arrendatario_by_month'] : [];
+            $newArrIdByMonth = is_array($rowItem['arrendatario_id_by_month'] ?? null) ? $rowItem['arrendatario_id_by_month'] : [];
             $newRutByMonth = is_array($rowItem['rut_display_by_month'] ?? null) ? $rowItem['rut_display_by_month'] : [];
             $newTerminoByMonth = is_array($rowItem['termino_by_month'] ?? null) ? $rowItem['termino_by_month'] : [];
             $newPostTerminoByMonth = is_array($rowItem['post_termino_by_month'] ?? null) ? $rowItem['post_termino_by_month'] : [];
             $newArriendoNetoByMonth = is_array($rowItem['arriendo_neto_by_month'] ?? null) ? $rowItem['arriendo_neto_by_month'] : [];
             $newServicios = is_array($rowItem['servicios'] ?? null) ? $rowItem['servicios'] : [];
+            $newElectricityReadings = is_array($rowItem['electricity_readings_by_month'] ?? null)
+                ? $rowItem['electricity_readings_by_month']
+                : [];
+            $newGasReadings = is_array($rowItem['gas_readings_by_month'] ?? null)
+                ? $rowItem['gas_readings_by_month']
+                : [];
+            $newWaterReadings = is_array($rowItem['water_readings_by_month'] ?? null)
+                ? $rowItem['water_readings_by_month']
+                : [];
+            $newRentSnapshots = is_array($rowItem['rent_snapshots_by_month'] ?? null)
+                ? $rowItem['rent_snapshots_by_month']
+                : [];
             $newGarantia = is_array($rowItem['garantia'] ?? null) ? $rowItem['garantia'] : [];
             $newReserva = is_array($rowItem['reserva'] ?? null) ? $rowItem['reserva'] : [];
             $newReservaBreakdown = is_array($rowItem['reserva_breakdown'] ?? null) ? $rowItem['reserva_breakdown'] : [];
@@ -1725,25 +2482,28 @@ try {
                 $newArr = trim((string) ($newArrByMonth[$monthKey] ?? ''));
                 $baseUf = (float) ($baseUfByMonth[$monthKey] ?? 0);
                 $newUf = (float) ($newUfByMonth[$monthKey] ?? 0);
+                $baseTerminoMes = (bool) ($baseTerminoByMonth[$monthKey] ?? false);
+                $newTerminoMes = (bool) ($newTerminoByMonth[$monthKey] ?? false);
+                $basePostTerminoMes = (bool) ($basePostTerminoByMonth[$monthKey] ?? false);
+                $newPostTerminoMes = (bool) ($newPostTerminoByMonth[$monthKey] ?? false);
 
                 $useNew = false;
                 if ($baseArr === '' && $newArr !== '') {
+                    $useNew = true;
+                } elseif ($baseArr !== '' && $newArr !== '' && $basePostTerminoMes && !$newPostTerminoMes) {
+                    // Si el local ya tiene un nuevo ocupante, no mezclarlo con la liquidación del anterior.
                     $useNew = true;
                 } elseif ($baseArr === '' && $newArr === '' && $newUf > $baseUf) {
                     $useNew = true;
                 }
 
-                $baseTerminoMes = (bool) ($baseTerminoByMonth[$monthKey] ?? false);
-                $newTerminoMes = (bool) ($newTerminoByMonth[$monthKey] ?? false);
-                $baseTerminoByMonth[$monthKey] = $baseTerminoMes || $newTerminoMes;
-                $basePostTerminoMes = (bool) ($basePostTerminoByMonth[$monthKey] ?? false);
-                $newPostTerminoMes = (bool) ($newPostTerminoByMonth[$monthKey] ?? false);
-                $basePostTerminoByMonth[$monthKey] = $basePostTerminoMes || $newPostTerminoMes;
-
                 if ($useNew) {
                     $baseUfByMonth[$monthKey] = round($newUf, 6);
                     $baseArrByMonth[$monthKey] = $newArr;
+                    $baseArrIdByMonth[$monthKey] = (int) ($newArrIdByMonth[$monthKey] ?? 0);
                     $baseRutByMonth[$monthKey] = trim((string) ($newRutByMonth[$monthKey] ?? '-'));
+                    $baseTerminoByMonth[$monthKey] = $newTerminoMes;
+                    $basePostTerminoByMonth[$monthKey] = $newPostTerminoMes;
                     if (array_key_exists($monthKey, $newArriendoNetoByMonth)) {
                         $baseArriendoNetoByMonth[$monthKey] = round((float) ($newArriendoNetoByMonth[$monthKey] ?? 0), 2);
                     }
@@ -1767,6 +2527,66 @@ try {
                         $baseTotalDoc[$monthKey] = $newTotalDoc[$monthKey];
                     }
                 }
+
+                $lecturasMes = array_merge(
+                    is_array($baseElectricityReadings[$monthKey] ?? null) ? $baseElectricityReadings[$monthKey] : [],
+                    is_array($newElectricityReadings[$monthKey] ?? null) ? $newElectricityReadings[$monthKey] : []
+                );
+                if ($lecturasMes !== []) {
+                    $lecturasUnicas = [];
+                    foreach ($lecturasMes as $lecturaMes) {
+                        $idLecturaMes = (int) ($lecturaMes['id_lectura'] ?? 0);
+                        if ($idLecturaMes > 0) {
+                            $lecturasUnicas[$idLecturaMes] = $lecturaMes;
+                        }
+                    }
+                    $baseElectricityReadings[$monthKey] = array_values($lecturasUnicas);
+                }
+
+                $lecturasGasMes = array_merge(
+                    is_array($baseGasReadings[$monthKey] ?? null) ? $baseGasReadings[$monthKey] : [],
+                    is_array($newGasReadings[$monthKey] ?? null) ? $newGasReadings[$monthKey] : []
+                );
+                if ($lecturasGasMes !== []) {
+                    $lecturasGasUnicas = [];
+                    foreach ($lecturasGasMes as $lecturaGasMes) {
+                        $idLecturaGasMes = (int) ($lecturaGasMes['id_lectura'] ?? 0);
+                        if ($idLecturaGasMes > 0) {
+                            $lecturasGasUnicas[$idLecturaGasMes] = $lecturaGasMes;
+                        }
+                    }
+                    $baseGasReadings[$monthKey] = array_values($lecturasGasUnicas);
+                }
+
+                $lecturasAguaMes = array_merge(
+                    is_array($baseWaterReadings[$monthKey] ?? null) ? $baseWaterReadings[$monthKey] : [],
+                    is_array($newWaterReadings[$monthKey] ?? null) ? $newWaterReadings[$monthKey] : []
+                );
+                if ($lecturasAguaMes !== []) {
+                    $lecturasAguaUnicas = [];
+                    foreach ($lecturasAguaMes as $lecturaAguaMes) {
+                        $idLecturaAguaMes = (int) ($lecturaAguaMes['id_lectura'] ?? 0);
+                        if ($idLecturaAguaMes > 0) {
+                            $lecturasAguaUnicas[$idLecturaAguaMes] = $lecturaAguaMes;
+                        }
+                    }
+                    $baseWaterReadings[$monthKey] = array_values($lecturasAguaUnicas);
+                }
+
+                $snapshotsMes = array_merge(
+                    is_array($baseRentSnapshots[$monthKey] ?? null) ? $baseRentSnapshots[$monthKey] : [],
+                    is_array($newRentSnapshots[$monthKey] ?? null) ? $newRentSnapshots[$monthKey] : []
+                );
+                if ($snapshotsMes !== []) {
+                    $snapshotsUnicos = [];
+                    foreach ($snapshotsMes as $snapshotMes) {
+                        $idSnapshotMes = (int) ($snapshotMes['id_snapshot'] ?? 0);
+                        if ($idSnapshotMes > 0) {
+                            $snapshotsUnicos[$idSnapshotMes] = $snapshotMes;
+                        }
+                    }
+                    $baseRentSnapshots[$monthKey] = array_values($snapshotsUnicos);
+                }
             }
 
             $baseRow['local_ids'] = array_values(array_unique(array_map(
@@ -1777,11 +2597,16 @@ try {
             $baseRow['local_code'] = $rowCodes !== [] ? implode(' / ', $rowCodes) : (string) ($baseRow['local_code'] ?? '-');
             $baseRow['uf_base_by_month'] = $baseUfByMonth;
             $baseRow['arrendatario_by_month'] = $baseArrByMonth;
+            $baseRow['arrendatario_id_by_month'] = $baseArrIdByMonth;
             $baseRow['rut_display_by_month'] = $baseRutByMonth;
             $baseRow['termino_by_month'] = $baseTerminoByMonth;
             $baseRow['post_termino_by_month'] = $basePostTerminoByMonth;
             $baseRow['arriendo_neto_by_month'] = $baseArriendoNetoByMonth;
             $baseRow['servicios'] = $baseServicios;
+            $baseRow['electricity_readings_by_month'] = $baseElectricityReadings;
+            $baseRow['gas_readings_by_month'] = $baseGasReadings;
+            $baseRow['water_readings_by_month'] = $baseWaterReadings;
+            $baseRow['rent_snapshots_by_month'] = $baseRentSnapshots;
             $baseRow['garantia'] = $baseGarantia;
             $baseRow['reserva'] = $baseReserva;
             $baseRow['reserva_breakdown'] = $baseReservaBreakdown;
@@ -1948,13 +2773,6 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                 </div>
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-month-nav" id="month-next-btn">Siguiente</button>
                             </div>
-                            <div class="control-column-groups" role="group" aria-label="Información visible del mes">
-                                <span class="control-column-groups__label">Ver</span>
-                                <button type="button" class="btn btn-primary btn-sm is-active" data-control-column-group="summary" aria-pressed="true">Resumen</button>
-                                <button type="button" class="btn btn-outline-primary btn-sm" data-control-column-group="rent" aria-pressed="false">Arriendo</button>
-                                <button type="button" class="btn btn-outline-primary btn-sm" data-control-column-group="services" aria-pressed="false">Servicios</button>
-                                <button type="button" class="btn btn-outline-primary btn-sm" data-control-column-group="guarantee" aria-pressed="false">Garantía</button>
-                            </div>
                         </div>
                         <div class="control-filters">
                             <div class="control-filter-item">
@@ -1965,6 +2783,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                     <option value="PENDIENTE">Pendiente</option>
                                     <option value="ATRASADO">Atrasado</option>
                                     <option value="TERMINO">Termino</option>
+                                    <option value="LIQUIDACION">Liquidación</option>
                                     <option value="SIN DOCUMENTO">Sin documento</option>
                                     <option value="SIN CIERRE">Sin cierre</option>
                                 </select>
@@ -2099,6 +2918,10 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                     $terminoByMonth[$monthKeyTmp] = (bool) ($terminoByMonthRaw[$monthKeyTmp] ?? false);
                                     $postTerminoByMonth[$monthKeyTmp] = (bool) ($postTerminoByMonthRaw[$monthKeyTmp] ?? false);
                                 }
+                                $postTerminoByMonthJson = json_encode($postTerminoByMonthRaw, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                                if (!is_string($postTerminoByMonthJson) || $postTerminoByMonthJson === '') {
+                                    $postTerminoByMonthJson = '{}';
+                                }
                                 ?>
                                 <tr
                                     data-local-id="<?php echo (int) $row['id_local']; ?>"
@@ -2111,6 +2934,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                     data-doc-id-by-month="<?php echo msp2Escape($docIdByMonthJson); ?>"
                                     data-doc-number-by-month="<?php echo msp2Escape($docNumberByMonthJson); ?>"
                                     data-arriendo-neto-by-month="<?php echo msp2Escape($arriendoNetoByMonthJson); ?>"
+                                    data-liquidacion-by-month="<?php echo msp2Escape($postTerminoByMonthJson); ?>"
                                     data-local-label="<?php echo msp2Escape((string) ($row['local_code'] ?? '')); ?>"
                                 >
                                     <td class="sticky-col sticky-col-local">
@@ -2120,6 +2944,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                         <div class="arr-cell-stack">
                                             <div class="arr-label js-arr-display"><?php echo msp2Escape($row['arrendatario']); ?></div>
                                             <div class="arr-rut js-rut-display"><?php echo msp2Escape($row['rut_display'] !== '' ? $row['rut_display'] : '-'); ?></div>
+                                            <div class="small text-warning-emphasis fw-semibold d-none js-arr-liquidacion">Liquidación de servicios pendiente</div>
                                         </div>
                                     </td>
 
@@ -2134,6 +2959,68 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                         $montoElectricidad = round((float) ($serviciosMes['electricidad'] ?? 0), 2);
                                         $montoGas = round((float) ($serviciosMes['gas'] ?? 0), 2);
                                         $montoAgua = round((float) ($serviciosMes['agua'] ?? 0), 2);
+                                        $lecturasElectricidadMap = is_array($row['electricity_readings_by_month'] ?? null)
+                                            ? $row['electricity_readings_by_month']
+                                            : [];
+                                        $lecturasElectricidadMes = is_array($lecturasElectricidadMap[$monthKey] ?? null)
+                                            ? $lecturasElectricidadMap[$monthKey]
+                                            : [];
+                                        $lecturasElectricidadJson = json_encode(
+                                            $lecturasElectricidadMes,
+                                            JSON_UNESCAPED_UNICODE + JSON_UNESCAPED_SLASHES
+                                        );
+                                        if (!is_string($lecturasElectricidadJson) || $lecturasElectricidadJson === '') {
+                                            $lecturasElectricidadJson = '[]';
+                                        }
+                                        $lecturasGasMap = is_array($row['gas_readings_by_month'] ?? null)
+                                            ? $row['gas_readings_by_month']
+                                            : [];
+                                        $lecturasGasMes = is_array($lecturasGasMap[$monthKey] ?? null)
+                                            ? $lecturasGasMap[$monthKey]
+                                            : [];
+                                        $lecturasGasJson = json_encode(
+                                            $lecturasGasMes,
+                                            JSON_UNESCAPED_UNICODE + JSON_UNESCAPED_SLASHES
+                                        );
+                                        if (!is_string($lecturasGasJson) || $lecturasGasJson === '') {
+                                            $lecturasGasJson = '[]';
+                                        }
+                                        $lecturasAguaMap = is_array($row['water_readings_by_month'] ?? null)
+                                            ? $row['water_readings_by_month']
+                                            : [];
+                                        $lecturasAguaMes = is_array($lecturasAguaMap[$monthKey] ?? null)
+                                            ? $lecturasAguaMap[$monthKey]
+                                            : [];
+                                        $lecturasAguaJson = json_encode(
+                                            $lecturasAguaMes,
+                                            JSON_UNESCAPED_UNICODE + JSON_UNESCAPED_SLASHES
+                                        );
+                                        if (!is_string($lecturasAguaJson) || $lecturasAguaJson === '') {
+                                            $lecturasAguaJson = '[]';
+                                        }
+                                        $snapshotsArriendoMap = is_array($row['rent_snapshots_by_month'] ?? null)
+                                            ? $row['rent_snapshots_by_month']
+                                            : [];
+                                        $snapshotsArriendoMes = is_array($snapshotsArriendoMap[$monthKey] ?? null)
+                                            ? $snapshotsArriendoMap[$monthKey]
+                                            : [];
+                                        $arrendatarioIdMes = (int) (($row['arrendatario_id_by_month'][$monthKey] ?? 0));
+                                        if ($arrendatarioIdMes > 0) {
+                                            $snapshotsArriendoMes = array_values(array_filter(
+                                                $snapshotsArriendoMes,
+                                                static fn (array $snapshot): bool => (int) ($snapshot['id_arrendatario'] ?? 0) === $arrendatarioIdMes
+                                            ));
+                                        }
+                                        if ((bool) ($row['post_termino_by_month'][$monthKey] ?? false)) {
+                                            $snapshotsArriendoMes = [];
+                                        }
+                                        $snapshotsArriendoJson = json_encode(
+                                            $snapshotsArriendoMes,
+                                            JSON_UNESCAPED_UNICODE + JSON_UNESCAPED_SLASHES
+                                        );
+                                        if (!is_string($snapshotsArriendoJson) || $snapshotsArriendoJson === '') {
+                                            $snapshotsArriendoJson = '[]';
+                                        }
                                         $reservaMes = is_array($row['reserva'] ?? null) ? $row['reserva'] : [];
                                         $montoReserva = round((float) ($reservaMes[$monthKey] ?? 0), 2);
                                         $reservaBreakdownMes = is_array($row['reserva_breakdown'][$monthKey] ?? null)
@@ -2195,14 +3082,23 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             : $totalFinalCalculadoMes;
                                         ?>
                                         <td
-                                            class="cell-num js-uf-base-display js-uf-base-cell js-month-col"
+                                            class="cell-num js-uf-base-display js-uf-base-cell js-month-col<?php echo $snapshotsArriendoMes !== [] && ($row['calc_mode'] ?? 'UF') !== 'NETO_FIJO' ? ' rent-edit-cell' : ''; ?>"
                                             data-month-key="<?php echo msp2Escape($monthKey); ?>"
                                             data-uf-base-value="<?php echo msp2Escape(number_format($ufBaseMes, 6, '.', '')); ?>"
                                         >
                                             <?php if (($row['calc_mode'] ?? 'UF') === 'NETO_FIJO'): ?>
                                                 -
                                             <?php else: ?>
-                                                <?php echo msp2Escape(number_format($ufBaseMes, 2, ',', '.')); ?>
+                                                <span class="rent-cell-value"><?php echo msp2Escape(number_format($ufBaseMes, 2, ',', '.')); ?></span>
+                                                <?php if ($snapshotsArriendoMes !== [] && $canCorrectRent): ?>
+                                                    <button
+                                                        type="button"
+                                                        class="rent-edit-btn js-rent-edit"
+                                                        data-rent-snapshots="<?php echo msp2Escape($snapshotsArriendoJson); ?>"
+                                                        aria-label="Corregir UF base del período"
+                                                        title="Corregir UF base del período"
+                                                    ><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                                <?php endif; ?>
                                             <?php endif; ?>
                                         </td>
                                         <td class="cell-num js-neto js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-neto-monto="<?php echo msp2Escape(number_format($netoMes, 2, '.', '')); ?>">
@@ -2217,14 +3113,41 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                         <td class="cell-num cell-readonly js-garantia js-month-col garantia-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-garantia-monto="<?php echo msp2Escape(number_format($montoGarantia, 2, '.', '')); ?>">
                                             <?php echo msp2Escape(number_format($montoGarantia, 2, ',', '.')); ?>
                                         </td>
-                                        <td class="cell-num js-servicio-electricidad js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoElectricidad, 2, '.', '')); ?>">
-                                            <?php echo msp2Escape(number_format($montoElectricidad, 2, ',', '.')); ?>
+                                        <td class="cell-num js-servicio-electricidad js-month-col<?php echo $lecturasElectricidadMes !== [] ? ' electricity-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoElectricidad, 2, '.', '')); ?>">
+                                            <span class="electricity-cell-value"><?php echo msp2Escape(number_format($montoElectricidad, 2, ',', '.')); ?></span>
+                                            <?php if ($lecturasElectricidadMes !== [] && $canCorrectElectricity): ?>
+                                                <button
+                                                    type="button"
+                                                    class="electricity-edit-btn js-electricity-edit"
+                                                    data-electricity-readings="<?php echo msp2Escape($lecturasElectricidadJson); ?>"
+                                                    aria-label="Corregir lectura de electricidad"
+                                                    title="Corregir lectura de electricidad"
+                                                ><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                            <?php endif; ?>
                                         </td>
-                                        <td class="cell-num js-servicio-gas js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoGas, 2, '.', '')); ?>">
-                                            <?php echo msp2Escape(number_format($montoGas, 2, ',', '.')); ?>
+                                        <td class="cell-num js-servicio-gas js-month-col<?php echo $lecturasGasMes !== [] ? ' gas-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoGas, 2, '.', '')); ?>">
+                                            <span class="gas-cell-value"><?php echo msp2Escape(number_format($montoGas, 2, ',', '.')); ?></span>
+                                            <?php if ($lecturasGasMes !== [] && $canCorrectGas): ?>
+                                                <button
+                                                    type="button"
+                                                    class="gas-edit-btn js-gas-edit"
+                                                    data-gas-readings="<?php echo msp2Escape($lecturasGasJson); ?>"
+                                                    aria-label="Corregir lectura de gas"
+                                                    title="Corregir lectura de gas"
+                                                ><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                            <?php endif; ?>
                                         </td>
-                                        <td class="cell-num js-servicio-agua js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoAgua, 2, '.', '')); ?>">
-                                            <?php echo msp2Escape(number_format($montoAgua, 2, ',', '.')); ?>
+                                        <td class="cell-num js-servicio-agua js-month-col<?php echo $lecturasAguaMes !== [] ? ' water-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoAgua, 2, '.', '')); ?>">
+                                            <span class="water-cell-value"><?php echo msp2Escape(number_format($montoAgua, 2, ',', '.')); ?></span>
+                                            <?php if ($lecturasAguaMes !== [] && $canCorrectWater): ?>
+                                                <button
+                                                    type="button"
+                                                    class="water-edit-btn js-water-edit"
+                                                    data-water-readings="<?php echo msp2Escape($lecturasAguaJson); ?>"
+                                                    aria-label="Corregir lectura de agua"
+                                                    title="Corregir lectura de agua"
+                                                ><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                            <?php endif; ?>
                                         </td>
                                         <td
                                             class="cell-num js-reserva js-month-col<?php echo $showReservaTooltip ? ' has-tooltip' : ''; ?>"
@@ -2258,7 +3181,11 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             $estadoDocMes = strtoupper(trim((string) (($row['estado_doc'][$monthKey] ?? ''))));
                                             $estadoTerminoMes = (bool) ($terminoByMonth[$monthKey] ?? false);
                                             $estadoPostTerminoMes = (bool) ($postTerminoByMonth[$monthKey] ?? false);
-                                            if ($estadoTerminoMes || $estadoPostTerminoMes) {
+                                            if ($estadoPostTerminoMes) {
+                                                $statusLabel = 'LIQUIDACION';
+                                                $statusClass = 'is-pending';
+                                                $statusIndex = 2;
+                                            } elseif ($estadoTerminoMes) {
                                                 $statusLabel = 'TERMINO';
                                                 $statusClass = 'is-terminated';
                                                 $statusIndex = 4;
@@ -2332,6 +3259,317 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
     </div>
 </main>
 
+<div class="modal fade" id="rentCorrectionModal" tabindex="-1" aria-labelledby="rentCorrectionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <form method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="rent-correction-form">
+                <?php msp2CsrfField(); ?>
+                <input type="hidden" name="accion" value="crear">
+                <input type="hidden" name="entidad_afectada" value="arriendo">
+                <input type="hidden" name="unidad_valor" value="UF_BASE">
+                <input type="hidden" name="modulo_origen" value="control_diario/index.php">
+                <input type="hidden" name="id_contrato_arriendo" id="rent-id-contrato" value="">
+                <input type="hidden" name="id_local" id="rent-id-local" value="">
+                <input type="hidden" name="id_registro_origen" id="rent-id-snapshot" value="">
+                <input type="hidden" name="periodo_facturacion" id="rent-periodo" value="">
+                <input type="hidden" name="valor_anterior" id="rent-valor-anterior" value="">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title fs-5" id="rentCorrectionModalLabel">Corregir UF base del período</h2>
+                        <div class="small text-muted">La corrección afecta solamente al contrato-local y mes seleccionados.</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 d-none" id="rent-snapshot-select-wrap">
+                        <label class="form-label" for="rent-snapshot-select">Local que deseas corregir</label>
+                        <select class="form-select" id="rent-snapshot-select"></select>
+                    </div>
+
+                    <div class="rent-correction-context mb-3">
+                        <div><span>Local</span><strong id="rent-local-label">-</strong></div>
+                        <div><span>Modalidad</span><strong id="rent-modality-label">-</strong></div>
+                        <div><span>Período</span><strong id="rent-period-label">-</strong></div>
+                        <div><span>Documento</span><strong id="rent-document-label">-</strong></div>
+                    </div>
+
+                    <h3 class="h6 mb-2">Cómo se obtuvo el arriendo actual</h3>
+                    <div class="rent-calculation-grid mb-3">
+                        <div><span>UF base actual</span><strong id="rent-uf-current">0</strong></div>
+                        <div><span>UF del período</span><strong id="rent-period-uf">$ 0</strong></div>
+                        <div><span>Neto actual</span><strong id="rent-net-current">$ 0</strong></div>
+                        <div><span>IVA actual</span><strong id="rent-vat-current">$ 0</strong></div>
+                    </div>
+
+                    <div class="alert alert-success mb-3" id="rent-correction-level" role="status"></div>
+
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label class="form-label" for="rent-new-uf">Nueva UF base correcta</label>
+                            <input class="form-control" type="number" min="0" step="0.000001" name="valor_nuevo" id="rent-new-uf" required>
+                            <div class="form-text">Ingresa las UF del local seleccionado, no el total agrupado de la fila.</div>
+                        </div>
+                        <div class="col-md-7">
+                            <label class="form-label" for="rent-reason">Motivo de la corrección</label>
+                            <input class="form-control" type="text" name="motivo" id="rent-reason" maxlength="500" required placeholder="Ej.: valor UF mensual registrado incorrectamente">
+                        </div>
+                    </div>
+
+                    <div class="form-check mt-3 d-none" id="rent-zero-confirm-wrap">
+                        <input class="form-check-input" type="checkbox" name="confirmar_cero" value="1" id="rent-zero-confirm">
+                        <label class="form-check-label" for="rent-zero-confirm">
+                            Confirmo que este contrato-local tendrá arriendo cero durante el período seleccionado.
+                        </label>
+                    </div>
+
+                    <div class="rent-result-panel mt-3">
+                        <div><span>Nuevo neto</span><strong id="rent-net-new">-</strong></div>
+                        <div><span>Nuevo IVA</span><strong id="rent-vat-new">-</strong></div>
+                        <div><span>Nuevo subtotal</span><strong id="rent-total-new">-</strong></div>
+                        <div><span>Diferencia</span><strong id="rent-difference">-</strong></div>
+                    </div>
+                    <div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="rent-validation-message"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="rent-submit">Registrar corrección</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="electricityCorrectionModal" tabindex="-1" aria-labelledby="electricityCorrectionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <form method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="electricity-correction-form">
+                <?php msp2CsrfField(); ?>
+                <input type="hidden" name="accion" value="crear">
+                <input type="hidden" name="entidad_afectada" value="lectura">
+                <input type="hidden" name="servicio" value="LUZ">
+                <input type="hidden" name="modulo_origen" value="control_diario/index.php">
+                <input type="hidden" name="id_contrato_arriendo" id="electricity-id-contrato" value="">
+                <input type="hidden" name="id_local" id="electricity-id-local" value="">
+                <input type="hidden" name="id_registro_origen" id="electricity-id-lectura" value="">
+                <input type="hidden" name="periodo_facturacion" id="electricity-periodo" value="">
+                <input type="hidden" name="valor_anterior" id="electricity-valor-anterior" value="">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title fs-5" id="electricityCorrectionModalLabel">Corregir lectura de electricidad</h2>
+                        <div class="small text-muted">La plataforma recalculará consumo, cobro y efectos posteriores según el estado del documento.</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 d-none" id="electricity-reading-select-wrap">
+                        <label class="form-label" for="electricity-reading-select">Medidor que deseas corregir</label>
+                        <select class="form-select" id="electricity-reading-select"></select>
+                    </div>
+
+                    <div class="electricity-correction-context mb-3">
+                        <div><span>Local</span><strong id="electricity-local-label">-</strong></div>
+                        <div><span>Medidor</span><strong id="electricity-meter-label">-</strong></div>
+                        <div><span>Período</span><strong id="electricity-period-label">-</strong></div>
+                        <div><span>Documento</span><strong id="electricity-document-label">-</strong></div>
+                    </div>
+
+                    <h3 class="h6 mb-2">Cómo se obtuvo el monto actual</h3>
+                    <div class="electricity-calculation-grid mb-3">
+                        <div><span>Lectura anterior</span><strong id="electricity-reading-previous">0</strong></div>
+                        <div><span>Lectura registrada</span><strong id="electricity-reading-current">0</strong></div>
+                        <div><span>Consumo</span><strong id="electricity-consumption-current">0 kWh</strong></div>
+                        <div><span>Tarifa</span><strong id="electricity-rate-current">$ 0</strong></div>
+                        <div><span>Cálculo</span><strong id="electricity-formula-current">0 × 0</strong></div>
+                        <div><span>Monto electricidad</span><strong id="electricity-amount-current">$ 0</strong></div>
+                    </div>
+
+                    <div class="alert mb-3" id="electricity-correction-level" role="status"></div>
+
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label class="form-label" for="electricity-new-reading">Nueva lectura correcta</label>
+                            <input class="form-control" type="number" min="0" step="0.0001" name="valor_nuevo" id="electricity-new-reading" required>
+                            <div class="form-text" id="electricity-reading-limits">Debe ser igual o mayor que la lectura anterior.</div>
+                        </div>
+                        <div class="col-md-7">
+                            <label class="form-label" for="electricity-reason">Motivo de la corrección</label>
+                            <input class="form-control" type="text" name="motivo" id="electricity-reason" maxlength="500" required placeholder="Ej.: lectura digitada incorrectamente">
+                        </div>
+                    </div>
+
+                    <div class="electricity-result-panel mt-3">
+                        <div><span>Nuevo consumo</span><strong id="electricity-consumption-new">-</strong></div>
+                        <div><span>Nuevo monto</span><strong id="electricity-amount-new">-</strong></div>
+                        <div><span>Diferencia</span><strong id="electricity-difference">-</strong></div>
+                        <div><span>Nuevo total documento</span><strong id="electricity-document-total-new">-</strong></div>
+                    </div>
+                    <div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="electricity-validation-message"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="electricity-submit">Registrar corrección</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="gasCorrectionModal" tabindex="-1" aria-labelledby="gasCorrectionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <form method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="gas-correction-form">
+                <?php msp2CsrfField(); ?>
+                <input type="hidden" name="accion" value="crear">
+                <input type="hidden" name="entidad_afectada" value="lectura">
+                <input type="hidden" name="servicio" value="GAS">
+                <input type="hidden" name="modulo_origen" value="control_diario/index.php">
+                <input type="hidden" name="id_contrato_arriendo" id="gas-id-contrato" value="">
+                <input type="hidden" name="id_local" id="gas-id-local" value="">
+                <input type="hidden" name="id_registro_origen" id="gas-id-lectura" value="">
+                <input type="hidden" name="periodo_facturacion" id="gas-periodo" value="">
+                <input type="hidden" name="valor_anterior" id="gas-valor-anterior" value="">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title fs-5" id="gasCorrectionModalLabel">Corregir lectura de gas</h2>
+                        <div class="small text-muted">La plataforma recalculará consumo, cobro y efectos posteriores según el estado del documento.</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 d-none" id="gas-reading-select-wrap">
+                        <label class="form-label" for="gas-reading-select">Medidor que deseas corregir</label>
+                        <select class="form-select" id="gas-reading-select"></select>
+                    </div>
+
+                    <div class="gas-correction-context mb-3">
+                        <div><span>Local</span><strong id="gas-local-label">-</strong></div>
+                        <div><span>Medidor</span><strong id="gas-meter-label">-</strong></div>
+                        <div><span>Período</span><strong id="gas-period-label">-</strong></div>
+                        <div><span>Documento</span><strong id="gas-document-label">-</strong></div>
+                    </div>
+
+                    <h3 class="h6 mb-2">Cómo se obtuvo el monto actual</h3>
+                    <div class="gas-calculation-grid mb-3">
+                        <div><span>Lectura anterior</span><strong id="gas-reading-previous">0</strong></div>
+                        <div><span>Lectura registrada</span><strong id="gas-reading-current">0</strong></div>
+                        <div><span>Consumo</span><strong id="gas-consumption-current">0</strong></div>
+                        <div><span>Factor</span><strong id="gas-factor-current">0</strong></div>
+                        <div><span>Valor litro</span><strong id="gas-liter-value-current">$ 0</strong></div>
+                        <div><span>Cálculo</span><strong id="gas-formula-current">0 × 0 × 0</strong></div>
+                        <div><span>Monto gas</span><strong id="gas-amount-current">$ 0</strong></div>
+                    </div>
+
+                    <div class="alert mb-3" id="gas-correction-level" role="status"></div>
+
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label class="form-label" for="gas-new-reading">Nueva lectura correcta</label>
+                            <input class="form-control" type="number" min="0" step="0.0001" name="valor_nuevo" id="gas-new-reading" required>
+                            <div class="form-text" id="gas-reading-limits">Debe ser igual o mayor que la lectura anterior.</div>
+                        </div>
+                        <div class="col-md-7">
+                            <label class="form-label" for="gas-reason">Motivo de la corrección</label>
+                            <input class="form-control" type="text" name="motivo" id="gas-reason" maxlength="500" required placeholder="Ej.: lectura de gas digitada incorrectamente">
+                        </div>
+                    </div>
+
+                    <div class="gas-result-panel mt-3">
+                        <div><span>Nuevo consumo</span><strong id="gas-consumption-new">-</strong></div>
+                        <div><span>Nuevo monto</span><strong id="gas-amount-new">-</strong></div>
+                        <div><span>Diferencia</span><strong id="gas-difference">-</strong></div>
+                        <div><span>Nuevo total documento</span><strong id="gas-document-total-new">-</strong></div>
+                    </div>
+                    <div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="gas-validation-message"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="gas-submit">Registrar corrección</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="waterCorrectionModal" tabindex="-1" aria-labelledby="waterCorrectionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <form method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="water-correction-form">
+                <?php msp2CsrfField(); ?>
+                <input type="hidden" name="accion" value="crear">
+                <input type="hidden" name="entidad_afectada" value="lectura">
+                <input type="hidden" name="servicio" value="AGUA">
+                <input type="hidden" name="modulo_origen" value="control_diario/index.php">
+                <input type="hidden" name="id_contrato_arriendo" id="water-id-contrato" value="">
+                <input type="hidden" name="id_local" id="water-id-local" value="">
+                <input type="hidden" name="id_registro_origen" id="water-id-lectura" value="">
+                <input type="hidden" name="periodo_facturacion" id="water-periodo" value="">
+                <input type="hidden" name="valor_anterior" id="water-valor-anterior" value="">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title fs-5" id="waterCorrectionModalLabel">Corregir lectura de agua</h2>
+                        <div class="small text-muted">Se usa la fórmula del Excel: cargo fijo completo más consumo por tarifa variable.</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 d-none" id="water-reading-select-wrap">
+                        <label class="form-label" for="water-reading-select">Medidor que deseas corregir</label>
+                        <select class="form-select" id="water-reading-select"></select>
+                    </div>
+
+                    <div class="water-correction-context mb-3">
+                        <div><span>Local</span><strong id="water-local-label">-</strong></div>
+                        <div><span>Medidor</span><strong id="water-meter-label">-</strong></div>
+                        <div><span>Período de cobro</span><strong id="water-period-label">-</strong></div>
+                        <div><span>Consumo medido</span><strong id="water-consumption-period-label">-</strong></div>
+                        <div><span>Documento</span><strong id="water-document-label">-</strong></div>
+                    </div>
+
+                    <h3 class="h6 mb-2">Cómo se obtuvo el monto actual</h3>
+                    <div class="water-calculation-grid mb-3">
+                        <div><span>Lectura anterior</span><strong id="water-reading-previous">0</strong></div>
+                        <div><span>Lectura registrada</span><strong id="water-reading-current">0</strong></div>
+                        <div><span>Consumo</span><strong id="water-consumption-current">0 m³</strong></div>
+                        <div><span>Tarifa variable</span><strong id="water-rate-current">$ 0 / m³</strong></div>
+                        <div><span>Subtotal variable</span><strong id="water-variable-current">$ 0</strong></div>
+                        <div><span>Cargo fijo completo</span><strong id="water-fixed-current">$ 0</strong></div>
+                        <div><span>Cálculo</span><strong id="water-formula-current">0 × 0 + 0</strong></div>
+                        <div><span>Monto agua</span><strong id="water-amount-current">$ 0</strong></div>
+                    </div>
+
+                    <div class="alert mb-3" id="water-correction-level" role="status"></div>
+
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label class="form-label" for="water-new-reading">Nueva lectura correcta</label>
+                            <input class="form-control" type="number" min="0" step="0.0001" name="valor_nuevo" id="water-new-reading" required>
+                            <div class="form-text" id="water-reading-limits">Debe ser igual o mayor que la lectura anterior.</div>
+                        </div>
+                        <div class="col-md-7">
+                            <label class="form-label" for="water-reason">Motivo de la corrección</label>
+                            <input class="form-control" type="text" name="motivo" id="water-reason" maxlength="500" required placeholder="Ej.: lectura de agua digitada incorrectamente">
+                        </div>
+                    </div>
+
+                    <div class="water-result-panel mt-3">
+                        <div><span>Nuevo consumo</span><strong id="water-consumption-new">-</strong></div>
+                        <div><span>Nuevo subtotal variable</span><strong id="water-variable-new">-</strong></div>
+                        <div><span>Cargo fijo</span><strong id="water-fixed-new">-</strong></div>
+                        <div><span>Nuevo monto</span><strong id="water-amount-new">-</strong></div>
+                        <div><span>Diferencia</span><strong id="water-difference">-</strong></div>
+                        <div><span>Nuevo total documento</span><strong id="water-document-total-new">-</strong></div>
+                    </div>
+                    <div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="water-validation-message"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="water-submit">Registrar corrección</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="controlRowRedirectModal" tabindex="-1" aria-labelledby="controlRowRedirectModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -2375,9 +3613,9 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
     </div>
 </div>
 
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (function () {
     const FOCUSBAR_STORAGE_KEY = 'msp-control-diario-focusbar-collapsed';
     const ROW_REDIRECT_DELAY_SECONDS = 4;
@@ -2635,12 +3873,14 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
     function applyArrendatarioMonth(row, monthKey) {
         const arrDisplay = row.querySelector('.js-arr-display');
         const rutDisplay = row.querySelector('.js-rut-display');
+        const liquidacionDisplay = row.querySelector('.js-arr-liquidacion');
         if (!arrDisplay && !rutDisplay) {
             return;
         }
 
         const arrMap = getRowMonthMap(row, 'data-arrendatario-by-month', '__arrendatarioByMonth');
         const rutMap = getRowMonthMap(row, 'data-rut-by-month', '__rutByMonth');
+        const liquidacionMap = getRowMonthMap(row, 'data-liquidacion-by-month', '__liquidacionByMonth');
 
         const arrValue = Object.prototype.hasOwnProperty.call(arrMap, monthKey)
             ? String(arrMap[monthKey] || '').trim()
@@ -2655,6 +3895,11 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         if (rutDisplay) {
             rutDisplay.textContent = rutValue !== '' ? rutValue : '-';
         }
+        if (liquidacionDisplay) {
+            const isLiquidacion = liquidacionMap[monthKey] === true || liquidacionMap[monthKey] === 1;
+            liquidacionDisplay.classList.toggle('d-none', !isLiquidacion);
+        }
+        delete row.__searchableText;
     }
 
     function refreshTotalsRow() {
@@ -2734,7 +3979,17 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             }
 
             const matchesSearch = searchFilter === '' || searchableText.includes(searchFilter);
-            row.style.display = matchesStatus && matchesSearch ? '' : 'none';
+            const arrendatarioIdMap = getRowMonthMap(
+                row,
+                'data-arrendatario-id-by-month',
+                '__arrendatarioIdByMonth'
+            );
+            const arrendatarioId = Number.parseInt(
+                String(arrendatarioIdMap[currentVisibleMonthKey] || '0'),
+                10
+            );
+            const hasMonthlyContext = Number.isFinite(arrendatarioId) && arrendatarioId > 0;
+            row.style.display = hasMonthlyContext && matchesStatus && matchesSearch ? '' : 'none';
         });
         refreshTotalsRow();
     }
@@ -2803,22 +4058,6 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         const selectedYear = Number.parseInt('<?php echo (int) $selectedYear; ?>', 10);
         const now = new Date();
         const currentYear = now.getFullYear();
-        const findClosestAvailableIndex = function (requestedIndex) {
-            if (!hasAvailableMonths) {
-                return Math.max(0, Math.min(allMonthKeys.length - 1, requestedIndex));
-            }
-            let closestIndex = availableIndexes[0];
-            let closestDistance = Math.abs(closestIndex - requestedIndex);
-            for (let i = 1; i < availableIndexes.length; i += 1) {
-                const candidate = availableIndexes[i];
-                const distance = Math.abs(candidate - requestedIndex);
-                if (distance < closestDistance) {
-                    closestDistance = distance;
-                    closestIndex = candidate;
-                }
-            }
-            return closestIndex;
-        };
         const findPrevAvailableIndex = function (fromIndex) {
             if (!hasAvailableMonths) {
                 return fromIndex > 0 ? fromIndex - 1 : null;
@@ -2865,15 +4104,32 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             }
         }
 
-        const navigateToMonth = function (targetIndex) {
-            const normalizedIndex = Math.max(0, Math.min(allMonthKeys.length - 1, targetIndex));
-            const key = allMonthKeys[normalizedIndex] || '';
+        let navigationPending = false;
+        let navigationTimer = null;
+        const previewMonth = function (targetIndex) {
+            const key = allMonthKeys[targetIndex] || '';
             if (!key) {
                 return;
             }
-            if (key === currentMonthKey) {
+            const label = monthLabelByKey.get(key) || key;
+            monthScaleItems.forEach((item) => {
+                item.classList.toggle('is-target', item.dataset.monthKey === key && key !== currentMonthKey);
+            });
+            const targetDescription = label + (key === currentMonthKey ? '' : ': suelta la barra para cargar');
+            slider.setAttribute('aria-valuetext', targetDescription);
+            slider.title = targetDescription;
+        };
+        const navigateToMonth = function (targetIndex) {
+            const normalizedIndex = Math.max(0, Math.min(allMonthKeys.length - 1, targetIndex));
+            const key = allMonthKeys[normalizedIndex] || '';
+            if (!key || navigationPending) {
                 return;
             }
+            if (key === currentMonthKey) {
+                previewMonth(activeIndex);
+                return;
+            }
+            navigationPending = true;
             const url = new URL(window.location.href);
             url.searchParams.set('anio', String(selectedYear));
             url.searchParams.set('mes', key);
@@ -2883,7 +4139,10 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                 url.searchParams.delete('perf');
             }
             url.searchParams.delete('full');
-            window.location.href = url.toString();
+            setControlGridLoading(true);
+            navigationTimer = window.setTimeout(() => {
+                window.location.assign(url.toString());
+            }, 100);
         };
 
         const apply = function () {
@@ -2901,6 +4160,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             });
 
             slider.value = String(activeIndex + 1);
+            previewMonth(activeIndex);
             prevBtn.disabled = findPrevAvailableIndex(activeIndex) === null;
             nextBtn.disabled = findNextAvailableIndex(activeIndex) === null;
             applyFilters();
@@ -2928,73 +4188,27 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             if (!Number.isFinite(value)) {
                 return;
             }
-            const target = findClosestAvailableIndex(Math.max(0, Math.min(allMonthKeys.length - 1, value - 1)));
-            navigateToMonth(target);
+            previewMonth(Math.max(0, Math.min(allMonthKeys.length - 1, value - 1)));
+        });
+
+        slider.addEventListener('change', function () {
+            const value = Number.parseInt(slider.value || '1', 10);
+            if (Number.isFinite(value)) {
+                navigateToMonth(value - 1);
+            }
+        });
+
+        window.addEventListener('pageshow', function (event) {
+            if (!event.persisted) {
+                return;
+            }
+            window.clearTimeout(navigationTimer);
+            navigationPending = false;
+            setControlGridLoading(false);
+            apply();
         });
 
         apply();
-    }
-
-    function initColumnGroupNavigator() {
-        const table = document.querySelector('.control-grid');
-        const buttons = Array.from(document.querySelectorAll('[data-control-column-group]'));
-        if (!table || buttons.length === 0 || !table.tHead || table.tHead.rows.length < 2) {
-            return;
-        }
-
-        const groups = {
-            summary: [3, 9, 10],
-            rent: [0, 1, 2, 3, 9],
-            services: [5, 6, 7, 9],
-            guarantee: [4, 8, 9],
-        };
-        const monthHeader = table.tHead.rows[0].querySelector('.js-month-group');
-        const detailHeaders = Array.from(table.tHead.rows[1].cells);
-        const dataRows = [
-            ...Array.from(table.tBodies).flatMap((body) => Array.from(body.rows)),
-            ...(table.tFoot ? Array.from(table.tFoot.rows) : []),
-        ];
-
-        const applyGroup = (groupName) => {
-            const visible = groups[groupName] || groups.summary;
-            detailHeaders.forEach((cell, index) => {
-                cell.hidden = !visible.includes(index);
-            });
-            dataRows.forEach((row) => {
-                Array.from(row.cells).forEach((cell, cellIndex) => {
-                    if (cellIndex < 2) return;
-                    cell.hidden = !visible.includes(cellIndex - 2);
-                });
-            });
-            if (monthHeader) monthHeader.colSpan = visible.length;
-            table.dataset.controlColumnGroup = groupName;
-            table.style.setProperty('--control-visible-month-columns', String(visible.length));
-            buttons.forEach((button) => {
-                const active = button.dataset.controlColumnGroup === groupName;
-                button.classList.toggle('btn-primary', active);
-                button.classList.toggle('btn-outline-primary', !active);
-                button.classList.toggle('is-active', active);
-                button.setAttribute('aria-pressed', active ? 'true' : 'false');
-            });
-            try {
-                window.sessionStorage.setItem('msp-control-column-group', groupName);
-            } catch (error) {
-                // El selector sigue operativo aunque el navegador bloquee storage.
-            }
-        };
-
-        buttons.forEach((button) => button.addEventListener('click', () => {
-            applyGroup(button.dataset.controlColumnGroup || 'summary');
-        }));
-
-        let initialGroup = 'summary';
-        try {
-            const stored = window.sessionStorage.getItem('msp-control-column-group') || '';
-            if (Object.prototype.hasOwnProperty.call(groups, stored)) initialGroup = stored;
-        } catch (error) {
-            initialGroup = 'summary';
-        }
-        applyGroup(initialGroup);
     }
 
     function decorateNavigableRows() {
@@ -3025,7 +4239,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
 
         const updateCountdown = function (secondsLeft, autoRedirect) {
             if (!autoRedirect) {
-                countdownNode.textContent = 'La redirección automática está desactivada para esta fila.';
+                countdownNode.textContent = 'Detalle restaurado al volver desde Documentos de cobro.';
                 return;
             }
             countdownNode.textContent = 'Redirección automática en ' + String(secondsLeft) + ' s.';
@@ -3036,7 +4250,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             confirmLink.setAttribute('href', '#');
         });
 
-        const openForRow = function (row) {
+        const openForRow = function (row, autoRedirect = true) {
             if (!currentVisibleMonthKey) {
                 return;
             }
@@ -3057,10 +4271,18 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             const localLabel = String(row.getAttribute('data-local-label') || '').trim() || '-';
             const docId = Number.parseInt(String(docIdMap[currentVisibleMonthKey] || '0'), 10);
             const docNumber = String(docNumberMap[currentVisibleMonthKey] || '').trim();
+            const returnTo = 'control_diario/index.php?' + new URLSearchParams({
+                anio: currentVisibleMonthKey.slice(0, 4),
+                mes: currentVisibleMonthKey,
+                detalle_local: String(row.getAttribute('data-local-id') || ''),
+                detalle_arrendatario: String(arrendatarioId),
+            }).toString();
             const targetUrl = '<?php echo msp2Escape(msp2Url('documentos_cobro/index.php')); ?>?id_arrendatario='
                 + encodeURIComponent(String(arrendatarioId))
                 + '&filtroPeriodo='
-                + encodeURIComponent(currentVisibleMonthKey);
+                + encodeURIComponent(currentVisibleMonthKey)
+                + '&return_to='
+                + encodeURIComponent(returnTo);
 
             periodNode.textContent = periodLabel;
             localesNode.textContent = localLabel;
@@ -3074,16 +4296,18 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
 
             clearRowRedirectTimer();
             let secondsLeft = ROW_REDIRECT_DELAY_SECONDS;
-            updateCountdown(secondsLeft, true);
-            rowRedirectTimer = window.setInterval(function () {
-                secondsLeft -= 1;
-                if (secondsLeft <= 0) {
-                    clearRowRedirectTimer();
-                    window.location.href = targetUrl;
-                    return;
-                }
-                updateCountdown(secondsLeft, true);
-            }, 1000);
+            updateCountdown(secondsLeft, autoRedirect);
+            if (autoRedirect) {
+                rowRedirectTimer = window.setInterval(function () {
+                    secondsLeft -= 1;
+                    if (secondsLeft <= 0) {
+                        clearRowRedirectTimer();
+                        window.location.href = targetUrl;
+                        return;
+                    }
+                    updateCountdown(secondsLeft, true);
+                }, 1000);
+            }
 
             modal.show();
         };
@@ -3109,6 +4333,1001 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                 event.preventDefault();
                 openForRow(row);
             });
+        });
+
+        const returnDetailLocal = <?php echo (int) $returnDetailLocal; ?>;
+        const returnDetailArrendatario = <?php echo (int) $returnDetailArrendatario; ?>;
+        if (returnDetailLocal > 0 && returnDetailArrendatario > 0) {
+            const returnRow = Array.from(document.querySelectorAll('tbody tr[data-local-id]')).find((row) => {
+                if (Number.parseInt(String(row.getAttribute('data-local-id') || '0'), 10) !== returnDetailLocal) {
+                    return false;
+                }
+                const arrIdMap = getRowMonthMap(row, 'data-arrendatario-id-by-month', '__arrendatarioIdByMonth');
+                return Number.parseInt(String(arrIdMap[currentVisibleMonthKey] || '0'), 10) === returnDetailArrendatario;
+            });
+            if (returnRow && returnRow.classList.contains('is-row-link')) {
+                window.setTimeout(function () {
+                    returnRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    openForRow(returnRow, false);
+                    const cleanUrl = new URL(window.location.href);
+                    cleanUrl.searchParams.delete('detalle_local');
+                    cleanUrl.searchParams.delete('detalle_arrendatario');
+                    window.history.replaceState({}, document.title, cleanUrl.toString());
+                }, 100);
+            }
+        }
+    }
+
+    function initRentCorrection() {
+        const modalElement = document.getElementById('rentCorrectionModal');
+        const form = document.getElementById('rent-correction-form');
+        const selectorWrap = document.getElementById('rent-snapshot-select-wrap');
+        const selector = document.getElementById('rent-snapshot-select');
+        const newUfInput = document.getElementById('rent-new-uf');
+        const reasonInput = document.getElementById('rent-reason');
+        const zeroWrap = document.getElementById('rent-zero-confirm-wrap');
+        const zeroConfirm = document.getElementById('rent-zero-confirm');
+        const submitButton = document.getElementById('rent-submit');
+        const validationMessage = document.getElementById('rent-validation-message');
+        const levelMessage = document.getElementById('rent-correction-level');
+        if (!modalElement || !form || !selectorWrap || !selector || !newUfInput
+            || !reasonInput || !zeroWrap || !zeroConfirm || !submitButton || !validationMessage
+            || !levelMessage || typeof bootstrap === 'undefined') {
+            return;
+        }
+
+        const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+        let snapshots = [];
+        let activeSnapshot = null;
+        let submissionStarted = false;
+
+        const setText = function (id, value) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = String(value);
+            }
+        };
+        const roundMoney = function (value) {
+            return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+        };
+        const numberValue = function (value) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        const displayNumber = function (value, decimals) {
+            return formatNumber(numberValue(value), decimals);
+        };
+        const displayAmount = function (value) {
+            return '$ ' + displayNumber(value, 2);
+        };
+
+        const validateAndCalculate = function () {
+            validationMessage.classList.add('d-none');
+            validationMessage.textContent = '';
+            if (!activeSnapshot) {
+                submitButton.disabled = true;
+                return false;
+            }
+
+            const newUf = Number.parseFloat(String(newUfInput.value || '').replace(',', '.'));
+            const currentUf = Number(activeSnapshot.uf_base || 0);
+            const periodUf = Number(activeSnapshot.valor_uf_periodo || 0);
+            const currentTotal = Number(activeSnapshot.monto_total || 0);
+            const isZero = Number.isFinite(newUf) && Math.abs(newUf) < 0.0000005;
+            zeroWrap.classList.toggle('d-none', !isZero);
+            if (!isZero) {
+                zeroConfirm.checked = false;
+            }
+
+            let error = '';
+            if (activeSnapshot.puede_aplicar !== true) {
+                error = activeSnapshot.nivel === 'AJUSTE_FINANCIERO'
+                    ? 'El documento tiene pagos, garantía, saldo a favor o historial de envío. La UF no puede sobrescribirse; corresponde un ajuste financiero.'
+                    : 'El estado actual requiere revisión antes de permitir la corrección de UF Base.';
+            } else if (!Number.isFinite(newUf) || newUf < 0) {
+                error = 'Ingresa un valor UF igual o mayor que cero.';
+            } else if (periodUf <= 0) {
+                error = 'El período no tiene un valor UF válido para recalcular el arriendo.';
+            } else if (Math.abs(newUf - currentUf) < 0.0000005) {
+                error = 'El nuevo valor UF debe ser diferente del valor actual.';
+            } else if (isZero && !zeroConfirm.checked) {
+                error = 'Debes confirmar expresamente el arriendo cero para continuar.';
+            }
+
+            if (error !== '') {
+                setText('rent-net-new', '-');
+                setText('rent-vat-new', '-');
+                setText('rent-total-new', '-');
+                setText('rent-difference', '-');
+                validationMessage.textContent = error;
+                validationMessage.classList.remove('d-none');
+                submitButton.disabled = true;
+                return false;
+            }
+
+            const newNet = roundMoney(newUf * periodUf);
+            const newVat = roundMoney(newNet * 0.19);
+            const newTotal = roundMoney(newNet + newVat);
+            setText('rent-net-new', displayAmount(newNet));
+            setText('rent-vat-new', displayAmount(newVat));
+            setText('rent-total-new', displayAmount(newTotal));
+            setText('rent-difference', displayAmount(roundMoney(newTotal - currentTotal)));
+            submitButton.disabled = false;
+            return true;
+        };
+
+        const showSnapshot = function (index) {
+            activeSnapshot = snapshots[index] || null;
+            if (!activeSnapshot) {
+                submitButton.disabled = true;
+                return;
+            }
+            document.getElementById('rent-id-contrato').value = String(activeSnapshot.id_contrato || '');
+            document.getElementById('rent-id-local').value = String(activeSnapshot.id_local || '');
+            document.getElementById('rent-id-snapshot').value = String(activeSnapshot.id_snapshot || '');
+            document.getElementById('rent-periodo').value = String(activeSnapshot.periodo || '');
+            document.getElementById('rent-valor-anterior').value =
+                'monto_neto_clp=' + String(activeSnapshot.monto_neto || 0)
+                + '; valor_base_uf=' + String(activeSnapshot.uf_base || 0);
+            setText('rent-local-label', activeSnapshot.local || '-');
+            setText('rent-modality-label', activeSnapshot.modalidad || '-');
+            setText('rent-period-label', activeSnapshot.periodo || '-');
+            setText('rent-uf-current', displayNumber(Number(activeSnapshot.uf_base || 0), 6));
+            setText('rent-period-uf', displayAmount(Number(activeSnapshot.valor_uf_periodo || 0)));
+            setText('rent-net-current', displayAmount(Number(activeSnapshot.monto_neto || 0)));
+            setText('rent-vat-current', displayAmount(Number(activeSnapshot.monto_iva || 0)));
+            setText(
+                'rent-document-label',
+                Number(activeSnapshot.id_documento || 0) > 0
+                    ? String(activeSnapshot.numero_documento || ('#' + String(activeSnapshot.id_documento)))
+                    : 'Sin documento emitido'
+            );
+            const level = String(activeSnapshot.nivel || 'EDICION_SIMPLE');
+            const levelTexts = {
+                EDICION_SIMPLE: 'Sin documento emitido: se actualizará solamente el snapshot mensual y su trazabilidad.',
+                REGENERACION_CONTROLADA: 'Documento emitido sin movimientos protegidos: se conservará su versión anterior y se recalcularán detalle, total, saldo y PDF.',
+                AUTORIZACION: 'Período cerrado o contabilizado: al autorizar se conservará la versión anterior y se revertirá y regenerará el asiento contable.',
+                AJUSTE_FINANCIERO: 'Documento con pagos, garantía, saldo a favor o envío registrado: no se sobrescribirá; corresponde un ajuste financiero.',
+                REVISION: 'El documento no está disponible para una corrección automática y debe revisarse.',
+            };
+            levelMessage.textContent = levelTexts[level] || 'La corrección requiere revisión.';
+            levelMessage.className = 'alert mb-3 '
+                + (level === 'EDICION_SIMPLE' ? 'alert-success' : (activeSnapshot.puede_aplicar === true ? 'alert-warning' : 'alert-danger'));
+            newUfInput.value = String(Number(activeSnapshot.uf_base || 0));
+            zeroConfirm.checked = false;
+            zeroWrap.classList.add('d-none');
+            validateAndCalculate();
+        };
+
+        document.querySelectorAll('.js-rent-edit').forEach(function (button) {
+            button.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                let parsed = [];
+                try {
+                    const raw = button.getAttribute('data-rent-snapshots') ?? '[]';
+                    const decoded = JSON.parse(raw);
+                    parsed = Array.isArray(decoded) ? decoded : [];
+                } catch (_error) {
+                    parsed = [];
+                }
+                snapshots = parsed.filter(function (snapshot) {
+                    return snapshot && Number(snapshot.id_snapshot || 0) > 0;
+                });
+                if (snapshots.length === 0) {
+                    return;
+                }
+                selector.innerHTML = '';
+                snapshots.forEach(function (snapshot, index) {
+                    const option = document.createElement('option');
+                    option.value = String(index);
+                    option.textContent = String(snapshot.local || ('Local #' + String(snapshot.id_local || '')))
+                        + ' · Contrato #' + String(snapshot.id_contrato || '');
+                    selector.appendChild(option);
+                });
+                selectorWrap.classList.toggle('d-none', snapshots.length <= 1);
+                selector.value = '0';
+                reasonInput.value = '';
+                showSnapshot(0);
+                modal.show();
+                window.setTimeout(function () {
+                    newUfInput.focus();
+                    newUfInput.select();
+                }, 200);
+            });
+        });
+
+        selector.addEventListener('change', function () {
+            const index = Number.parseInt(selector.value, 10);
+            showSnapshot(Number.isFinite(index) ? index : 0);
+        });
+        newUfInput.addEventListener('input', validateAndCalculate);
+        zeroConfirm.addEventListener('change', validateAndCalculate);
+        form.addEventListener('submit', function (event) {
+            if (!validateAndCalculate()) {
+                event.preventDefault();
+                return;
+            }
+            submissionStarted = true;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Registrando…';
+        });
+        modalElement.addEventListener('hidden.bs.modal', function () {
+            if (submissionStarted) {
+                return;
+            }
+            snapshots = [];
+            activeSnapshot = null;
+            selector.innerHTML = '';
+            form.reset();
+            submitButton.textContent = 'Registrar corrección';
+            validationMessage.classList.add('d-none');
+        });
+    }
+
+    function initElectricityCorrection() {
+        const modalElement = document.getElementById('electricityCorrectionModal');
+        const form = document.getElementById('electricity-correction-form');
+        const selectorWrap = document.getElementById('electricity-reading-select-wrap');
+        const selector = document.getElementById('electricity-reading-select');
+        const newReadingInput = document.getElementById('electricity-new-reading');
+        const reasonInput = document.getElementById('electricity-reason');
+        const submitButton = document.getElementById('electricity-submit');
+        const levelAlert = document.getElementById('electricity-correction-level');
+        const validationMessage = document.getElementById('electricity-validation-message');
+        if (!modalElement || !form || !selectorWrap || !selector || !newReadingInput
+            || !reasonInput || !submitButton || !levelAlert || !validationMessage
+            || typeof bootstrap === 'undefined') {
+            return;
+        }
+
+        const modal = new bootstrap.Modal(modalElement);
+        let readings = [];
+        let activeReading = null;
+        let submissionStarted = false;
+
+        const numberValue = function (value) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        const displayNumber = function (value, decimals) {
+            return formatNumber(numberValue(value), decimals);
+        };
+        const displayAmount = function (value) {
+            return '$ ' + displayNumber(value, 2);
+        };
+        const setText = function (id, value) {
+            const node = document.getElementById(id);
+            if (node) {
+                node.textContent = String(value);
+            }
+        };
+        const setHidden = function (id, value) {
+            const node = document.getElementById(id);
+            if (node) {
+                node.value = String(value ?? '');
+            }
+        };
+        const periodLabel = function (period) {
+            const text = String(period ?? '');
+            const parts = text.split('-');
+            if (parts.length !== 2) {
+                return text;
+            }
+            const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+            const monthIndex = Number.parseInt(parts[1], 10) - 1;
+            return monthNames[monthIndex] ? monthNames[monthIndex] + ' de ' + parts[0] : text;
+        };
+
+        const levelDescription = function (reading) {
+            const level = String(reading.nivel ?? '').toUpperCase();
+            const documentNumber = String(reading.numero_documento ?? '').trim();
+            const documentLabel = documentNumber !== '' ? documentNumber : ('#' + String(reading.id_documento ?? ''));
+            let className = 'alert alert-info mb-3';
+            let message = 'La corrección se registrará con trazabilidad y no modificará datos hasta que la confirmes.';
+            let allowed = reading.puede_aplicar === true;
+
+            if (level === 'EDICION_SIMPLE') {
+                className = 'alert alert-success mb-3';
+                message = 'Todavía no existe un documento emitido. Al confirmar la solicitud se actualizarán la lectura, el consumo y el cobro calculado.';
+            } else if (level === 'REGENERACION_CONTROLADA') {
+                className = 'alert alert-warning mb-3';
+                message = 'El documento ' + documentLabel + ' será versionado. Luego se recalcularán su detalle, total y saldo dentro de una sola transacción.';
+            } else if (level === 'AUTORIZACION') {
+                className = 'alert alert-warning mb-3';
+                message = 'El período está cerrado o posee un asiento contable. La aplicación requerirá autorización; si existe asiento, se revertirá y regenerará con trazabilidad.';
+            } else if (level === 'AJUSTE_FINANCIERO') {
+                className = 'alert alert-danger mb-3';
+                message = 'El documento tiene pagos, aplicaciones, respaldos o envíos asociados. No puede sobrescribirse: debe resolverse mediante un ajuste financiero formal.';
+                allowed = false;
+            } else if (level === 'REVISION') {
+                className = 'alert alert-danger mb-3';
+                message = 'El documento está anulado o no se encuentra disponible. La lectura requiere revisión antes de cualquier cambio.';
+                allowed = false;
+            }
+            if (reading.puede_aplicar !== true && level !== 'AJUSTE_FINANCIERO' && level !== 'REVISION') {
+                className = 'alert alert-danger mb-3';
+                message = 'Tu usuario no posee el permiso requerido para autorizar esta corrección.';
+                allowed = false;
+            }
+            levelAlert.className = className;
+            levelAlert.textContent = message;
+            return allowed;
+        };
+
+        const validateAndCalculate = function () {
+            if (!activeReading) {
+                submitButton.disabled = true;
+                return false;
+            }
+            const previous = numberValue(activeReading.lectura_anterior);
+            const current = numberValue(activeReading.lectura_actual);
+            const rate = numberValue(activeReading.valor_kwh);
+            const nextRaw = activeReading.lectura_siguiente;
+            const hasNext = nextRaw !== null && nextRaw !== undefined && String(nextRaw) !== '';
+            const next = hasNext ? numberValue(nextRaw) : null;
+            const valueText = String(newReadingInput.value ?? '').trim();
+            const newReading = valueText === '' ? Number.NaN : Number(valueText);
+            let error = '';
+
+            if (!Number.isFinite(newReading) || newReading < 0) {
+                error = 'Ingresa una lectura nueva válida, igual o mayor que cero.';
+            } else if (newReading < previous) {
+                error = 'La lectura nueva no puede ser menor que la lectura anterior (' + displayNumber(previous, 4) + ').';
+            } else if (hasNext && next !== null && newReading > next) {
+                error = 'La lectura nueva no puede superar la lectura siguiente (' + displayNumber(next, 4) + ').';
+            } else if (Math.abs(newReading - current) <= 0.0001) {
+                error = 'La lectura nueva debe ser distinta de la registrada.';
+            }
+
+            const newConsumption = Number.isFinite(newReading) ? Math.max(0, newReading - previous) : 0;
+            const newAmount = Math.round(newConsumption * rate * 100) / 100;
+            const oldAmount = numberValue(activeReading.monto);
+            const difference = Math.round((newAmount - oldAmount) * 100) / 100;
+            const documentId = Number.parseInt(String(activeReading.id_documento ?? '0'), 10);
+            const documentTotal = numberValue(activeReading.monto_documento);
+            setText('electricity-consumption-new', Number.isFinite(newReading) ? displayNumber(newConsumption, 4) + ' kWh' : '-');
+            setText('electricity-amount-new', Number.isFinite(newReading) ? displayAmount(newAmount) : '-');
+            setText('electricity-difference', Number.isFinite(newReading) ? displayAmount(difference) : '-');
+            setText('electricity-document-total-new', documentId > 0 && Number.isFinite(newReading)
+                ? displayAmount(documentTotal + difference)
+                : 'Sin documento emitido');
+
+            const levelAllowed = levelDescription(activeReading);
+            validationMessage.textContent = error;
+            validationMessage.classList.toggle('d-none', error === '');
+            submitButton.disabled = submissionStarted || error !== '' || !levelAllowed;
+            return error === '' && levelAllowed;
+        };
+
+        const showReading = function (index) {
+            activeReading = readings[index] ?? null;
+            if (!activeReading) {
+                submitButton.disabled = true;
+                return;
+            }
+            const previous = numberValue(activeReading.lectura_anterior);
+            const current = numberValue(activeReading.lectura_actual);
+            const consumption = numberValue(activeReading.consumo);
+            const rate = numberValue(activeReading.valor_kwh);
+            const documentId = Number.parseInt(String(activeReading.id_documento ?? '0'), 10);
+            const documentNumber = String(activeReading.numero_documento ?? '').trim();
+            const nextRaw = activeReading.lectura_siguiente;
+            const hasNext = nextRaw !== null && nextRaw !== undefined && String(nextRaw) !== '';
+
+            setHidden('electricity-id-contrato', activeReading.id_contrato_arriendo);
+            setHidden('electricity-id-local', activeReading.id_local);
+            setHidden('electricity-id-lectura', activeReading.id_lectura);
+            setHidden('electricity-periodo', activeReading.periodo);
+            setHidden('electricity-valor-anterior', JSON.stringify({
+                lectura_anterior: previous,
+                lectura_actual: current,
+                consumo: consumption
+            }));
+            setText('electricity-local-label', String(activeReading.local ?? '').trim() || '-');
+            setText('electricity-meter-label', String(activeReading.medidor ?? '').trim() || '-');
+            setText('electricity-period-label', periodLabel(activeReading.periodo));
+            setText('electricity-document-label', documentId > 0
+                ? (documentNumber !== '' ? documentNumber : ('#' + String(documentId)))
+                : 'Sin documento emitido');
+            setText('electricity-reading-previous', displayNumber(previous, 4));
+            setText('electricity-reading-current', displayNumber(current, 4));
+            setText('electricity-consumption-current', displayNumber(consumption, 4) + ' kWh');
+            setText('electricity-rate-current', displayAmount(rate) + ' / kWh');
+            setText('electricity-formula-current', displayNumber(consumption, 4) + ' × ' + displayAmount(rate));
+            setText('electricity-amount-current', displayAmount(activeReading.monto));
+            newReadingInput.value = String(current);
+            document.getElementById('electricity-reading-limits').textContent = hasNext
+                ? 'Rango permitido: ' + displayNumber(previous, 4) + ' a ' + displayNumber(nextRaw, 4) + '.'
+                : 'Debe ser igual o mayor que ' + displayNumber(previous, 4) + '.';
+            validateAndCalculate();
+        };
+
+        document.querySelectorAll('.js-electricity-edit').forEach(function (button) {
+            button.addEventListener('click', function () {
+                let parsed = [];
+                try {
+                    const raw = button.getAttribute('data-electricity-readings') ?? '[]';
+                    const decoded = JSON.parse(raw);
+                    parsed = Array.isArray(decoded) ? decoded : [];
+                } catch (_error) {
+                    parsed = [];
+                }
+                readings = parsed.filter(function (reading) {
+                    return reading && Number.parseInt(String(reading.id_lectura ?? '0'), 10) > 0;
+                });
+                if (readings.length === 0) {
+                    return;
+                }
+
+                submissionStarted = false;
+                submitButton.textContent = 'Registrar corrección';
+                reasonInput.value = '';
+                selector.innerHTML = '';
+                readings.forEach(function (reading, index) {
+                    const option = document.createElement('option');
+                    option.value = String(index);
+                    const meter = String(reading.medidor ?? '').trim();
+                    const local = String(reading.local ?? '').trim();
+                    option.textContent = (meter !== '' ? meter : ('Lectura #' + String(reading.id_lectura)))
+                        + (local !== '' ? ' · ' + local : '');
+                    selector.appendChild(option);
+                });
+                selectorWrap.classList.toggle('d-none', readings.length <= 1);
+                selector.value = '0';
+                showReading(0);
+                modal.show();
+                window.setTimeout(function () {
+                    newReadingInput.focus();
+                    newReadingInput.select();
+                }, 200);
+            });
+        });
+
+        selector.addEventListener('change', function () {
+            const index = Number.parseInt(selector.value, 10);
+            showReading(Number.isFinite(index) ? index : 0);
+        });
+        newReadingInput.addEventListener('input', validateAndCalculate);
+        form.addEventListener('submit', function (event) {
+            if (!validateAndCalculate()) {
+                event.preventDefault();
+                return;
+            }
+            submissionStarted = true;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Registrando…';
+        });
+        modalElement.addEventListener('hidden.bs.modal', function () {
+            readings = [];
+            activeReading = null;
+            submissionStarted = false;
+            selector.innerHTML = '';
+            form.reset();
+            submitButton.textContent = 'Registrar corrección';
+            validationMessage.classList.add('d-none');
+        });
+    }
+
+    function initGasCorrection() {
+        const modalElement = document.getElementById('gasCorrectionModal');
+        const form = document.getElementById('gas-correction-form');
+        const selectorWrap = document.getElementById('gas-reading-select-wrap');
+        const selector = document.getElementById('gas-reading-select');
+        const newReadingInput = document.getElementById('gas-new-reading');
+        const reasonInput = document.getElementById('gas-reason');
+        const submitButton = document.getElementById('gas-submit');
+        const levelAlert = document.getElementById('gas-correction-level');
+        const validationMessage = document.getElementById('gas-validation-message');
+        if (!modalElement || !form || !selectorWrap || !selector || !newReadingInput
+            || !reasonInput || !submitButton || !levelAlert || !validationMessage
+            || typeof bootstrap === 'undefined') {
+            return;
+        }
+
+        const modal = new bootstrap.Modal(modalElement);
+        let readings = [];
+        let activeReading = null;
+        let submissionStarted = false;
+
+        const numberValue = function (value) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        const displayNumber = function (value, decimals) {
+            return formatNumber(numberValue(value), decimals);
+        };
+        const displayAmount = function (value) {
+            return '$ ' + displayNumber(value, 2);
+        };
+        const setText = function (id, value) {
+            const node = document.getElementById(id);
+            if (node) {
+                node.textContent = String(value);
+            }
+        };
+        const setHidden = function (id, value) {
+            const node = document.getElementById(id);
+            if (node) {
+                node.value = String(value ?? '');
+            }
+        };
+        const periodLabel = function (period) {
+            const text = String(period ?? '');
+            const parts = text.split('-');
+            if (parts.length !== 2) {
+                return text;
+            }
+            const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+            const monthIndex = Number.parseInt(parts[1], 10) - 1;
+            return monthNames[monthIndex] ? monthNames[monthIndex] + ' de ' + parts[0] : text;
+        };
+
+        const levelDescription = function (reading) {
+            const level = String(reading.nivel ?? '').toUpperCase();
+            const documentNumber = String(reading.numero_documento ?? '').trim();
+            const documentLabel = documentNumber !== '' ? documentNumber : ('#' + String(reading.id_documento ?? ''));
+            let className = 'alert alert-info mb-3';
+            let message = 'La corrección se registrará con trazabilidad y no modificará datos hasta que la confirmes.';
+            let allowed = reading.puede_aplicar === true;
+
+            if (level === 'EDICION_SIMPLE') {
+                className = 'alert alert-success mb-3';
+                message = 'Todavía no existe un documento emitido. Al confirmar la solicitud se actualizarán la lectura, el consumo y el cobro calculado.';
+            } else if (level === 'REGENERACION_CONTROLADA') {
+                className = 'alert alert-warning mb-3';
+                message = 'El documento ' + documentLabel + ' será versionado. Luego se recalcularán su detalle, total y saldo dentro de una sola transacción.';
+            } else if (level === 'AUTORIZACION') {
+                className = 'alert alert-warning mb-3';
+                message = 'El período está cerrado o posee un asiento contable. La aplicación requerirá autorización; si existe asiento, se revertirá y regenerará con trazabilidad.';
+            } else if (level === 'AJUSTE_FINANCIERO') {
+                className = 'alert alert-danger mb-3';
+                message = 'El documento tiene pagos, aplicaciones, respaldos o envíos asociados. No puede sobrescribirse: debe resolverse mediante un ajuste financiero formal.';
+                allowed = false;
+            } else if (level === 'REVISION') {
+                className = 'alert alert-danger mb-3';
+                message = 'El documento está anulado o no se encuentra disponible. La lectura requiere revisión antes de cualquier cambio.';
+                allowed = false;
+            }
+            if (reading.puede_aplicar !== true && level !== 'AJUSTE_FINANCIERO' && level !== 'REVISION') {
+                className = 'alert alert-danger mb-3';
+                message = 'Tu usuario no posee el permiso requerido para autorizar esta corrección.';
+                allowed = false;
+            }
+            levelAlert.className = className;
+            levelAlert.textContent = message;
+            return allowed;
+        };
+
+        const validateAndCalculate = function () {
+            if (!activeReading) {
+                submitButton.disabled = true;
+                return false;
+            }
+            const previous = numberValue(activeReading.lectura_anterior);
+            const current = numberValue(activeReading.lectura_actual);
+            const factor = numberValue(activeReading.factor);
+            const literValue = numberValue(activeReading.valor_litro);
+            const nextRaw = activeReading.lectura_siguiente;
+            const hasNext = nextRaw !== null && nextRaw !== undefined && String(nextRaw) !== '';
+            const next = hasNext ? numberValue(nextRaw) : null;
+            const valueText = String(newReadingInput.value ?? '').trim();
+            const newReading = valueText === '' ? Number.NaN : Number(valueText);
+            let error = '';
+
+            if (!Number.isFinite(newReading) || newReading < 0) {
+                error = 'Ingresa una lectura nueva válida, igual o mayor que cero.';
+            } else if (newReading < previous) {
+                error = 'La lectura nueva no puede ser menor que la lectura anterior (' + displayNumber(previous, 4) + ').';
+            } else if (hasNext && next !== null && newReading > next) {
+                error = 'La lectura nueva no puede superar la lectura siguiente (' + displayNumber(next, 4) + ').';
+            } else if (Math.abs(newReading - current) <= 0.0001) {
+                error = 'La lectura nueva debe ser distinta de la registrada.';
+            }
+
+            const newConsumption = Number.isFinite(newReading) ? Math.max(0, newReading - previous) : 0;
+            const newAmount = Math.round(newConsumption * factor * literValue * 100) / 100;
+            const oldAmount = numberValue(activeReading.monto);
+            const difference = Math.round((newAmount - oldAmount) * 100) / 100;
+            const documentId = Number.parseInt(String(activeReading.id_documento ?? '0'), 10);
+            const documentTotal = numberValue(activeReading.monto_documento);
+            setText('gas-consumption-new', Number.isFinite(newReading) ? displayNumber(newConsumption, 4) + ' unid.' : '-');
+            setText('gas-amount-new', Number.isFinite(newReading) ? displayAmount(newAmount) : '-');
+            setText('gas-difference', Number.isFinite(newReading) ? displayAmount(difference) : '-');
+            setText('gas-document-total-new', documentId > 0 && Number.isFinite(newReading)
+                ? displayAmount(documentTotal + difference)
+                : 'Sin documento emitido');
+
+            const levelAllowed = levelDescription(activeReading);
+            validationMessage.textContent = error;
+            validationMessage.classList.toggle('d-none', error === '');
+            submitButton.disabled = submissionStarted || error !== '' || !levelAllowed;
+            return error === '' && levelAllowed;
+        };
+
+        const showReading = function (index) {
+            activeReading = readings[index] ?? null;
+            if (!activeReading) {
+                submitButton.disabled = true;
+                return;
+            }
+            const previous = numberValue(activeReading.lectura_anterior);
+            const current = numberValue(activeReading.lectura_actual);
+            const consumption = numberValue(activeReading.consumo);
+            const factor = numberValue(activeReading.factor);
+            const literValue = numberValue(activeReading.valor_litro);
+            const documentId = Number.parseInt(String(activeReading.id_documento ?? '0'), 10);
+            const documentNumber = String(activeReading.numero_documento ?? '').trim();
+            const nextRaw = activeReading.lectura_siguiente;
+            const hasNext = nextRaw !== null && nextRaw !== undefined && String(nextRaw) !== '';
+
+            setHidden('gas-id-contrato', activeReading.id_contrato_arriendo);
+            setHidden('gas-id-local', activeReading.id_local);
+            setHidden('gas-id-lectura', activeReading.id_lectura);
+            setHidden('gas-periodo', activeReading.periodo);
+            setHidden('gas-valor-anterior', JSON.stringify({
+                lectura_anterior: previous,
+                lectura_actual: current,
+                consumo: consumption
+            }));
+            setText('gas-local-label', String(activeReading.local ?? '').trim() || '-');
+            setText('gas-meter-label', String(activeReading.medidor ?? '').trim() || '-');
+            setText('gas-period-label', periodLabel(activeReading.periodo));
+            setText('gas-document-label', documentId > 0
+                ? (documentNumber !== '' ? documentNumber : ('#' + String(documentId)))
+                : 'Sin documento emitido');
+            setText('gas-reading-previous', displayNumber(previous, 4));
+            setText('gas-reading-current', displayNumber(current, 4));
+            setText('gas-consumption-current', displayNumber(consumption, 4) + ' unid.');
+            setText('gas-factor-current', displayNumber(factor, 6));
+            setText('gas-liter-value-current', displayAmount(literValue) + ' / litro');
+            setText('gas-formula-current', displayNumber(consumption, 4) + ' × ' + displayNumber(factor, 6) + ' × ' + displayAmount(literValue));
+            setText('gas-amount-current', displayAmount(activeReading.monto));
+            newReadingInput.value = String(current);
+            document.getElementById('gas-reading-limits').textContent = hasNext
+                ? 'Rango permitido: ' + displayNumber(previous, 4) + ' a ' + displayNumber(nextRaw, 4) + '.'
+                : 'Debe ser igual o mayor que ' + displayNumber(previous, 4) + '.';
+            validateAndCalculate();
+        };
+
+        document.querySelectorAll('.js-gas-edit').forEach(function (button) {
+            button.addEventListener('click', function () {
+                let parsed = [];
+                try {
+                    const raw = button.getAttribute('data-gas-readings') ?? '[]';
+                    const decoded = JSON.parse(raw);
+                    parsed = Array.isArray(decoded) ? decoded : [];
+                } catch (_error) {
+                    parsed = [];
+                }
+                readings = parsed.filter(function (reading) {
+                    return reading && Number.parseInt(String(reading.id_lectura ?? '0'), 10) > 0;
+                });
+                if (readings.length === 0) {
+                    return;
+                }
+
+                submissionStarted = false;
+                submitButton.textContent = 'Registrar corrección';
+                reasonInput.value = '';
+                selector.innerHTML = '';
+                readings.forEach(function (reading, index) {
+                    const option = document.createElement('option');
+                    option.value = String(index);
+                    const meter = String(reading.medidor ?? '').trim();
+                    const local = String(reading.local ?? '').trim();
+                    option.textContent = (meter !== '' ? meter : ('Lectura #' + String(reading.id_lectura)))
+                        + (local !== '' ? ' · ' + local : '');
+                    selector.appendChild(option);
+                });
+                selectorWrap.classList.toggle('d-none', readings.length <= 1);
+                selector.value = '0';
+                showReading(0);
+                modal.show();
+                window.setTimeout(function () {
+                    newReadingInput.focus();
+                    newReadingInput.select();
+                }, 200);
+            });
+        });
+
+        selector.addEventListener('change', function () {
+            const index = Number.parseInt(selector.value, 10);
+            showReading(Number.isFinite(index) ? index : 0);
+        });
+        newReadingInput.addEventListener('input', validateAndCalculate);
+        form.addEventListener('submit', function (event) {
+            if (!validateAndCalculate()) {
+                event.preventDefault();
+                return;
+            }
+            submissionStarted = true;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Registrando…';
+        });
+        modalElement.addEventListener('hidden.bs.modal', function () {
+            readings = [];
+            activeReading = null;
+            submissionStarted = false;
+            selector.innerHTML = '';
+            form.reset();
+            submitButton.textContent = 'Registrar corrección';
+            validationMessage.classList.add('d-none');
+        });
+    }
+
+    function initWaterCorrection() {
+        const modalElement = document.getElementById('waterCorrectionModal');
+        const form = document.getElementById('water-correction-form');
+        const selectorWrap = document.getElementById('water-reading-select-wrap');
+        const selector = document.getElementById('water-reading-select');
+        const newReadingInput = document.getElementById('water-new-reading');
+        const reasonInput = document.getElementById('water-reason');
+        const submitButton = document.getElementById('water-submit');
+        const levelAlert = document.getElementById('water-correction-level');
+        const validationMessage = document.getElementById('water-validation-message');
+        if (!modalElement || !form || !selectorWrap || !selector || !newReadingInput
+            || !reasonInput || !submitButton || !levelAlert || !validationMessage
+            || typeof bootstrap === 'undefined') {
+            return;
+        }
+
+        const modal = new bootstrap.Modal(modalElement);
+        let readings = [];
+        let activeReading = null;
+        let submissionStarted = false;
+        const numberValue = function (value) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        const displayNumber = function (value, decimals) {
+            return formatNumber(numberValue(value), decimals);
+        };
+        const displayAmount = function (value) {
+            return '$ ' + displayNumber(value, 2);
+        };
+        const setText = function (id, value) {
+            const node = document.getElementById(id);
+            if (node) {
+                node.textContent = String(value);
+            }
+        };
+        const setHidden = function (id, value) {
+            const node = document.getElementById(id);
+            if (node) {
+                node.value = String(value ?? '');
+            }
+        };
+        const periodLabel = function (period) {
+            const text = String(period ?? '');
+            const parts = text.split('-');
+            if (parts.length !== 2) {
+                return text;
+            }
+            const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+            const monthIndex = Number.parseInt(parts[1], 10) - 1;
+            return monthNames[monthIndex] ? monthNames[monthIndex] + ' de ' + parts[0] : text;
+        };
+        const consumptionPeriodLabel = function (reading) {
+            const from = String(reading.periodo_consumo_desde ?? '').trim();
+            const to = String(reading.periodo_consumo_hasta ?? '').trim();
+            if (from !== '' && to !== '') {
+                return from + ' al ' + to;
+            }
+            return to !== '' ? ('Hasta ' + to) : (from !== '' ? ('Desde ' + from) : 'Sin fechas informadas');
+        };
+
+        const levelDescription = function (reading) {
+            const level = String(reading.nivel ?? '').toUpperCase();
+            const documentNumber = String(reading.numero_documento ?? '').trim();
+            const documentLabel = documentNumber !== '' ? documentNumber : ('#' + String(reading.id_documento ?? ''));
+            let className = 'alert alert-info mb-3';
+            let message = 'La corrección se registrará con trazabilidad y no modificará datos hasta que la confirmes.';
+            let allowed = reading.puede_aplicar === true;
+            if (level === 'EDICION_SIMPLE') {
+                className = 'alert alert-success mb-3';
+                message = 'Todavía no existe un documento emitido. Al confirmar se actualizarán la lectura, el consumo y el cobro de agua.';
+            } else if (level === 'REGENERACION_CONTROLADA') {
+                className = 'alert alert-warning mb-3';
+                message = 'El documento ' + documentLabel + ' será versionado y su detalle, total y saldo se recalcularán en una sola transacción.';
+            } else if (level === 'AUTORIZACION') {
+                className = 'alert alert-warning mb-3';
+                message = 'El período está cerrado o posee asiento contable. La aplicación requiere autorización y regeneración contable trazable.';
+            } else if (level === 'AJUSTE_FINANCIERO') {
+                className = 'alert alert-danger mb-3';
+                message = 'El documento tiene pagos, aplicaciones, respaldos o envíos asociados. Debe resolverse con un ajuste financiero formal.';
+                allowed = false;
+            } else if (level === 'REVISION') {
+                className = 'alert alert-danger mb-3';
+                message = 'El documento está anulado o no está disponible. La lectura requiere revisión antes de cualquier cambio.';
+                allowed = false;
+            }
+            if (reading.puede_aplicar !== true && level !== 'AJUSTE_FINANCIERO' && level !== 'REVISION') {
+                className = 'alert alert-danger mb-3';
+                message = 'Tu usuario no posee el permiso requerido para autorizar esta corrección.';
+                allowed = false;
+            }
+            levelAlert.className = className;
+            levelAlert.textContent = message;
+            return allowed;
+        };
+
+        const calculate = function (reading, newReading) {
+            const previous = numberValue(reading.lectura_anterior);
+            const divisor = numberValue(reading.divisor);
+            const variableRate = divisor > 0
+                ? (numberValue(reading.servicio_agua_potable)
+                    + numberValue(reading.servicio_alcantarillado)
+                    + numberValue(reading.tratamiento_aguas_servidas)) / divisor
+                : 0;
+            const consumption = Math.max(0, newReading - previous);
+            const variableSubtotal = Math.round(consumption * variableRate * 100) / 100;
+            const fixedCharge = Math.round(numberValue(reading.cargo_fijo) * 100) / 100;
+            return {
+                consumption: consumption,
+                rate: variableRate,
+                variableSubtotal: variableSubtotal,
+                fixedCharge: fixedCharge,
+                total: Math.round((variableSubtotal + fixedCharge) * 100) / 100
+            };
+        };
+
+        const validateAndCalculate = function () {
+            if (!activeReading) {
+                submitButton.disabled = true;
+                return false;
+            }
+            const previous = numberValue(activeReading.lectura_anterior);
+            const current = numberValue(activeReading.lectura_actual);
+            const nextRaw = activeReading.lectura_siguiente;
+            const hasNext = nextRaw !== null && nextRaw !== undefined && String(nextRaw) !== '';
+            const next = hasNext ? numberValue(nextRaw) : null;
+            const valueText = String(newReadingInput.value ?? '').trim();
+            const newReading = valueText === '' ? Number.NaN : Number(valueText);
+            let error = '';
+            if (!Number.isFinite(newReading) || newReading < 0) {
+                error = 'Ingresa una lectura nueva válida, igual o mayor que cero.';
+            } else if (newReading < previous) {
+                error = 'La lectura nueva no puede ser menor que la lectura anterior (' + displayNumber(previous, 4) + ').';
+            } else if (hasNext && next !== null && newReading > next) {
+                error = 'La lectura nueva no puede superar la lectura siguiente (' + displayNumber(next, 4) + ').';
+            } else if (Math.abs(newReading - current) <= 0.0001) {
+                error = 'La lectura nueva debe ser distinta de la registrada.';
+            } else if (numberValue(activeReading.divisor) <= 0) {
+                error = 'Los parámetros de agua no tienen un divisor válido.';
+            }
+
+            const result = calculate(activeReading, Number.isFinite(newReading) ? newReading : previous);
+            const oldAmount = numberValue(activeReading.monto);
+            const difference = Math.round((result.total - oldAmount) * 100) / 100;
+            const documentId = Number.parseInt(String(activeReading.id_documento ?? '0'), 10);
+            const documentTotal = numberValue(activeReading.monto_documento);
+            setText('water-consumption-new', Number.isFinite(newReading) ? displayNumber(result.consumption, 4) + ' m³' : '-');
+            setText('water-variable-new', Number.isFinite(newReading) ? displayAmount(result.variableSubtotal) : '-');
+            setText('water-fixed-new', Number.isFinite(newReading) ? displayAmount(result.fixedCharge) : '-');
+            setText('water-amount-new', Number.isFinite(newReading) ? displayAmount(result.total) : '-');
+            setText('water-difference', Number.isFinite(newReading) ? displayAmount(difference) : '-');
+            setText('water-document-total-new', documentId > 0 && Number.isFinite(newReading)
+                ? displayAmount(documentTotal + difference)
+                : 'Sin documento emitido');
+
+            const levelAllowed = levelDescription(activeReading);
+            validationMessage.textContent = error;
+            validationMessage.classList.toggle('d-none', error === '');
+            submitButton.disabled = submissionStarted || error !== '' || !levelAllowed;
+            return error === '' && levelAllowed;
+        };
+
+        const showReading = function (index) {
+            activeReading = readings[index] ?? null;
+            if (!activeReading) {
+                submitButton.disabled = true;
+                return;
+            }
+            const previous = numberValue(activeReading.lectura_anterior);
+            const current = numberValue(activeReading.lectura_actual);
+            const currentResult = calculate(activeReading, current);
+            const documentId = Number.parseInt(String(activeReading.id_documento ?? '0'), 10);
+            const documentNumber = String(activeReading.numero_documento ?? '').trim();
+            const nextRaw = activeReading.lectura_siguiente;
+            const hasNext = nextRaw !== null && nextRaw !== undefined && String(nextRaw) !== '';
+
+            setHidden('water-id-contrato', activeReading.id_contrato_arriendo);
+            setHidden('water-id-local', activeReading.id_local);
+            setHidden('water-id-lectura', activeReading.id_lectura);
+            setHidden('water-periodo', activeReading.periodo);
+            setHidden('water-valor-anterior', JSON.stringify({
+                lectura_anterior: previous,
+                lectura_actual: current,
+                consumo: numberValue(activeReading.consumo)
+            }));
+            setText('water-local-label', String(activeReading.local ?? '').trim() || '-');
+            setText('water-meter-label', String(activeReading.medidor ?? '').trim() || '-');
+            setText('water-period-label', periodLabel(activeReading.periodo));
+            setText('water-consumption-period-label', consumptionPeriodLabel(activeReading));
+            setText('water-document-label', documentId > 0
+                ? (documentNumber !== '' ? documentNumber : ('#' + String(documentId)))
+                : 'Sin documento emitido');
+            setText('water-reading-previous', displayNumber(previous, 4));
+            setText('water-reading-current', displayNumber(current, 4));
+            setText('water-consumption-current', displayNumber(activeReading.consumo, 4) + ' m³');
+            setText('water-rate-current', displayAmount(currentResult.rate) + ' / m³');
+            setText('water-variable-current', displayAmount(currentResult.variableSubtotal));
+            setText('water-fixed-current', displayAmount(currentResult.fixedCharge));
+            setText('water-formula-current', displayNumber(activeReading.consumo, 4)
+                + ' × ' + displayAmount(currentResult.rate) + ' + ' + displayAmount(currentResult.fixedCharge));
+            setText('water-amount-current', displayAmount(activeReading.monto));
+            newReadingInput.value = String(current);
+            const limits = document.getElementById('water-reading-limits');
+            if (limits) {
+                limits.textContent = hasNext
+                    ? 'Rango permitido: ' + displayNumber(previous, 4) + ' a ' + displayNumber(nextRaw, 4) + '.'
+                    : 'Debe ser igual o mayor que ' + displayNumber(previous, 4) + '.';
+            }
+            validateAndCalculate();
+        };
+
+        document.querySelectorAll('.js-water-edit').forEach(function (button) {
+            button.addEventListener('click', function () {
+                let parsed = [];
+                try {
+                    const raw = button.getAttribute('data-water-readings') ?? '[]';
+                    const decoded = JSON.parse(raw);
+                    parsed = Array.isArray(decoded) ? decoded : [];
+                } catch (_error) {
+                    parsed = [];
+                }
+                readings = parsed.filter(function (reading) {
+                    return reading && Number.parseInt(String(reading.id_lectura ?? '0'), 10) > 0;
+                });
+                if (readings.length === 0) {
+                    return;
+                }
+                submissionStarted = false;
+                submitButton.textContent = 'Registrar corrección';
+                reasonInput.value = '';
+                selector.innerHTML = '';
+                readings.forEach(function (reading, index) {
+                    const option = document.createElement('option');
+                    option.value = String(index);
+                    const meter = String(reading.medidor ?? '').trim();
+                    const local = String(reading.local ?? '').trim();
+                    option.textContent = (meter !== '' ? meter : ('Lectura #' + String(reading.id_lectura)))
+                        + (local !== '' ? ' · ' + local : '');
+                    selector.appendChild(option);
+                });
+                selectorWrap.classList.toggle('d-none', readings.length <= 1);
+                selector.value = '0';
+                showReading(0);
+                modal.show();
+                window.setTimeout(function () {
+                    newReadingInput.focus();
+                    newReadingInput.select();
+                }, 200);
+            });
+        });
+        selector.addEventListener('change', function () {
+            const index = Number.parseInt(selector.value, 10);
+            showReading(Number.isFinite(index) ? index : 0);
+        });
+        newReadingInput.addEventListener('input', validateAndCalculate);
+        form.addEventListener('submit', function (event) {
+            if (!validateAndCalculate()) {
+                event.preventDefault();
+                return;
+            }
+            submissionStarted = true;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Registrando…';
+        });
+        modalElement.addEventListener('hidden.bs.modal', function () {
+            readings = [];
+            activeReading = null;
+            submissionStarted = false;
+            selector.innerHTML = '';
+            form.reset();
+            submitButton.textContent = 'Registrar corrección';
+            validationMessage.classList.add('d-none');
         });
     }
 
@@ -3168,7 +5387,6 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         initFilters();
         markFront('init_filters');
         initMonthNavigator();
-        initColumnGroupNavigator();
         markFront('init_month_navigator');
         syncStickyHeaderOffset();
         markFront('sync_sticky_once');
@@ -3180,6 +5398,14 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         defer(function () {
             refreshTotalsRow();
             markFront('refresh_totals_deferred');
+            initRentCorrection();
+            markFront('init_rent_correction_deferred');
+            initElectricityCorrection();
+            markFront('init_electricity_correction_deferred');
+            initGasCorrection();
+            markFront('init_gas_correction_deferred');
+            initWaterCorrection();
+            markFront('init_water_correction_deferred');
             initRowRedirectModal();
             markFront('init_row_redirect_deferred');
             flushFrontPerf();

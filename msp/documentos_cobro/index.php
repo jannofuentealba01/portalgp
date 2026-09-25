@@ -46,6 +46,13 @@ $filtroDocumento = filter_input(INPUT_GET, 'filtroDocumento', FILTER_VALIDATE_IN
     'options' => ['min_range' => 1],
 ]);
 $filtroPeriodo = trim((string) ($_GET['filtroPeriodo'] ?? ''));
+$returnToControlDiario = trim((string) ($_GET['return_to'] ?? ''));
+$returnToControlDiario = preg_match(
+    '#^control_diario/index\.php\?anio=20[2-9][0-9]&mes=20[2-9][0-9]-(?:0[1-9]|1[0-2])&detalle_local=[1-9][0-9]*&detalle_arrendatario=[1-9][0-9]*$#',
+    $returnToControlDiario
+) === 1 ? $returnToControlDiario : '';
+$backUrl = $returnToControlDiario !== '' ? msp2Url($returnToControlDiario) : msp2Url('msp_menu.php');
+$backLabel = $returnToControlDiario !== '' ? 'Volver a Control diario' : 'Volver a MSP';
 
 $arrendatariosDisponibles = [];
 $arrendatarioIdsDisponibles = [];
@@ -1405,8 +1412,8 @@ function formatoRutFrontend(?string $rut): string
 <main class="gp-main p-3 p-xl-4">
     <div class="msp-documents-index">
         <header class="msp-documents-page-header">
-            <a href="<?php echo msp2Escape(msp2Url('msp_menu.php')); ?>" class="btn btn-outline-secondary btn-sm msp-documents-back">
-                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a MSP
+            <a href="<?php echo msp2Escape($backUrl); ?>" class="btn btn-outline-secondary btn-sm msp-documents-back">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i><?php echo msp2Escape($backLabel); ?>
             </a>
             <h1>Documentos de cobro</h1>
         </header>
@@ -1424,6 +1431,9 @@ function formatoRutFrontend(?string $rut): string
                     <div class="row g-2">
                         <div class="col-12 col-lg-5">
                             <form method="get" class="row g-2 align-items-end" id="form_periodo">
+                                <?php if ($returnToControlDiario !== ''): ?>
+                                    <input type="hidden" name="return_to" value="<?php echo msp2Escape($returnToControlDiario); ?>">
+                                <?php endif; ?>
                                 <div class="col-12">
                                     <label for="filtroPeriodo" class="form-label">Período</label>
                                     <input
@@ -1446,6 +1456,9 @@ function formatoRutFrontend(?string $rut): string
                             <?php else: ?>
                             <form method="get" class="row g-2 align-items-end" id="form_arrendatario">
                                 <input type="hidden" name="filtroPeriodo" value="<?php echo msp2Escape($filtroPeriodo); ?>">
+                                <?php if ($returnToControlDiario !== ''): ?>
+                                    <input type="hidden" name="return_to" value="<?php echo msp2Escape($returnToControlDiario); ?>">
+                                <?php endif; ?>
                                 <div class="col-12">
                                     <?php
                                     $localesOrdenClavePorArrendatario = [];
@@ -2090,7 +2103,7 @@ function formatoRutFrontend(?string $rut): string
                                                             <button
                                                                 type="submit"
                                                                 class="btn btn-outline-primary btn-sm"
-                                                                title="<?php echo (!$modoCorreoDemoActivo && !$envioArrendatariosHabilitado) ? 'Envío real bloqueado desde Configuración Correos' : 'Reenviar cobro de este documento'; ?>"
+                                                                title="<?php echo (!$modoCorreoDemoActivo && !$envioArrendatariosHabilitado) ? 'Envío real bloqueado desde Configuración Correos' : 'Reenviar el PDF detallado de este documento'; ?>"
                                                                 <?php echo (!$modoCorreoDemoActivo && !$envioArrendatariosHabilitado) ? 'disabled' : ''; ?>>
                                                                 <i class="bi bi-send me-1" aria-hidden="true"></i>Reenviar cobro
                                                             </button>
@@ -2187,7 +2200,7 @@ function formatoRutFrontend(?string $rut): string
                                                     <span><?php echo msp2Escape(formatoDecimal($porcentajePagado, 1)); ?>%</span>
                                                 </div>
                                                 <div class="progress" role="progressbar" aria-label="Avance de pago documento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo msp2Escape((string) $porcentajePagado); ?>">
-                                                    <div class="progress-bar <?php echo $saldo > 0 ? 'bg-warning text-dark' : 'bg-success'; ?>" style="width: <?php echo msp2Escape((string) $porcentajePagado); ?>%"></div>
+                                                    <div class="progress-bar <?php echo $saldo > 0 ? 'bg-warning text-dark' : 'bg-success'; ?>" <?php echo pgpCspStyleAttribute('width: ' . (string) $porcentajePagado . '%'); ?>></div>
                                                 </div>
                                             </div>
                                             </div>
@@ -2245,6 +2258,7 @@ function formatoRutFrontend(?string $rut): string
                                             </div>
 
                                             <div class="row g-3" data-doc-section="consumos" hidden>
+                                                <?php if ((float) ($doc['subtotal_arriendo'] ?? 0) > 0.005): ?>
                                                 <div class="col-12">
                                                     <div class="doc-detail-box">
                                                         <h3 class="h6 mb-2">Arriendo por local</h3>
@@ -2276,6 +2290,7 @@ function formatoRutFrontend(?string $rut): string
                                                         <?php endif; ?>
                                                     </div>
                                                 </div>
+                                                <?php endif; ?>
 
                                                 <?php if ($luzDocumento !== []): ?>
                                                     <div class="col-12">
@@ -2856,8 +2871,8 @@ function formatoRutFrontend(?string $rut): string
 </div>
 
 <?php msp2RenderSearchAssets(); ?>
-<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
     const escapeHtmlText = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
         '&': '&amp;',
         '<': '&lt;',
@@ -3384,15 +3399,15 @@ function formatoRutFrontend(?string $rut): string
             }
         };
 
-        const conceptoColor = (codigo) => {
+        const conceptoColorClass = (codigo) => {
             switch (codigo) {
-                case 'ARRIENDO': return '#4f46e5';
-                case 'SERVICIO_LUZ': return '#d97706';
-                case 'SERVICIO_GAS': return '#dc2626';
-                case 'SERVICIO_AGUA': return '#2563eb';
-                case 'MULTA': return '#ea580c';
-                case 'DANO': return '#7c3aed';
-                default: return '#6b7280';
+                case 'ARRIENDO': return 'v2-concept-icon--rent';
+                case 'SERVICIO_LUZ': return 'v2-concept-icon--electricity';
+                case 'SERVICIO_GAS': return 'v2-concept-icon--gas';
+                case 'SERVICIO_AGUA': return 'v2-concept-icon--water';
+                case 'MULTA': return 'v2-concept-icon--fine';
+                case 'DANO': return 'v2-concept-icon--damage';
+                default: return 'v2-concept-icon--default';
             }
         };
 
@@ -3476,15 +3491,15 @@ function formatoRutFrontend(?string $rut): string
                 const nombre = String(c.nombre_item || 'Concepto');
                 const saldo = parseDot(c.saldo || 0);
                 const icon = conceptoIcon(codigo);
-                const color = conceptoColor(codigo);
+                const colorClass = conceptoColorClass(codigo);
                 return `<tr data-v2-id="${id}" data-v2-saldo="${saldo.toFixed(2)}">
                     <td class="ps-3 py-2">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="bi ${icon}" style="color:${color};font-size:1.05em;flex-shrink:0;" aria-hidden="true"></i>
-                            <span class="fw-semibold" style="font-size:.92rem;">${escapeHtmlText(nombre)}</span>
+                            <i class="bi ${icon} v2-concept-icon ${colorClass}" aria-hidden="true"></i>
+                            <span class="fw-semibold v2-concept-name">${escapeHtmlText(nombre)}</span>
                         </div>
                     </td>
-                    <td class="text-end py-2 pe-3" style="font-size:.85rem;color:var(--color-text-muted);white-space:nowrap;">${fmtMoney(saldo)}</td>
+                    <td class="text-end py-2 pe-3 v2-concept-balance">${fmtMoney(saldo)}</td>
                     <td class="py-2">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">$</span>
@@ -3493,7 +3508,7 @@ function formatoRutFrontend(?string $rut): string
                         </div>
                     </td>
                     <td class="text-center py-2 pe-2">
-                        <span class="badge text-bg-secondary v2-saldo-badge" style="font-size:.72em;">${fmtMoney(saldo)} pend.</span>
+                        <span class="badge text-bg-secondary v2-saldo-badge">${fmtMoney(saldo)} pend.</span>
                     </td>
                 </tr>`;
             }).join('');
@@ -3938,7 +3953,7 @@ function formatoRutFrontend(?string $rut): string
     })();
 })();
 </script>
-<script>
+<script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?>>
 (() => {
     const input = document.getElementById('buscarDocumentoVisible');
     const clear = document.getElementById('limpiarDocumentoVisible');

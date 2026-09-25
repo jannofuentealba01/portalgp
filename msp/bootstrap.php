@@ -77,7 +77,7 @@ function msp2RequireAnyAccess(array $permissions, ?string $action = null): void
     pgpRequireEnabledSession($GLOBALS['conn']);
     pgpRequireInternalAudience();
     if (!isset($_SESSION['usuario']['id'])) {
-        echo "<script>alert('Debes iniciar sesión.'); window.location.href = '/portalgp/login.php';</script>";
+        echo "<script" . pgpCspNonceAttribute() . ">alert('Debes iniciar sesión.'); window.location.href = '/portalgp/login.php';</script>";
         exit();
     }
     $action = $action ?? pgpRequestPermissionAction();
@@ -88,7 +88,7 @@ function msp2RequireAnyAccess(array $permissions, ?string $action = null): void
         }
     }
     http_response_code(403);
-    echo "<script>alert('No tienes permiso para esta acción.'); window.location.href = '/portalgp/msp/msp_menu.php';</script>";
+    echo "<script" . pgpCspNonceAttribute() . ">alert('No tienes permiso para esta acción.'); window.location.href = '/portalgp/msp/msp_menu.php';</script>";
     exit();
 }
 
@@ -96,7 +96,7 @@ function msp2RequireAccess(?string $permission = null, ?string $action = null): 
 {
     pgpRequireEnabledSession($GLOBALS['conn']);
     if (!isset($_SESSION['usuario']['id'])) {
-        echo "<script>alert('Debes iniciar sesión.'); window.location.href = '/portalgp/login.php';</script>";
+        echo "<script" . pgpCspNonceAttribute() . ">alert('Debes iniciar sesión.'); window.location.href = '/portalgp/login.php';</script>";
         exit();
     }
 
@@ -154,20 +154,95 @@ function msp2ModuleAvailable(string $relativePath): bool
     return is_file(__DIR__ . '/' . ltrim($relativePath, '/'));
 }
 
-function msp2PendingBadgeCount(): int
+/** @return array<int,string> */
+function msp2PendingAllowedModules(): array
 {
-    static $count = null;
-    if (is_int($count)) {
-        return $count;
+    $modules = [];
+    if (msp2CurrentUserHasPermission('MSP Operacion')) {
+        $modules = array_merge($modules, ['OPERACION_MENSUAL', 'LECTURAS', 'CONTRATOS', 'LOCALES']);
     }
+    if (msp2CurrentUserHasPermission('MSP Cierre Mensual')) {
+        $modules[] = 'CIERRE_MENSUAL';
+    }
+    if (msp2CurrentUserHasPermission('MSP Cobranza')) {
+        $modules = array_merge($modules, ['GARANTIA', 'COBRANZA']);
+    }
+    if (msp2CurrentUserHasPermission('MSP Tesoreria')) {
+        $modules[] = 'TESORERIA';
+    }
+    if (msp2CurrentUserHasPermission('MSP Reportes')) {
+        $modules[] = 'CONTABILIDAD';
+    }
+    return array_values(array_unique($modules));
+}
+
+/** @return array<string,mixed> */
+function msp2PendingNotificationSnapshot(bool $forceRefresh = false): array
+{
+    static $requestSnapshot = null;
+    if (!$forceRefresh && is_array($requestSnapshot)) {
+        return $requestSnapshot;
+    }
+
+    $empty = [
+        'available' => true,
+        'total' => 0,
+        'critical' => 0,
+        'high' => 0,
+        'items' => [],
+        'refreshed_at' => time(),
+    ];
+    $allowedModules = msp2PendingAllowedModules();
+    if ($allowedModules === []) {
+        return $requestSnapshot = $empty;
+    }
+
+    $userId = (int) ($_SESSION['usuario']['id'] ?? 0);
+    $cacheKey = 'msp_pending_nav_' . $userId . '_' . sha1(implode('|', $allowedModules));
+    $cached = $_SESSION[$cacheKey] ?? null;
+    if (
+        !$forceRefresh
+        && is_array($cached)
+        && (int) ($cached['refreshed_at'] ?? 0) >= time() - 60
+    ) {
+        return $requestSnapshot = $cached;
+    }
+
     try {
         require_once __DIR__ . '/services/PendientesService.php';
         $service = new PendientesService($GLOBALS['conn']);
-        $count = (int) ($service->resumen()['total'] ?? 0);
+        $items = $service->buscar([
+            'agrupar' => true,
+            'modulos_permitidos' => $allowedModules,
+        ]);
+        $critical = 0;
+        $high = 0;
+        foreach ($items as $item) {
+            $priority = strtoupper((string) ($item['prioridad'] ?? ''));
+            $critical += $priority === 'CRITICA' ? 1 : 0;
+            $high += $priority === 'ALTA' ? 1 : 0;
+        }
+        $requestSnapshot = [
+            'available' => true,
+            'total' => count($items),
+            'critical' => $critical,
+            'high' => $high,
+            'items' => array_slice($items, 0, 5),
+            'refreshed_at' => time(),
+        ];
+        $_SESSION[$cacheKey] = $requestSnapshot;
     } catch (Throwable) {
-        $count = 0;
+        $requestSnapshot = $empty;
+        $requestSnapshot['available'] = false;
+        $requestSnapshot['items'] = [];
     }
-    return $count;
+    return $requestSnapshot;
+}
+
+function msp2PendingBadgeCount(): int
+{
+    $snapshot = msp2PendingNotificationSnapshot();
+    return (bool) ($snapshot['available'] ?? false) ? (int) ($snapshot['total'] ?? 0) : 0;
 }
 
 function msp2DescuentosArriendoEnabled(): bool
@@ -180,12 +255,14 @@ function msp2QuickAccessMainSections(): array
     return [
         [
             'id' => 'alta',
-            'label' => 'Gestión comercial y alta',
+            'label' => 'Gestión comercial',
+            'description' => 'Administra arrendatarios, tiendas, locales, contratos y el control operativo diario.',
             'accent' => 'sect-admin',
             'icon' => 'bi-person-plus-fill',
             'items' => [
                 [
                     'label' => 'Gestionar Arrendatarios',
+                    'caption' => 'Consulta la ficha, contratos y garantía asociada de cada arrendatario.',
                     'icon' => 'bi-people-fill',
                     'href' => msp2Url('arrendatarios/index.php'),
                     'enabled' => true,
@@ -193,6 +270,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Locales y tiendas disponibles',
+                    'caption' => 'Gestiona tiendas, locales, medidores y sus relaciones operativas.',
                     'icon' => 'bi-shop',
                     'href' => msp2Url('locales_tiendas/index.php'),
                     'enabled' => true,
@@ -200,72 +278,49 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Contratos',
+                    'caption' => 'Crea, consulta y mantiene los contratos de arriendo.',
                     'icon' => 'bi-file-earmark-text',
                     'href' => msp2Url('contratos/index.php'),
                     'enabled' => true,
                     'permission' => 'MSP Operacion',
                 ],
                 [
-                    'label' => 'Garantías',
-                    'icon' => 'bi-shield-check',
-                    'href' => msp2Url('garantias/index.php'),
-                    'enabled' => msp2ModuleAvailable('garantias/index.php'),
-                    'permission' => 'MSP Cobranza',
+                    'label' => 'Control diario',
+                    'caption' => 'Revisa pagos, caja, bancos, documentos y movimientos del día.',
+                    'icon' => 'bi-clipboard-check',
+                    'href' => msp2Url('control_diario/index.php'),
+                    'enabled' => true,
+                    'permission' => 'MSP Operacion',
                 ],
             ],
         ],
         [
             'id' => 'operacion',
             'label' => 'Operación mensual',
+            'description' => 'Prepara, valida y genera los documentos de cobro del período operativo.',
             'accent' => 'sect-facturacion',
             'icon' => 'bi-receipt-cutoff',
             'items' => [
                 [
-                    'label' => 'Bandeja de pendientes',
-                    'icon' => 'bi-inbox-fill',
-                    'href' => msp2Url('pendientes/index.php'),
-                    'enabled' => msp2ModuleAvailable('pendientes/index.php'),
-                    'badge' => msp2PendingBadgeCount(),
-                    'permission' => 'MSP Operacion',
-                ],
-                [
-                    'label' => 'Generar documento de cobro',
+                    'label' => 'Generar documentos de cobro',
+                    'caption' => 'Registra lecturas, valida servicios y genera la documentación mensual.',
                     'icon' => 'bi-lightning-charge-fill',
                     'href' => msp2Url('cobros/operacion_mensual.php'),
                     'enabled' => true,
                     'permission' => 'MSP Operacion',
-                ],
-                [
-                    'label' => 'Correcciones selectivas',
-                    'icon' => 'bi-funnel',
-                    'href' => msp2Url('correcciones/index.php'),
-                    'enabled' => true,
-                    'permission' => 'MSP Operacion',
-                ],
-                [
-                    'label' => 'Control diario',
-                    'icon' => 'bi-table',
-                    'href' => msp2Url('control_diario/index.php'),
-                    'enabled' => true,
-                    'permission' => 'MSP Operacion',
-                ],
-                [
-                    'label' => 'Cierre mensual',
-                    'icon' => 'bi-calendar-check',
-                    'href' => msp2Url('cierre_mensual/index.php'),
-                    'enabled' => msp2ModuleAvailable('cierre_mensual/index.php'),
-                    'permission' => 'MSP Cierre Mensual',
                 ],
             ],
         ],
         [
             'id' => 'cobranza',
             'label' => 'Cobranza y tesorería',
+            'description' => 'Consulta documentos, registra pagos y administra ajustes de cobranza.',
             'accent' => 'sect-cobranza',
             'icon' => 'bi-cash-stack',
             'items' => [
                 [
                     'label' => 'Documentos de cobro',
+                    'caption' => 'Busca documentos emitidos, pagos y saldos pendientes.',
                     'icon' => 'bi-receipt',
                     'href' => msp2Url('documentos_cobro/index.php'),
                     'enabled' => true,
@@ -273,6 +328,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Carga de PDF por tienda',
+                    'caption' => 'Carga y revisa documentos externos antes de asociarlos o enviarlos.',
                     'icon' => 'bi-file-earmark-arrow-up',
                     'href' => msp2Url('documentos_tienda/index.php'),
                     'enabled' => msp2ModuleAvailable('documentos_tienda/index.php'),
@@ -280,6 +336,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Registrar pago',
+                    'caption' => 'Registra un pago y distribúyelo por antigüedad dentro del contrato.',
                     'icon' => 'bi-cash-coin',
                     'href' => msp2Url('cobranza/registrar_pago_contrato.php'),
                     'enabled' => true,
@@ -287,6 +344,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Ajustes de cobranza',
+                    'caption' => 'Registra cargos adicionales o abonos como saldo a favor.',
                     'icon' => 'bi-sliders2',
                     'href' => msp2Url('cobranza/ajustes.php'),
                     'enabled' => true,
@@ -294,6 +352,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Respaldo PDFs',
+                    'caption' => 'Consulta comprobantes y archivos PDF respaldados.',
                     'icon' => 'bi-archive',
                     'href' => msp2Url('pagos/archivos_pdf.php'),
                     'enabled' => true,
@@ -302,13 +361,56 @@ function msp2QuickAccessMainSections(): array
             ],
         ],
         [
+            'id' => 'garantias',
+            'label' => 'Garantías',
+            'description' => 'Recibe, aplica, devuelve y consulta la trazabilidad de garantías por contrato.',
+            'accent' => 'sect-garantias',
+            'icon' => 'bi-shield-check',
+            'items' => [
+                [
+                    'label' => 'Control integral de garantías',
+                    'caption' => 'Busca una garantía y revisa su monto pactado, movimientos y saldo.',
+                    'icon' => 'bi-shield-check',
+                    'href' => msp2Url('garantias/index.php'),
+                    'enabled' => msp2ModuleAvailable('garantias/index.php'),
+                    'permission' => 'MSP Cobranza',
+                ],
+                [
+                    'label' => 'Recepción de garantías',
+                    'caption' => 'Registra el dinero recibido y contrástalo con el monto pactado.',
+                    'icon' => 'bi-inbox',
+                    'href' => msp2Url('garantias/recepciones.php'),
+                    'enabled' => msp2ModuleAvailable('garantias/recepciones.php'),
+                    'permission' => 'MSP Cobranza',
+                ],
+                [
+                    'label' => 'Aplicación de garantías',
+                    'caption' => 'Reserva o aplica garantía contra obligaciones del contrato.',
+                    'icon' => 'bi-shield-minus',
+                    'href' => msp2Url('garantias/aplicaciones.php'),
+                    'enabled' => msp2ModuleAvailable('garantias/aplicaciones.php'),
+                    'permission' => 'MSP Cobranza',
+                ],
+                [
+                    'label' => 'Devolución de garantías',
+                    'caption' => 'Registra devoluciones y consulta su historial completo.',
+                    'icon' => 'bi-cash-coin',
+                    'href' => msp2Url('garantias/devoluciones.php'),
+                    'enabled' => msp2ModuleAvailable('garantias/devoluciones.php'),
+                    'permission' => 'MSP Cobranza',
+                ],
+            ],
+        ],
+        [
             'id' => 'cierre',
             'label' => 'Cierre y salida',
+            'description' => 'Gestiona el término contractual, la liquidación final y saldos posteriores.',
             'accent' => 'sect-cierre',
             'icon' => 'bi-box-arrow-right',
             'items' => [
                 [
                     'label' => 'Término y cierre de contratos',
+                    'caption' => 'Calcula obligaciones, garantía y liquidación al finalizar un contrato.',
                     'icon' => 'bi-door-closed-fill',
                     'href' => msp2Url('cierre/index.php'),
                     'enabled' => true,
@@ -316,6 +418,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Deudores exarrendatarios',
+                    'caption' => 'Da seguimiento a saldos que permanecen después del término.',
                     'icon' => 'bi-person-x-fill',
                     'href' => msp2Url('cobranza/deudores_exarrendatarios.php'),
                     'enabled' => true,
@@ -326,11 +429,13 @@ function msp2QuickAccessMainSections(): array
         [
             'id' => 'reportes',
             'label' => 'Reportes y control',
+            'description' => 'Analiza recaudación, deuda y trazabilidad de la operación MSP.',
             'accent' => 'sect-reportes',
             'icon' => 'bi-clipboard-data',
             'items' => [
                 [
                     'label' => 'Dashboard',
+                    'caption' => 'Consulta indicadores financieros, ocupación y consumos por período.',
                     'icon' => 'bi-speedometer2',
                     'href' => msp2Url('dashboard/index.php'),
                     'enabled' => true,
@@ -338,6 +443,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Aging de Deudores',
+                    'caption' => 'Clasifica la deuda por antigüedad y nivel de seguimiento.',
                     'icon' => 'bi-hourglass-split',
                     'href' => msp2Url('contabilidad/aging.php'),
                     'enabled' => true,
@@ -345,6 +451,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Trazabilidad de cobros',
+                    'caption' => 'Relaciona lecturas, servicios, documentos, pagos y ajustes.',
                     'icon' => 'bi-list-check',
                     'href' => msp2Url('reportes/trazabilidad.php'),
                     'enabled' => msp2ModuleAvailable('reportes/trazabilidad.php'),
@@ -355,11 +462,13 @@ function msp2QuickAccessMainSections(): array
         [
             'id' => 'configuracion',
             'label' => 'Configuración',
+            'description' => 'Administra catálogos maestros y parámetros internos de MSP.',
             'accent' => 'sect-catalogos',
             'icon' => 'bi-sliders',
             'items' => [
                 [
                     'label' => 'Catálogos maestros',
+                    'caption' => 'Gestiona bancos, rubros, estados, feriados y parámetros operativos.',
                     'icon' => 'bi-collection-fill',
                     'href' => msp2Url('catalogo_menu.php'),
                     'enabled' => true,
@@ -367,6 +476,7 @@ function msp2QuickAccessMainSections(): array
                 ],
                 [
                     'label' => 'Configuración de correos',
+                    'caption' => 'Configura remitentes y prepara el futuro envío de documentos.',
                     'icon' => 'bi-envelope-check',
                     'href' => msp2Url('configuracion/correos.php'),
                     'enabled' => true,
@@ -595,7 +705,7 @@ function msp2RenderCsrfAutoFieldScript(): void
         return;
     }
 
-    echo '<script>(function(){'
+    echo '<script' . pgpCspNonceAttribute() . '>(function(){'
         . 'const token=' . $tokenJson . ';'
         . 'const ensure=function(form){'
         . 'if(!(form instanceof HTMLFormElement)){return;}'
