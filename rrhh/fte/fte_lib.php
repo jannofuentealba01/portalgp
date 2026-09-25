@@ -4,8 +4,57 @@ declare(strict_types=1);
 require_once __DIR__ . '/fte_monthly_engine.php';
 require_once __DIR__ . '/fte_calendar_engine.php';
 require_once __DIR__ . '/fte_headcount_history.php';
+require_once __DIR__ . '/fte_identity.php';
+require_once __DIR__ . '/fte_headcount_snapshot.php';
+require_once __DIR__ . '/fte_monthly_source_snapshot.php';
 require_once __DIR__ . '/fte_attendance_status.php';
 require_once __DIR__ . '/fte_monthly_report.php';
+
+final class FteGeoVictoriaException extends RuntimeException
+{
+    private string $reason;
+    private int $providerStatus;
+
+    public function __construct(string $reason, int $providerStatus = 0, string $message = '')
+    {
+        $this->reason = $reason;
+        $this->providerStatus = $providerStatus;
+        parent::__construct($message !== '' ? $message : 'GeoVictoria request failed: ' . $reason);
+    }
+
+    public function reason(): string
+    {
+        return $this->reason;
+    }
+
+    public function providerStatus(): int
+    {
+        return $this->providerStatus;
+    }
+}
+
+final class FteAttendanceBatchException extends RuntimeException
+{
+    private string $reason;
+    private int $providerStatus;
+
+    public function __construct(string $reason, int $providerStatus = 0, string $message = '')
+    {
+        $this->reason = $reason;
+        $this->providerStatus = $providerStatus;
+        parent::__construct($message !== '' ? $message : 'FTE attendance batch failed: ' . $reason);
+    }
+
+    public function reason(): string
+    {
+        return $this->reason;
+    }
+
+    public function providerStatus(): int
+    {
+        return $this->providerStatus;
+    }
+}
 
 function fte_load_config(): array
 {
@@ -171,6 +220,18 @@ function fte_normalize_buk_person(array $raw): ?array
     usort($jobs, static fn(array $left, array $right): int =>
         strcmp((string)($left['start_date'] ?? ''), (string)($right['start_date'] ?? ''))
         ?: ((int)($left['job_id'] ?? 0) <=> (int)($right['job_id'] ?? 0)));
+    $activeSince = fte_buk_date($raw['active_since'] ?? null);
+    $activeUntil = fte_buk_date($raw['active_until'] ?? null);
+    $employmentPeriods = [];
+    if ($activeSince !== null || $activeUntil !== null || $active !== null) {
+        $employmentPeriods[] = [
+            'start_date' => $activeSince,
+            'end_date' => $activeUntil,
+            'start_source' => 'Buk employee.active_since',
+            'end_source' => 'Buk employee.active_until',
+            'verified' => true,
+        ];
+    }
     return [
         'buk_employee_id' => fte_first_non_empty($raw, ['id']),
         'identifier' => $identifier,
@@ -180,8 +241,15 @@ function fte_normalize_buk_person(array $raw): ?array
         'cost_center_name' => $costCenter['name'],
         'status' => $status,
         'active' => $active,
-        'active_since' => fte_buk_date($raw['active_since'] ?? null),
-        'active_until' => fte_buk_date($raw['active_until'] ?? null),
+        'active_since' => $activeSince,
+        'active_until' => $activeUntil,
+        // Fechas de la relacion laboral del trabajador. Nunca se infieren
+        // desde current_job ni jobs: esos registros tambien cambian por
+        // traslados internos de cargo o centro de costo.
+        'employment_start_source' => 'Buk employee.active_since',
+        'employment_end_source' => 'Buk employee.active_until',
+        'employment_dates_verified' => true,
+        'employment_periods' => $employmentPeriods,
         'jobs' => $jobs,
     ];
 }
@@ -304,12 +372,16 @@ function fte_response_has_next_page(array $payload, int $page, int $rowCount, in
     return $rowCount >= $requestedPageSize;
 }
 
-function fte_fetch_buk_people(array $config, bool $activeOnly = true): array
+function fte_fetch_buk_people(array $config, bool $activeOnly = true, ?array &$identityDiagnostics = null): array
 {
     fte_assert_buk_config($config);
     $base = rtrim((string)$config['buk_base_url'], '/');
     $country = trim((string)$config['buk_country']);
-    $cacheKey = hash('sha256', $base . '|' . $country . '|' . (string)$config['buk_token'] . '|' . ($activeOnly ? 'active' : 'history'));
+    $identityPolicyHash = hash('sha256', json_encode([
+        'identity' => $config['identity_exclusions'] ?? [],
+        'attendance' => $config['attendance_exclusions'] ?? [],
+    ], JSON_UNESCAPED_UNICODE));
+    $cacheKey = hash('sha256', $base . '|' . $country . '|' . (string)$config['buk_token'] . '|' . ($activeOnly ? 'active' : 'history') . '|identity-v2-employment-dates|' . $identityPolicyHash);
     $cacheTtl = max(0, (int)($config['buk_people_cache_ttl_seconds'] ?? 300));
     if (session_status() === PHP_SESSION_ACTIVE && $cacheTtl > 0) {
         $cache = $_SESSION['fte_buk_people_cache'] ?? null;
@@ -317,6 +389,9 @@ function fte_fetch_buk_people(array $config, bool $activeOnly = true): array
             && hash_equals((string)($cache['key'] ?? ''), $cacheKey)
             && (int)($cache['expires_at'] ?? 0) > time()
             && is_array($cache['people'] ?? null)) {
+            $identityDiagnostics = is_array($cache['identity_diagnostics'] ?? null)
+                ? $cache['identity_diagnostics']
+                : [];
             return $cache['people'];
         }
     }
@@ -357,7 +432,7 @@ function fte_fetch_buk_people(array $config, bool $activeOnly = true): array
             }
             $person = fte_normalize_buk_person($row);
             if ($person !== null && (!$activeOnly || $person['active'] !== false)) {
-                $people[$person['normalized_identifier']] = $person;
+                $people[] = $person;
             }
         }
         if (!fte_response_has_next_page($response['json'], $page, count($pageRows), 100)) {
@@ -367,7 +442,7 @@ function fte_fetch_buk_people(array $config, bool $activeOnly = true): array
             throw new RuntimeException('Buk excedio el limite de paginas; nomina incompleta.');
         }
     }
-    $people = array_values($people);
+    $people = fte_identity_unify_people($people, $config, $identityDiagnostics);
     $names = fte_fetch_buk_cost_center_names($config);
     foreach ($people as &$person) {
         $code = (string)($person['cost_center_code'] ?? '');
@@ -388,6 +463,7 @@ function fte_fetch_buk_people(array $config, bool $activeOnly = true): array
             'key' => $cacheKey,
             'expires_at' => time() + $cacheTtl,
             'people' => $people,
+            'identity_diagnostics' => $identityDiagnostics,
         ];
     }
     return $people;
@@ -498,34 +574,7 @@ function fte_buk_fetch_all(array $config, string $path, array $query = [], int $
 
 function fte_absence_employee_keys(array $item): array
 {
-    $keys = [];
-    foreach ([
-        'employee_id',
-        'person_id',
-        'employee.id',
-        'person.id',
-        'employee.rut',
-        'person.rut',
-        'rut',
-        'employee.document_number',
-        'document_number',
-        'employee.identification',
-        'identification',
-    ] as $path) {
-        $value = strpos($path, '.') !== false ? fte_arr_get($item, $path) : ($item[$path] ?? null);
-        if ($value === null || is_array($value)) {
-            continue;
-        }
-        $text = trim((string)$value);
-        if ($text !== '') {
-            $keys[] = $text;
-            $normalized = fte_normalize_identifier($text);
-            if ($normalized !== '') {
-                $keys[] = $normalized;
-            }
-        }
-    }
-    return array_values(array_unique($keys));
+    return fte_identity_aliases_for_absence($item);
 }
 
 function fte_absence_date_value(array $item, array $paths): string
@@ -678,11 +727,7 @@ function fte_build_absence_payload(array $config, array $params): array
 
     $reasons = [];
     foreach ($people as $person) {
-        $keys = array_values(array_unique(array_filter([
-            (string)($person['normalized_identifier'] ?? ''),
-            fte_normalize_identifier($person['identifier'] ?? ''),
-            (string)($person['buk_employee_id'] ?? ''),
-        ])));
+        $keys = fte_identity_aliases_for_person($person);
         foreach ($keys as $key) {
             if (!isset($reasonIndex[$key])) {
                 continue;
@@ -740,7 +785,7 @@ function fte_iter_dates(DateTimeImmutable $from, DateTimeImmutable $to): array
     return $dates;
 }
 
-function fte_geovictoria_token(array $config): string
+function fte_geovictoria_token(array $config, int $timeoutSeconds = 30): string
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();
@@ -754,29 +799,84 @@ function fte_geovictoria_token(array $config): string
     $user = trim((string)$config['geovictoria_user']);
     $password = trim((string)$config['geovictoria_password']);
     $url = rtrim((string)$config['geovictoria_base_url'], '/') . '/Login';
-    $response = fte_http_json($url, [], ['User' => $user, 'Password' => $password], 30);
+    $response = fte_http_json($url, [], ['User' => $user, 'Password' => $password], max(1, min(30, $timeoutSeconds)));
     if (!$response['ok'] || !is_array($response['json']) || empty($response['json']['token'])) {
-        throw new RuntimeException('GeoVictoria no entrego token de autenticacion.');
+        $reason = (int)($response['errno'] ?? 0) === CURLE_OPERATION_TIMEDOUT
+            ? 'timeout'
+            : (((int)($response['status'] ?? 0) === 429) ? 'rate_limit' : 'authentication');
+        throw new FteGeoVictoriaException($reason, (int)($response['status'] ?? 0), 'GeoVictoria no entrego token de autenticacion.');
     }
     $_SESSION['fte_geovictoria_token'] = (string)$response['json']['token'];
     $_SESSION['fte_geovictoria_token_expires'] = time() + (int)$config['geovictoria_token_ttl_seconds'];
     return (string)$_SESSION['fte_geovictoria_token'];
 }
 
-function fte_geovictoria_post(array $config, string $endpoint, array $payload): array
+function fte_geovictoria_failure_reason(array $response): string
 {
-    $token = fte_geovictoria_token($config);
+    $status = (int)($response['status'] ?? 0);
+    $errno = (int)($response['errno'] ?? 0);
+    $body = is_array($response['json'] ?? null) ? $response['json'] : [];
+    $category = strtolower(trim((string)($body['CategoryException'] ?? $body['categoryException'] ?? '')));
+    $description = strtolower(trim((string)($body['Description'] ?? $body['description'] ?? '')));
+    $code = trim((string)($body['Code'] ?? $body['code'] ?? ''));
+    if ($errno === CURLE_OPERATION_TIMEDOUT) {
+        return 'timeout';
+    }
+    if ($status === 429) {
+        return 'rate_limit';
+    }
+    if ($status === 401 || $status === 403) {
+        return 'authentication';
+    }
+    if ($status === 400 && ($code === '0007' || str_contains($category, 'nonexistenceofdata') || str_contains($description, 'not users'))) {
+        return 'nonexistent_identity';
+    }
+    if ($status === 400 && ($code === '0008' || $code === '0123' || str_contains($category, 'outoflimit') || str_contains($description, 'greater than'))) {
+        return 'out_of_limit';
+    }
+    if ($status >= 500) {
+        return 'provider_unavailable';
+    }
+    if ($status === 400) {
+        return 'bad_request';
+    }
+    if ($errno !== 0) {
+        return 'transport_error';
+    }
+    return 'unexpected_response';
+}
+
+function fte_geovictoria_post(array $config, string $endpoint, array $payload, int $timeoutSeconds = 75): array
+{
+    if (isset($config['_geovictoria_post_handler']) && is_callable($config['_geovictoria_post_handler'])) {
+        $result = $config['_geovictoria_post_handler']($endpoint, $payload, $timeoutSeconds);
+        if (!is_array($result)) {
+            throw new FteGeoVictoriaException('unexpected_response', 0, 'GeoVictoria entrego una respuesta no valida.');
+        }
+        return $result;
+    }
+
+    $timeoutSeconds = max(1, min(75, $timeoutSeconds));
+    $token = fte_geovictoria_token($config, min(30, $timeoutSeconds));
     $url = rtrim((string)$config['geovictoria_base_url'], '/') . '/' . ltrim($endpoint, '/');
-    $response = fte_http_json($url, ['Authorization: Bearer ' . $token], $payload, 75);
+    $response = fte_http_json($url, ['Authorization: Bearer ' . $token], $payload, $timeoutSeconds);
     if (($response['status'] === 401 || $response['status'] === 403) && session_status() === PHP_SESSION_ACTIVE) {
         unset($_SESSION['fte_geovictoria_token'], $_SESSION['fte_geovictoria_token_expires']);
-        $token = fte_geovictoria_token($config);
-        $response = fte_http_json($url, ['Authorization: Bearer ' . $token], $payload, 75);
+        $token = fte_geovictoria_token($config, min(30, $timeoutSeconds));
+        $response = fte_http_json($url, ['Authorization: Bearer ' . $token], $payload, $timeoutSeconds);
     }
     if (!$response['ok']) {
-        throw new RuntimeException('GeoVictoria HTTP ' . $response['status'] . ': ' . trim((string)$response['error']));
+        $reason = fte_geovictoria_failure_reason($response);
+        throw new FteGeoVictoriaException(
+            $reason,
+            (int)($response['status'] ?? 0),
+            'GeoVictoria HTTP ' . (int)($response['status'] ?? 0) . ' (' . $reason . ').'
+        );
     }
-    return is_array($response['json']) ? $response['json'] : [];
+    if (!is_array($response['json'])) {
+        throw new FteGeoVictoriaException('invalid_response', (int)($response['status'] ?? 0), 'GeoVictoria respondio sin JSON valido.');
+    }
+    return $response['json'];
 }
 
 function fte_parse_timestamp($value): ?DateTimeImmutable
@@ -897,12 +997,297 @@ function fte_identifier_from_geo_user(array $user): string
     return '';
 }
 
+function fte_attendance_batch_size(array $config, int $rangeDays): int
+{
+    $maxRangeDays = max(0, (int)($config['geovictoria_attendance_batch_max_range_days'] ?? 0));
+    if ($rangeDays < 1 || $maxRangeDays < 1 || $rangeDays > $maxRangeDays) {
+        return 0;
+    }
+    $configured = max(1, min(195, (int)($config['geovictoria_attendance_batch_size'] ?? 195)));
+    $maxRecords = max(1, (int)($config['geovictoria_attendance_max_records_per_request'] ?? 1500));
+    return max(1, min($configured, (int)floor($maxRecords / $rangeDays)));
+}
+
+function fte_attendance_timeout_seconds(array $config, int $rangeDays): int
+{
+    if (fte_attendance_batch_size($config, $rangeDays) < 1) {
+        return 0;
+    }
+    if ($rangeDays <= 7) {
+        return max(1, (int)($config['geovictoria_short_range_timeout_seconds'] ?? 45));
+    }
+    return max(1, (int)($config['geovictoria_month_range_timeout_seconds'] ?? 90));
+}
+
+function fte_attendance_batch_exception(FteGeoVictoriaException $exception): FteAttendanceBatchException
+{
+    return new FteAttendanceBatchException(
+        $exception->reason(),
+        $exception->providerStatus(),
+        $exception->getMessage()
+    );
+}
+
+function fte_attendance_batch_post(
+    array $config,
+    array $payload,
+    array &$state
+): array {
+    $deadlineDisabled = !empty($state['deadline_disabled']);
+    $remaining = $deadlineDisabled ? null : (float)$state['deadline_at'] - microtime(true);
+    if (!$deadlineDisabled && $remaining <= 0) {
+        throw new FteAttendanceBatchException('deadline', 0, 'La consulta supero el tiempo total permitido.');
+    }
+    if ((int)$state['request_count'] > 0) {
+        $pause = max(0.0, (float)($config['geovictoria_attendance_min_interval_seconds'] ?? 0.35));
+        if ($pause > 0) {
+            if (!$deadlineDisabled && $pause >= $remaining) {
+                throw new FteAttendanceBatchException('deadline', 0, 'La consulta supero el tiempo total permitido.');
+            }
+            usleep((int)round($pause * 1_000_000));
+        }
+    }
+    $remaining = $deadlineDisabled ? null : (float)$state['deadline_at'] - microtime(true);
+    if (!$deadlineDisabled && $remaining <= 0) {
+        throw new FteAttendanceBatchException('deadline', 0, 'La consulta supero el tiempo total permitido.');
+    }
+    $state['request_count']++;
+    try {
+        return fte_geovictoria_post(
+            $config,
+            'AttendanceBook',
+            $payload,
+            $deadlineDisabled ? 75 : max(1, min(75, (int)ceil($remaining)))
+        );
+    } catch (FteGeoVictoriaException $exception) {
+        throw $exception;
+    } catch (Throwable $exception) {
+        throw new FteGeoVictoriaException('provider_unavailable', 0, $exception->getMessage());
+    }
+}
+
+function fte_attendance_response_identifiers(array $raw): array
+{
+    return array_values(array_unique(array_filter(array_map(
+        static fn($user): string => is_array($user) ? fte_identifier_from_geo_user($user) : '',
+        fte_extract_users($raw)
+    ))));
+}
+
+function fte_attendance_known_unmatched(array $config, string $identifier): bool
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return false;
+    }
+    $ttl = max(0, (int)($config['geovictoria_unmatched_cache_ttl_seconds'] ?? 300));
+    if ($ttl === 0) {
+        return false;
+    }
+    $key = hash('sha256', $identifier);
+    $expiresAt = (int)($_SESSION['fte_geovictoria_unmatched_cache'][$key] ?? 0);
+    if ($expiresAt <= time()) {
+        unset($_SESSION['fte_geovictoria_unmatched_cache'][$key]);
+        return false;
+    }
+    return true;
+}
+
+function fte_attendance_remember_unmatched(array $config, string $identifier): void
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+    $ttl = max(0, (int)($config['geovictoria_unmatched_cache_ttl_seconds'] ?? 300));
+    if ($ttl === 0) {
+        return;
+    }
+    $_SESSION['fte_geovictoria_unmatched_cache'][hash('sha256', $identifier)] = time() + $ttl;
+}
+
+function fte_attendance_fallback_person(
+    array $config,
+    array $person,
+    string $start,
+    string $end,
+    array &$attendance,
+    array &$diagnostics,
+    array &$state
+): void {
+    $identifier = fte_normalize_identifier($person['normalized_identifier'] ?? $person['identifier'] ?? '');
+    if ($identifier === '') {
+        return;
+    }
+    $candidates = array_values(array_unique(array_filter([
+        $identifier,
+        trim((string)($person['identifier'] ?? '')),
+    ])));
+    foreach ($candidates as $candidate) {
+        $diagnostics['fallback_requests']++;
+        try {
+            $raw = fte_attendance_batch_post($config, [
+                'StartDate' => $start,
+                'EndDate' => $end,
+                'UserIds' => $candidate,
+            ], $state);
+        } catch (FteGeoVictoriaException $exception) {
+            if ($exception->reason() === 'nonexistent_identity') {
+                fte_attendance_remember_unmatched($config, $identifier);
+                break;
+            }
+            if ($exception->reason() === 'bad_request') {
+                continue;
+            }
+            throw fte_attendance_batch_exception($exception);
+        }
+        $returned = fte_attendance_response_identifiers($raw);
+        $unexpected = array_values(array_diff($returned, [$identifier]));
+        if ($unexpected) {
+            throw new FteAttendanceBatchException('identity_integrity', 0, 'GeoVictoria devolvio una identidad no solicitada.');
+        }
+        if (in_array($identifier, $returned, true)) {
+            fte_merge_attendance_payload($attendance, $raw, !empty($config['_include_monthly_time_offs']));
+            $diagnostics['successful_identifiers'][] = $identifier;
+            return;
+        }
+    }
+    $diagnostics['successful_identifiers'][] = $identifier;
+    $diagnostics['unmatched_identifiers'][] = $identifier;
+}
+
+function fte_attendance_fetch_chunk(
+    array $config,
+    array $peopleByIdentifier,
+    array $identifiers,
+    string $start,
+    string $end,
+    array &$attendance,
+    array &$diagnostics,
+    array &$state
+): void {
+    if (!$identifiers) {
+        return;
+    }
+    $diagnostics['batch_requests']++;
+    try {
+        $raw = fte_attendance_batch_post($config, [
+            'StartDate' => $start,
+            'EndDate' => $end,
+            'UserIds' => implode(',', $identifiers),
+        ], $state);
+    } catch (FteGeoVictoriaException $exception) {
+        if (count($identifiers) > 1 && in_array($exception->reason(), ['out_of_limit', 'nonexistent_identity', 'bad_request'], true)) {
+            $middle = (int)ceil(count($identifiers) / 2);
+            fte_attendance_fetch_chunk($config, $peopleByIdentifier, array_slice($identifiers, 0, $middle), $start, $end, $attendance, $diagnostics, $state);
+            fte_attendance_fetch_chunk($config, $peopleByIdentifier, array_slice($identifiers, $middle), $start, $end, $attendance, $diagnostics, $state);
+            return;
+        }
+        if (count($identifiers) === 1 && $exception->reason() === 'nonexistent_identity') {
+            $identifier = $identifiers[0];
+            fte_attendance_remember_unmatched($config, $identifier);
+            $diagnostics['successful_identifiers'][] = $identifier;
+            $diagnostics['unmatched_identifiers'][] = $identifier;
+            return;
+        }
+        if (count($identifiers) === 1 && $exception->reason() === 'bad_request') {
+            $diagnostics['failed_identifiers'][] = $identifiers[0];
+            return;
+        }
+        throw fte_attendance_batch_exception($exception);
+    }
+
+    $returned = fte_attendance_response_identifiers($raw);
+    $unexpected = array_values(array_diff($returned, $identifiers));
+    if ($unexpected) {
+        throw new FteAttendanceBatchException('identity_integrity', 0, 'GeoVictoria devolvio identidades no solicitadas.');
+    }
+    fte_merge_attendance_payload($attendance, $raw, !empty($config['_include_monthly_time_offs']));
+    foreach ($returned as $identifier) {
+        $diagnostics['successful_identifiers'][] = $identifier;
+    }
+    $missing = array_values(array_diff($identifiers, $returned));
+    foreach ($missing as $identifier) {
+        if (fte_attendance_known_unmatched($config, $identifier)) {
+            $diagnostics['successful_identifiers'][] = $identifier;
+            $diagnostics['unmatched_identifiers'][] = $identifier;
+            $diagnostics['cached_unmatched_count']++;
+            continue;
+        }
+        if (isset($peopleByIdentifier[$identifier])) {
+            fte_attendance_fallback_person(
+                $config,
+                $peopleByIdentifier[$identifier],
+                $start,
+                $end,
+                $attendance,
+                $diagnostics,
+                $state
+            );
+        }
+    }
+}
+
 function fte_fetch_attendance(array $config, array $people, DateTimeImmutable $from, DateTimeImmutable $to, ?array &$diagnostics = null): array
 {
     $attendance = [];
-    $diagnostics = ['successful_identifiers' => [], 'failed_identifiers' => [], 'unmatched_identifiers' => []];
+    $rangeDays = (int)$from->diff($to)->days + 1;
+    $batchSize = fte_attendance_batch_size($config, $rangeDays);
+    $diagnostics = [
+        'successful_identifiers' => [],
+        'failed_identifiers' => [],
+        'unmatched_identifiers' => [],
+        'strategy' => $batchSize > 0 ? 'batch' : 'individual',
+        'range_days' => $rangeDays,
+        'batch_size' => $batchSize,
+        'request_count' => 0,
+        'batch_requests' => 0,
+        'fallback_requests' => 0,
+        'cached_unmatched_count' => 0,
+        'total_deadline_disabled' => !empty($config['_attendance_total_deadline_disabled']),
+    ];
     $start = $from->format('Ymd') . '000000';
     $end = $to->format('Ymd') . '235959';
+
+    if ($batchSize > 0) {
+        $peopleByIdentifier = [];
+        $identifiers = [];
+        foreach (array_values($people) as $person) {
+            if (!is_array($person)) {
+                continue;
+            }
+            $identifier = fte_normalize_identifier($person['normalized_identifier'] ?? $person['identifier'] ?? '');
+            if ($identifier !== '') {
+                $peopleByIdentifier[$identifier] = $person;
+                $identifiers[] = $identifier;
+            }
+        }
+        $identifiers = array_values(array_unique($identifiers));
+        $timeoutSeconds = fte_attendance_timeout_seconds($config, $rangeDays);
+        $configuredDeadline = (float)($config['_request_deadline_at'] ?? 0);
+        $deadlineDisabled = !empty($config['_attendance_total_deadline_disabled']);
+        $state = [
+            'request_count' => 0,
+            'deadline_at' => $deadlineDisabled ? null : ($configuredDeadline > 0 ? $configuredDeadline : microtime(true) + $timeoutSeconds),
+            'deadline_disabled' => $deadlineDisabled,
+        ];
+        foreach (array_chunk($identifiers, $batchSize) as $chunk) {
+            fte_attendance_fetch_chunk(
+                $config,
+                $peopleByIdentifier,
+                $chunk,
+                $start,
+                $end,
+                $attendance,
+                $diagnostics,
+                $state
+            );
+        }
+        $diagnostics['request_count'] = (int)$state['request_count'];
+        foreach (['successful_identifiers', 'failed_identifiers', 'unmatched_identifiers'] as $key) {
+            $diagnostics[$key] = array_values(array_unique($diagnostics[$key]));
+        }
+        return $attendance;
+    }
+
     foreach (array_values($people) as $personIndex => $person) {
         $identifier = trim((string)($person['normalized_identifier'] ?? ''));
         if ($identifier === '') {
@@ -917,17 +1302,15 @@ function fte_fetch_attendance(array $config, array $people, DateTimeImmutable $f
         ])));
         $success = false;
         foreach ($candidates as $candidate) {
+            $diagnostics['request_count']++;
             try {
                 $raw = fte_geovictoria_post($config, 'AttendanceBook', [
                     'StartDate' => $start,
                     'EndDate' => $end,
                     'UserIds' => $candidate,
                 ]);
-                fte_merge_attendance_payload($attendance, $raw);
-                $returnedIdentifiers = array_values(array_filter(array_map(
-                    static fn($user): string => is_array($user) ? fte_identifier_from_geo_user($user) : '',
-                    fte_extract_users($raw)
-                )));
+                fte_merge_attendance_payload($attendance, $raw, !empty($config['_include_monthly_time_offs']));
+                $returnedIdentifiers = fte_attendance_response_identifiers($raw);
                 if (!in_array($identifier, $returnedIdentifiers, true)) {
                     $diagnostics['unmatched_identifiers'][] = $identifier;
                 }
@@ -939,6 +1322,9 @@ function fte_fetch_attendance(array $config, array $people, DateTimeImmutable $f
         }
         $bucket = $success ? 'successful_identifiers' : 'failed_identifiers';
         $diagnostics[$bucket][] = $identifier;
+    }
+    foreach (['successful_identifiers', 'failed_identifiers', 'unmatched_identifiers'] as $key) {
+        $diagnostics[$key] = array_values(array_unique($diagnostics[$key]));
     }
     return $attendance;
 }
@@ -952,7 +1338,34 @@ function fte_duration_hours($value): float
     return (int)$match[1] + ((int)$match[2] / 60) + ((int)($match[3] ?? 0) / 3600);
 }
 
-function fte_merge_attendance_payload(array &$attendance, array $raw): void
+function fte_duration_values_hours($value): float
+{
+    if (!is_array($value)) {
+        return fte_duration_hours($value);
+    }
+    $hours = 0.0;
+    foreach ($value as $item) {
+        $hours += fte_duration_values_hours($item);
+    }
+    return $hours;
+}
+
+function fte_geovictoria_time_off_record(array $timeOff): array
+{
+    return [
+        'external_id' => trim((string)($timeOff['Id'] ?? $timeOff['id'] ?? '')),
+        'type_id' => trim((string)($timeOff['TimeOffTypeId'] ?? $timeOff['type_id'] ?? '')),
+        'type_description' => trim((string)($timeOff['TimeOffTypeDescription'] ?? $timeOff['type_description'] ?? '')),
+        'origin' => trim((string)($timeOff['TimeOffOrigin'] ?? $timeOff['origin'] ?? '')),
+        'starts' => trim((string)($timeOff['Starts'] ?? $timeOff['starts'] ?? '')),
+        'ends' => trim((string)($timeOff['Ends'] ?? $timeOff['ends'] ?? '')),
+        'start_time' => trim((string)($timeOff['StartTime'] ?? $timeOff['start_time'] ?? '')),
+        'end_time' => trim((string)($timeOff['EndTime'] ?? $timeOff['end_time'] ?? '')),
+        'amount_hours' => trim((string)($timeOff['AmountHours'] ?? $timeOff['amount_hours'] ?? '')),
+    ];
+}
+
+function fte_merge_attendance_payload(array &$attendance, array $raw, bool $includeMonthlyTimeOffs = false): void
 {
     foreach (fte_extract_users($raw) as $rawUser) {
         if (!is_array($rawUser)) {
@@ -995,11 +1408,56 @@ function fte_merge_attendance_payload(array &$attendance, array $raw): void
                 ];
             }
             $attendance[$identifier][$date]['scheduled_interval'] = true;
-            $attendance[$identifier][$date]['geovictoria_worked_hours'] = round(fte_duration_hours($interval['WorkedHours'] ?? ''), 4);
-            $attendance[$identifier][$date]['authorized_overtime_hours'] = round(fte_duration_hours($interval['TotalAuthorizedOvertime'] ?? ''), 4);
-            $attendance[$identifier][$date]['delay_hours'] = round(fte_duration_hours($interval['DelayTimeAfterCompensation'] ?? $interval['Delay'] ?? ''), 4);
-            $attendance[$identifier][$date]['early_leave_hours'] = round(fte_duration_hours($interval['EarlyLeaveTimeAfterCompensation'] ?? $interval['EarlyLeave'] ?? ''), 4);
-            $attendance[$identifier][$date]['non_worked_hours'] = round(fte_duration_hours($interval['NonWorkedHours'] ?? ''), 4);
+            $attendance[$identifier][$date]['geovictoria_worked_hours'] = fte_duration_hours($interval['WorkedHours'] ?? '');
+            $attendance[$identifier][$date]['authorized_overtime_hours'] = fte_duration_hours($interval['TotalAuthorizedOvertime'] ?? '');
+            $hasAccomplishedOvertime = array_key_exists('AccomplishedExtraTime', $interval)
+                || array_key_exists('AccomplishedExtraTimeBefore', $interval)
+                || array_key_exists('AccomplishedExtraTimeAfter', $interval);
+            $accomplishedOvertime = fte_duration_values_hours($interval['AccomplishedExtraTime'] ?? []);
+            if ($accomplishedOvertime <= 0) {
+                $accomplishedOvertime = fte_duration_values_hours($interval['AccomplishedExtraTimeBefore'] ?? [])
+                    + fte_duration_values_hours($interval['AccomplishedExtraTimeAfter'] ?? []);
+            }
+            $attendance[$identifier][$date]['accomplished_overtime_hours'] = max(0.0, $accomplishedOvertime);
+            $attendance[$identifier][$date]['accomplished_overtime_available'] = $hasAccomplishedOvertime;
+            $rawDelayHours = fte_duration_hours($interval['Delay'] ?? '');
+            $hasDelayAfterCompensation = array_key_exists('DelayTimeAfterCompensation', $interval);
+            $delayAfterCompensationHours = $hasDelayAfterCompensation
+                ? fte_duration_hours($interval['DelayTimeAfterCompensation'])
+                : $rawDelayHours;
+            // Algunas respuestas antiguas solo incluyen el valor posterior a
+            // compensacion. En ese caso nunca puede ser mayor que el bruto:
+            // lo usamos tambien como minimo bruto para no perder el evento.
+            $rawDelayHours = max($rawDelayHours, $delayAfterCompensationHours);
+            $rawEarlyLeaveHours = fte_duration_hours($interval['EarlyLeave'] ?? '');
+            $hasEarlyLeaveAfterCompensation = array_key_exists('EarlyLeaveTimeAfterCompensation', $interval);
+            $earlyLeaveAfterCompensationHours = $hasEarlyLeaveAfterCompensation
+                ? fte_duration_hours($interval['EarlyLeaveTimeAfterCompensation'])
+                : $rawEarlyLeaveHours;
+            $rawEarlyLeaveHours = max($rawEarlyLeaveHours, $earlyLeaveAfterCompensationHours);
+            $attendance[$identifier][$date]['delay_raw_hours'] = max(0.0, $rawDelayHours);
+            $attendance[$identifier][$date]['delay_after_compensation_hours'] = max(0.0, $delayAfterCompensationHours);
+            $attendance[$identifier][$date]['delay_after_compensation_available'] = $hasDelayAfterCompensation;
+            $attendance[$identifier][$date]['delay_compensated_hours'] = max(0.0, $rawDelayHours - $delayAfterCompensationHours);
+            $attendance[$identifier][$date]['delay_hours'] = max(0.0, $delayAfterCompensationHours);
+            $attendance[$identifier][$date]['early_leave_raw_hours'] = max(0.0, $rawEarlyLeaveHours);
+            $attendance[$identifier][$date]['early_leave_after_compensation_hours'] = max(0.0, $earlyLeaveAfterCompensationHours);
+            $attendance[$identifier][$date]['early_leave_after_compensation_available'] = $hasEarlyLeaveAfterCompensation;
+            $attendance[$identifier][$date]['early_leave_compensated_hours'] = max(0.0, $rawEarlyLeaveHours - $earlyLeaveAfterCompensationHours);
+            $attendance[$identifier][$date]['early_leave_hours'] = max(0.0, $earlyLeaveAfterCompensationHours);
+            $attendance[$identifier][$date]['non_worked_hours'] = fte_duration_hours($interval['NonWorkedHours'] ?? '');
+            if ($includeMonthlyTimeOffs) {
+                foreach (($interval['TimeOffs'] ?? []) as $timeOff) {
+                    if (!is_array($timeOff)) {
+                        continue;
+                    }
+                    $normalizedTimeOff = fte_geovictoria_time_off_record($timeOff);
+                    $timeOffKey = $normalizedTimeOff['external_id'] !== ''
+                        ? $normalizedTimeOff['external_id']
+                        : hash('sha256', json_encode($normalizedTimeOff));
+                    $attendance[$identifier][$date]['time_offs'][$timeOffKey] = $normalizedTimeOff;
+                }
+            }
         }
     }
 }
@@ -1078,6 +1536,8 @@ function fte_build_payload(array $config, array $params): array
             if ($unmatchedCount > 0) {
                 $warnings[] = "GeoVictoria no concilio {$unmatchedCount} persona(s) solicitada(s) desde Buk.";
             }
+        } catch (FteAttendanceBatchException $e) {
+            throw $e;
         } catch (Throwable $e) {
             $warnings[] = 'GeoVictoria no estuvo disponible para esta consulta.';
             error_log('FTE GeoVictoria attendance error: ' . fte_redact_error_message($e->getMessage(), $config));
@@ -1140,9 +1600,9 @@ function fte_build_payload(array $config, array $params): array
                 'last_exit' => $mark['last_exit'],
                 'first_entry_clock' => fte_clock($mark['first_entry']),
                 'last_exit_clock' => fte_clock($mark['last_exit']),
-                'net_hours' => round($net, 2),
-                'extra_hours' => round($extra, 2),
-                'fte_day' => round($net / $dailyHours, 3),
+                'net_hours' => $net,
+                'extra_hours' => $extra,
+                'fte_day' => $net / $dailyHours,
                 'geovictoria_worked_hours' => $mark['geovictoria_worked_hours'] ?? null,
                 'authorized_overtime_hours' => $mark['authorized_overtime_hours'] ?? null,
                 'delay_hours' => $mark['delay_hours'] ?? null,
@@ -1157,10 +1617,10 @@ function fte_build_payload(array $config, array $params): array
             static fn($p) => $p['normalized_identifier'],
             array_filter($people, static fn($p) => $p['cost_center_code'] === $summary['cost_center_code'])
         )));
-        $summary['net_hours'] = round($summary['net_hours'], 2);
-        $summary['extra_hours'] = round($summary['extra_hours'], 2);
-        $summary['fte_days'] = round($summary['fte_days'], 2);
-        $summary['avg_fte'] = count($dates) > 0 ? round($summary['fte_days'] / count($dates), 2) : 0;
+        $summary['net_hours'] = (float)$summary['net_hours'];
+        $summary['extra_hours'] = (float)$summary['extra_hours'];
+        $summary['fte_days'] = (float)$summary['fte_days'];
+        $summary['avg_fte'] = count($dates) > 0 ? $summary['fte_days'] / count($dates) : 0;
     }
     unset($summary);
 

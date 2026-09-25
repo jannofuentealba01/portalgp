@@ -68,5 +68,51 @@ try {
 }
 $assert($overlapRejected, 'rechaza reglas de jornada superpuestas');
 
+$precisionConfig = fte_calendar_load_config();
+$precisionConfig['date_overrides']['2026-08-03'] = ['hours' => 1 / 3, 'reason' => 'Precision de prueba'];
+$precisionCalendar = fte_calendar_calculate_month(2026, 8, $precisionConfig);
+$precisionDay = array_values(array_filter(
+    $precisionCalendar['days'],
+    static fn(array $day): bool => $day['date'] === '2026-08-03'
+))[0] ?? [];
+$assert(
+    abs((float)($precisionDay['theoretical_hours'] ?? 0) - (1 / 3)) < 0.000000000001,
+    'precision: calendario conserva fracciones sin redondear el dia'
+);
+$assert(
+    abs((float)$precisionCalendar['theoretical_hours_per_person'] - (176.5 - 8.5 + (1 / 3))) < 0.000000000001,
+    'precision: calendario conserva la suma mensual completa'
+);
+$assert(
+    ($august['validation']['valid'] ?? false) === true
+        && ($august['validation']['complete_month'] ?? false) === true
+        && ($august['validation']['intermediate_rounding_applied'] ?? true) === false,
+    'valida el mes completo sin redondeos intermedios'
+);
+$assert(
+    strlen((string)($august['policy']['config_hash'] ?? '')) === 64
+        && ($august['policy']['intermediate_rounding'] ?? '') === 'NONE'
+        && ($august['policy']['display_rounding'] ?? '') === 'PRESENTATION_ONLY',
+    'identifica la politica y version exacta del calendario'
+);
+$mismatchRejected = false;
+$invalidTotal = $august;
+$invalidTotal['theoretical_hours_per_person'] += 0.01;
+try {
+    fte_calendar_validate_result($invalidTotal, true);
+} catch (DomainException $exception) {
+    $mismatchRejected = true;
+}
+$assert($mismatchRejected, 'rechaza un total teorico distinto de la suma diaria');
+$duplicateRejected = false;
+$duplicateDate = $august;
+$duplicateDate['days'][] = $duplicateDate['days'][0];
+$duplicateDate['theoretical_hours_per_person'] += (float)$duplicateDate['days'][0]['theoretical_hours'];
+try {
+    fte_calendar_validate_result($duplicateDate);
+} catch (InvalidArgumentException $exception) {
+    $duplicateRejected = true;
+}
+$assert($duplicateRejected, 'rechaza fechas duplicadas dentro del calendario');
 echo "Resultado: {$passed} OK, {$failed} fallidas.\n";
 exit($failed === 0 ? 0 : 1);

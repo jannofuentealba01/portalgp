@@ -60,23 +60,141 @@ function fte_calendar_calculate_month(int $year, int $month, ?array $config = nu
             'date' => $dateKey,
             'weekday' => $weekday,
             'status' => $status,
-            'theoretical_hours' => round($hours, 4),
+            'theoretical_hours' => $hours,
             'rule_code' => $rule['code'] ?? null,
             'reason' => $reason,
         ];
     }
 
-    return [
+    $result = [
         'year' => $year,
         'month' => $month,
         'period' => sprintf('%04d-%02d', $year, $month),
-        'theoretical_hours_per_person' => round($totalHours, 4),
+        'theoretical_hours_per_person' => $totalHours,
         'workday_count' => $workdayCount,
         'workdays_by_weekday' => $workdaysByWeekday,
-        'hours_by_weekday' => array_map(static fn(float $hours): float => round($hours, 4), $hoursByWeekday),
-        'hours_by_rule' => array_map(static fn(float $hours): float => round($hours, 4), $ruleHours),
+        'hours_by_weekday' => $hoursByWeekday,
+        'hours_by_rule' => $ruleHours,
         'days' => $days,
         'warnings' => fte_calendar_month_warnings($days),
+        'policy' => fte_calendar_policy_metadata($rules, $nonWorkingDays, $overrides),
+    ];
+    $result['validation'] = fte_calendar_validate_result($result, true);
+    return $result;
+}
+
+function fte_calendar_canonicalize($value)
+{
+    if (!is_array($value)) {
+        return $value;
+    }
+    if (array_keys($value) === range(0, count($value) - 1)) {
+        return array_map('fte_calendar_canonicalize', $value);
+    }
+    ksort($value, SORT_STRING);
+    foreach ($value as $key => $item) {
+        $value[$key] = fte_calendar_canonicalize($item);
+    }
+    return $value;
+}
+
+function fte_calendar_policy_metadata(array $rules, array $nonWorkingDays, array $overrides): array
+{
+    $definition = fte_calendar_canonicalize([
+        'work_rules' => $rules,
+        'non_working_days' => $nonWorkingDays,
+        'date_overrides' => $overrides,
+    ]);
+    return [
+        'version' => 1,
+        'source' => 'PORTALGP_CALENDAR',
+        'config_hash' => hash('sha256', json_encode(
+            $definition,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION
+        )),
+        'worker_date_rule' => 'VIGENCIA_LABORAL_Y_CARGO_VIGENTE_EN_CADA_FECHA',
+        'intermediate_rounding' => 'NONE',
+        'display_rounding' => 'PRESENTATION_ONLY',
+    ];
+}
+
+/**
+ * Comprueba que el total mensual sea exactamente la suma del detalle diario.
+ * La tolerancia solo absorbe el error binario natural de float; no redondea.
+ */
+function fte_calendar_validate_result(array $calendar, bool $requireCompleteMonth = false): array
+{
+    $period = trim((string)($calendar['period'] ?? ''));
+    if (!preg_match('/^(20\d{2})-(0[1-9]|1[0-2])$/', $period, $match)) {
+        throw new InvalidArgumentException('El calendario no contiene un periodo mensual valido.');
+    }
+    if (!is_numeric($calendar['theoretical_hours_per_person'] ?? null)) {
+        throw new InvalidArgumentException('El calendario no contiene un total de horas teoricas valido.');
+    }
+    $declaredHours = (float)$calendar['theoretical_hours_per_person'];
+    if (!is_finite($declaredHours) || $declaredHours < 0) {
+        throw new InvalidArgumentException('El total de horas teoricas del calendario es invalido.');
+    }
+
+    $seenDates = [];
+    $summedHours = 0.0;
+    $workdayCount = 0;
+    $daysWithoutRule = 0;
+    foreach (($calendar['days'] ?? []) as $index => $day) {
+        if (!is_array($day)) {
+            throw new InvalidArgumentException('El dia ' . ($index + 1) . ' del calendario es invalido.');
+        }
+        $date = fte_calendar_valid_date((string)($day['date'] ?? ''));
+        if ($date === null || !str_starts_with($date, $period . '-')) {
+            throw new InvalidArgumentException('El calendario contiene una fecha fuera del periodo.');
+        }
+        if (isset($seenDates[$date])) {
+            throw new InvalidArgumentException('El calendario contiene la fecha duplicada ' . $date . '.');
+        }
+        $seenDates[$date] = true;
+        $rawHours = $day['theoretical_hours'] ?? null;
+        if (!is_numeric($rawHours)) {
+            throw new InvalidArgumentException('El calendario contiene horas teoricas no numericas.');
+        }
+        $hours = (float)$rawHours;
+        if (!is_finite($hours) || $hours < 0 || $hours > 24) {
+            throw new InvalidArgumentException('El calendario contiene horas teoricas fuera de rango.');
+        }
+        $summedHours += $hours;
+        if ($hours > 0) {
+            $workdayCount++;
+        }
+        if (($day['reason'] ?? '') === 'Sin regla vigente') {
+            $daysWithoutRule++;
+        }
+    }
+    if ($seenDates === []) {
+        throw new InvalidArgumentException('El calendario no contiene detalle diario.');
+    }
+
+    $difference = $declaredHours - $summedHours;
+    if (abs($difference) > 0.000000001) {
+        throw new DomainException('El total de horas teoricas no coincide con la suma del calendario diario.');
+    }
+    if (array_key_exists('workday_count', $calendar) && (int)$calendar['workday_count'] !== $workdayCount) {
+        throw new DomainException('La cantidad de dias habiles no coincide con el detalle del calendario.');
+    }
+    $expectedDays = (int)(new DateTimeImmutable($period . '-01'))->format('t');
+    if ($requireCompleteMonth && count($seenDates) !== $expectedDays) {
+        throw new DomainException('El calendario mensual no contiene todos los dias del periodo.');
+    }
+
+    return [
+        'valid' => true,
+        'complete_month' => count($seenDates) === $expectedDays,
+        'day_count' => count($seenDates),
+        'expected_day_count' => $expectedDays,
+        'workday_count' => $workdayCount,
+        'days_without_work_rule' => $daysWithoutRule,
+        'declared_theoretical_hours' => $declaredHours,
+        'summed_theoretical_hours' => $summedHours,
+        'difference' => $difference,
+        'intermediate_rounding_applied' => false,
     ];
 }
 
@@ -139,6 +257,7 @@ function fte_calendar_normalize_date_map(array $items): array
         }
         $normalized[$validDate] = trim((string)$reason);
     }
+    ksort($normalized, SORT_STRING);
     return $normalized;
 }
 
@@ -159,6 +278,7 @@ function fte_calendar_normalize_overrides(array $items): array
             'reason' => trim((string)($override['reason'] ?? 'Excepcion manual')),
         ];
     }
+    ksort($normalized, SORT_STRING);
     return $normalized;
 }
 
@@ -186,10 +306,7 @@ function fte_calendar_month_warnings(array $days): array
 
 function fte_calendar_apply_to_monthly_input(array $monthlyInput, array $calendar): array
 {
-    if (!array_key_exists('theoretical_hours_per_person', $calendar)
-        || !is_numeric($calendar['theoretical_hours_per_person'])) {
-        throw new InvalidArgumentException('El resultado de calendario no contiene horas teoricas validas.');
-    }
-    $monthlyInput['theoretical_hours_per_person'] = (float)$calendar['theoretical_hours_per_person'];
+    $validation = fte_calendar_validate_result($calendar);
+    $monthlyInput['theoretical_hours_per_person'] = (float)$validation['summed_theoretical_hours'];
     return $monthlyInput;
 }
