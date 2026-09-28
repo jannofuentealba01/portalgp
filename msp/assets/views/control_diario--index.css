@@ -245,8 +245,8 @@
 
         .control-grid.month-single-mode .js-uf-base-head,
         .control-grid.month-single-mode .js-uf-base-cell {
-            min-width: 60px;
-            max-width: 60px;
+            min-width: 84px;
+            max-width: 84px;
             padding-left: 4px;
             padding-right: 4px;
         }

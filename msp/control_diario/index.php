@@ -2836,7 +2836,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                         <thead>
                             <tr>
                                 <th rowspan="2" class="sticky-col sticky-col-local">Locales</th>
-                                <th rowspan="2" class="sticky-col sticky-col-arr">Arrendatario / RUT</th>
+                                <th rowspan="2" class="sticky-col sticky-col-arr">Arrendatario</th>
                                 <?php foreach ($renderMonths as $month): ?>
                                     <th
                                         class="month-group js-month-group"
