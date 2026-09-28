@@ -14,6 +14,61 @@ function msp2RecepcionGarantiaFail(string $message): never
     msp2Redirect('garantias/recepciones.php');
 }
 
+/**
+ * Obtiene la cuenta bancaria que recibe automáticamente las transferencias de
+ * garantías. Si no hay una configuración explícita, sólo se permite inferirla
+ * cuando existe exactamente una cuenta bancaria activa.
+ */
+function msp2CuentaBancoRecepcionGarantia(PDO $conn): int
+{
+    $claveConfiguracion = 'garantias_cuenta_banco_recepcion_id';
+    $configurada = trim((string) msp2ConfiguracionGet($conn, $claveConfiguracion, ''));
+
+    if ($configurada !== '') {
+        if (preg_match('/^[1-9][0-9]*$/D', $configurada) !== 1) {
+            throw new RuntimeException('La cuenta automática para transferencias de garantías no tiene una configuración válida.');
+        }
+
+        $stmt = $conn->prepare(
+            'SELECT id_cuenta_tesoreria
+             FROM dbo.msp_tesoreria_cuentas WITH (UPDLOCK, HOLDLOCK)
+             WHERE id_cuenta_tesoreria=:id AND tipo_cuenta=N\'BANCO\' AND activo=1'
+        );
+        $stmt->execute([':id' => (int) $configurada]);
+        $idCuenta = (int) ($stmt->fetchColumn() ?: 0);
+        if ($idCuenta <= 0) {
+            throw new RuntimeException('La cuenta automática para transferencias de garantías no existe, no es bancaria o está inactiva.');
+        }
+
+        return $idCuenta;
+    }
+
+    $cuentas = $conn->query(
+        'SELECT TOP (2) id_cuenta_tesoreria
+         FROM dbo.msp_tesoreria_cuentas WITH (UPDLOCK, HOLDLOCK)
+         WHERE tipo_cuenta=N\'BANCO\' AND activo=1
+         ORDER BY id_cuenta_tesoreria'
+    )->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
+    if (count($cuentas) === 0) {
+        throw new RuntimeException('No existe una cuenta bancaria activa para registrar automáticamente la transferencia.');
+    }
+    if (count($cuentas) > 1) {
+        throw new RuntimeException('Hay más de una cuenta bancaria activa. Define la cuenta automática de garantías antes de registrar la transferencia.');
+    }
+
+    $idCuenta = (int) $cuentas[0];
+    msp2ConfiguracionSet(
+        $conn,
+        $claveConfiguracion,
+        (string) $idCuenta,
+        'Cuenta bancaria asignada automáticamente a las transferencias recibidas por garantías.',
+        (int) ($_SESSION['usuario']['id'] ?? 0) ?: null
+    );
+
+    return $idCuenta;
+}
+
 $idContrato = filter_input(INPUT_POST, 'id_contrato_arriendo', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $idGarantia = filter_input(INPUT_POST, 'id_garantia', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $fecha = trim((string) ($_POST['fecha_recepcion'] ?? ''));
@@ -24,7 +79,6 @@ $bancoEmisor = msp2NormalizeText((string) ($_POST['banco_emisor'] ?? ''));
 $numeroCheque = msp2NormalizeText((string) ($_POST['numero_cheque'] ?? ''));
 $fechaCheque = trim((string) ($_POST['fecha_cheque'] ?? ''));
 $observaciones = msp2NormalizeText((string) ($_POST['observaciones'] ?? ''));
-$idCuentaBanco = filter_input(INPUT_POST, 'id_cuenta_banco', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 [$montoOk, $monto] = msp2NormalizeDecimalInput(trim((string) ($_POST['monto_recibido'] ?? '')), 2);
 [$montoPactadoOk, $montoPactado] = msp2NormalizeDecimalInput(trim((string) ($_POST['monto_pactado'] ?? '')), 2);
 
@@ -44,8 +98,8 @@ if (!in_array($medio, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'], true)) {
 if (mb_strlen($referencia) > 200 || mb_strlen($bancoEmisor) > 120 || mb_strlen($numeroCheque) > 80 || mb_strlen($observaciones) > 500) {
     msp2RecepcionGarantiaFail('Uno de los textos supera el largo permitido.');
 }
-if ($medio === 'TRANSFERENCIA' && ($referencia === '' || !$idCuentaBanco)) {
-    msp2RecepcionGarantiaFail('La transferencia requiere referencia y cuenta bancaria de destino.');
+if ($medio === 'TRANSFERENCIA' && $referencia === '') {
+    msp2RecepcionGarantiaFail('La transferencia requiere una referencia.');
 }
 if ($medio === 'CHEQUE') {
     if ($numeroCheque === '' || $bancoEmisor === '') {
@@ -122,13 +176,12 @@ try {
     if ($restante > 0.009) throw new RuntimeException('No fue posible distribuir el monto recibido dentro del monto pactado.');
 
     if ($medio === 'TRANSFERENCIA') {
-        $stmtCuenta = $conn->prepare('SELECT id_cuenta_tesoreria FROM dbo.msp_tesoreria_cuentas WITH (UPDLOCK, HOLDLOCK) WHERE id_cuenta_tesoreria=:id AND tipo_cuenta=N\'BANCO\' AND activo=1');
-        $stmtCuenta->execute([':id' => (int) $idCuentaBanco]);
+        $idCuenta = msp2CuentaBancoRecepcionGarantia($conn);
     } else {
         $stmtCuenta = $conn->prepare('SELECT id_cuenta_tesoreria FROM dbo.msp_tesoreria_cuentas WITH (UPDLOCK, HOLDLOCK) WHERE codigo_cuenta=N\'CAJA_GENERAL\' AND activo=1');
         $stmtCuenta->execute();
+        $idCuenta = (int) ($stmtCuenta->fetchColumn() ?: 0);
     }
-    $idCuenta = (int) ($stmtCuenta->fetchColumn() ?: 0);
     if ($idCuenta <= 0) {
         throw new RuntimeException('No existe una cuenta de tesorería activa para registrar el ingreso.');
     }
@@ -148,10 +201,13 @@ try {
          VALUES (:cuenta,:fecha,N\'RECEPCION_GARANTIA\',\'E\',:monto,:medio,:referencia,:recepcion,N\'VIGENTE\',:observaciones,:usuario)'
     );
     $stmtRecepcion = $conn->prepare(
-        'INSERT INTO dbo.msp_garantia_recepciones
+        'SET NOCOUNT ON;
+         DECLARE @recepcion_insertada TABLE (id_recepcion_garantia INT NOT NULL);
+         INSERT INTO dbo.msp_garantia_recepciones
             (id_garantia,fecha_recepcion,monto_recibido,medio_recepcion,referencia,banco_emisor,numero_cheque,fecha_cheque,estado_recepcion,observaciones,id_usuario)
-         OUTPUT INSERTED.id_recepcion_garantia
-         VALUES (:garantia,:fecha,:monto,:medio,:referencia,:banco,:cheque,:fecha_cheque,N\'CONFIRMADA\',:observaciones,:usuario)'
+         OUTPUT INSERTED.id_recepcion_garantia INTO @recepcion_insertada (id_recepcion_garantia)
+         VALUES (:garantia,:fecha,:monto,:medio,:referencia,:banco,:cheque,:fecha_cheque,N\'CONFIRMADA\',:observaciones,:usuario);
+         SELECT id_recepcion_garantia FROM @recepcion_insertada;'
     );
     foreach ($asignaciones as $asignacion) {
         $stmtRecepcion->execute([
@@ -161,6 +217,9 @@ try {
             ':observaciones'=>$observaciones!==''?$observaciones:null, ':usuario'=>(int)$_SESSION['usuario']['id'],
         ]);
         $idRecepcion=(int)$stmtRecepcion->fetchColumn();
+        if ($idRecepcion <= 0) {
+            throw new RuntimeException('No fue posible identificar la recepción de garantía registrada.');
+        }
         $stmtMovimiento->execute([
             ':cuenta'=>$idCuenta, ':fecha'=>$fecha, ':monto'=>$asignacion['monto'], ':medio'=>$medio,
             ':referencia'=>$referencia!==''?$referencia:($numeroCheque!==''?$numeroCheque:null),
