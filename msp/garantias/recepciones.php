@@ -134,11 +134,10 @@ try {
                     <div class="col-md-3"><label class="form-label">Fecha recepción</label><input type="date" name="fecha_recepcion" class="form-control" value="<?php echo date('Y-m-d'); ?>" required></div>
                     <div class="col-md-3"><label class="form-label">Monto recibido</label><input type="number" name="monto_recibido" id="monto_recibido" min="0.01" step="0.01" class="form-control" required><div id="ayudaMonto" class="form-text"></div></div>
                     <div class="col-md-3"><label class="form-label">Medio</label><select name="medio_recepcion" id="medio_recepcion" class="form-select" required><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option><option value="CHEQUE">Cheque</option></select></div>
-                    <div class="col-md-6 campo-referencia d-none"><label class="form-label">Referencia transferencia</label><input name="referencia" maxlength="200" class="form-control"><div class="form-text">La cuenta bancaria de Tesorería se asignará automáticamente.</div></div>
                     <div class="col-md-4 campo-cheque d-none"><label class="form-label">Banco emisor</label><input name="banco_emisor" maxlength="120" class="form-control"></div>
                     <div class="col-md-4 campo-cheque d-none"><label class="form-label">Número cheque</label><input name="numero_cheque" maxlength="80" class="form-control"></div>
                     <div class="col-md-4 campo-cheque d-none"><label class="form-label">Fecha cheque</label><input type="date" name="fecha_cheque" class="form-control"></div>
-                    <div class="col-12"><label class="form-label">Observaciones</label><textarea name="observaciones" maxlength="500" rows="1" class="form-control"></textarea></div>
+                    <div class="col-12"><label class="form-label">Observaciones</label><textarea name="observaciones" maxlength="500" rows="1" class="form-control"></textarea><div class="form-text">Opcional: registra la referencia de la transferencia o cualquier antecedente relevante de la recepción.</div></div>
                     <div class="col-12 text-end"><button class="btn btn-success" <?php echo $error!==null?'disabled':''; ?>><i class="bi bi-check-circle me-1"></i>Confirmar recepción</button></div>
                 </form>
             </div></div>
@@ -231,7 +230,6 @@ try {
     }
     function actualizarMedio(){
         const value=medio.value;
-        document.querySelectorAll('.campo-transferencia,.campo-referencia').forEach(e=>e.classList.toggle('d-none',value!=='TRANSFERENCIA'));
         document.querySelectorAll('.campo-cheque').forEach(e=>e.classList.toggle('d-none',value!=='CHEQUE'));
     }
     function actualizarMonto(){
