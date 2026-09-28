@@ -224,7 +224,7 @@
         }
 
         .control-grid.month-single-mode {
-            --sticky-local-width: 88px;
+            --sticky-local-width: 100px;
             --sticky-arr-width: 164px;
             min-width: 0;
             width: 100%;
@@ -240,23 +240,33 @@
         }
 
         .control-grid.month-single-mode .js-month-col {
-            min-width: 70px;
+            min-width: 84px;
         }
 
         .control-grid.month-single-mode .js-uf-base-head,
         .control-grid.month-single-mode .js-uf-base-cell {
-            min-width: 54px;
-            max-width: 54px;
+            min-width: 84px;
+            max-width: 84px;
             padding-left: 4px;
             padding-right: 4px;
         }
 
         .control-grid.month-single-mode .garantia-col {
-            min-width: 56px;
+            min-width: 78px;
         }
 
         .control-grid.month-single-mode .status-col {
-            min-width: 64px;
+            min-width: 86px;
+        }
+
+        .control-grid.month-single-mode .js-servicio-electricidad,
+        .control-grid.month-single-mode .js-servicio-gas,
+        .control-grid.month-single-mode .js-servicio-agua {
+            min-width: 96px;
+        }
+
+        .control-grid.month-single-mode .js-total {
+            min-width: 112px;
         }
 
         .control-grid.month-single-mode .month-static {

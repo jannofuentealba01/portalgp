@@ -161,6 +161,11 @@ function msp2ControlDiarioFormatSignedAmount(float $value): string
     return $value < 0 ? '-$' . $abs : '$' . $abs;
 }
 
+function msp2ControlDiarioFormatVisibleAmount(float $value, int $decimals = 0): string
+{
+    return number_format($value, $decimals, ',', '.');
+}
+
 function msp2ControlDiarioMonthOverlapsRange(string $monthStart, string $monthEnd, string $rangeStart, string $rangeEnd = ''): bool
 {
     if ($rangeStart === '' || $rangeStart > $monthEnd) {
@@ -2831,7 +2836,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                         <thead>
                             <tr>
                                 <th rowspan="2" class="sticky-col sticky-col-local">Locales</th>
-                                <th rowspan="2" class="sticky-col sticky-col-arr">Arrendatario / RUT</th>
+                                <th rowspan="2" class="sticky-col sticky-col-arr">Arrendatario</th>
                                 <?php foreach ($renderMonths as $month): ?>
                                     <th
                                         class="month-group js-month-group"
@@ -2935,12 +2940,24 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                     data-local-label="<?php echo msp2Escape((string) ($row['local_code'] ?? '')); ?>"
                                 >
                                     <td class="sticky-col sticky-col-local">
-                                        <span class="local-label"><?php echo msp2Escape($row['local_code']); ?></span>
+                                        <span
+                                            class="local-label"
+                                            title="<?php echo msp2Escape('Local completo: ' . (string) $row['local_code']); ?>"
+                                            aria-label="<?php echo msp2Escape('Local completo: ' . (string) $row['local_code']); ?>"
+                                        ><?php echo msp2Escape($row['local_code']); ?></span>
                                     </td>
                                     <td class="sticky-col sticky-col-arr">
                                         <div class="arr-cell-stack">
-                                            <div class="arr-label js-arr-display"><?php echo msp2Escape($row['arrendatario']); ?></div>
-                                            <div class="arr-rut js-rut-display"><?php echo msp2Escape($row['rut_display'] !== '' ? $row['rut_display'] : '-'); ?></div>
+                                            <div
+                                                class="arr-label js-arr-display"
+                                                title="<?php echo msp2Escape('Arrendatario completo: ' . (string) $row['arrendatario']); ?>"
+                                                aria-label="<?php echo msp2Escape('Arrendatario completo: ' . (string) $row['arrendatario']); ?>"
+                                            ><?php echo msp2Escape($row['arrendatario']); ?></div>
+                                            <div
+                                                class="arr-rut js-rut-display"
+                                                title="<?php echo msp2Escape('RUT completo: ' . ($row['rut_display'] !== '' ? $row['rut_display'] : '-')); ?>"
+                                                aria-label="<?php echo msp2Escape('RUT completo: ' . ($row['rut_display'] !== '' ? $row['rut_display'] : '-')); ?>"
+                                            ><?php echo msp2Escape($row['rut_display'] !== '' ? $row['rut_display'] : '-'); ?></div>
                                             <div class="small text-warning-emphasis fw-semibold d-none js-arr-liquidacion">Liquidación de servicios pendiente</div>
                                         </div>
                                     </td>
@@ -3102,24 +3119,24 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                                 <?php endif; ?>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="cell-num js-neto js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-neto-monto="<?php echo msp2Escape(number_format($netoMes, 2, '.', '')); ?>">
-                                            <?php echo msp2Escape(number_format($netoMes, 2, ',', '.')); ?>
+                                        <td class="cell-num js-neto js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-neto-monto="<?php echo msp2Escape(number_format($netoMes, 2, '.', '')); ?>" title="<?php echo msp2Escape('Neto completo: $ ' . number_format($netoMes, 2, ',', '.')); ?>">
+                                            <?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($netoMes)); ?>
                                         </td>
-                                        <td class="cell-num js-iva js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-iva-monto="<?php echo msp2Escape(number_format($ivaMes, 2, '.', '')); ?>">
-                                            <?php echo msp2Escape(number_format($ivaMes, 2, ',', '.')); ?>
+                                        <td class="cell-num js-iva js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-iva-monto="<?php echo msp2Escape(number_format($ivaMes, 2, '.', '')); ?>" title="<?php echo msp2Escape('IVA completo: $ ' . number_format($ivaMes, 2, ',', '.')); ?>">
+                                            <?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($ivaMes)); ?>
                                         </td>
-                                        <td class="cell-num cell-subtotal js-subtotal js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-subtotal-monto="<?php echo msp2Escape(number_format($subtotalMes, 2, '.', '')); ?>">
-                                            <?php echo msp2Escape(number_format($subtotalMes, 2, ',', '.')); ?>
+                                        <td class="cell-num cell-subtotal js-subtotal js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-subtotal-monto="<?php echo msp2Escape(number_format($subtotalMes, 2, '.', '')); ?>" title="<?php echo msp2Escape('Subtotal completo: $ ' . number_format($subtotalMes, 2, ',', '.')); ?>">
+                                            <?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($subtotalMes)); ?>
                                         </td>
-                                        <td class="cell-num cell-readonly js-garantia js-month-col garantia-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-garantia-monto="<?php echo msp2Escape(number_format($montoGarantia, 2, '.', '')); ?>">
-                                            <?php echo msp2Escape(number_format($montoGarantia, 2, ',', '.')); ?>
+                                        <td class="cell-num cell-readonly js-garantia js-month-col garantia-col" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-garantia-monto="<?php echo msp2Escape(number_format($montoGarantia, 2, '.', '')); ?>" title="<?php echo msp2Escape('Garantía completa: $ ' . number_format($montoGarantia, 2, ',', '.')); ?>">
+                                            <?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($montoGarantia)); ?>
                                         </td>
-                                        <td class="cell-num js-servicio-electricidad js-month-col<?php echo $lecturasElectricidadMes !== [] ? ' electricity-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoElectricidad, 2, '.', '')); ?>">
+                                        <td class="cell-num js-servicio-electricidad js-month-col<?php echo $lecturasElectricidadMes !== [] ? ' electricity-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoElectricidad, 2, '.', '')); ?>" title="<?php echo msp2Escape('Electricidad completa: $ ' . number_format($montoElectricidad, 2, ',', '.')); ?>">
                                             <span
                                                 class="electricity-cell-value"
                                                 title="<?php echo msp2Escape('Electricidad: $ ' . number_format($montoElectricidad, 2, ',', '.')); ?>"
                                                 aria-label="<?php echo msp2Escape('Monto completo de electricidad: $ ' . number_format($montoElectricidad, 2, ',', '.')); ?>"
-                                            ><?php echo msp2Escape(number_format($montoElectricidad, 2, ',', '.')); ?></span>
+                                            ><?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($montoElectricidad)); ?></span>
                                             <?php if ($lecturasElectricidadMes !== [] && $canCorrectElectricity): ?>
                                                 <button
                                                     type="button"
@@ -3130,12 +3147,12 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                                 ><i class="bi bi-pencil" aria-hidden="true"></i></button>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="cell-num js-servicio-gas js-month-col<?php echo $lecturasGasMes !== [] ? ' gas-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoGas, 2, '.', '')); ?>">
+                                        <td class="cell-num js-servicio-gas js-month-col<?php echo $lecturasGasMes !== [] ? ' gas-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoGas, 2, '.', '')); ?>" title="<?php echo msp2Escape('Gas completo: $ ' . number_format($montoGas, 2, ',', '.')); ?>">
                                             <span
                                                 class="gas-cell-value"
                                                 title="<?php echo msp2Escape('Gas: $ ' . number_format($montoGas, 2, ',', '.')); ?>"
                                                 aria-label="<?php echo msp2Escape('Monto completo de gas: $ ' . number_format($montoGas, 2, ',', '.')); ?>"
-                                            ><?php echo msp2Escape(number_format($montoGas, 2, ',', '.')); ?></span>
+                                            ><?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($montoGas)); ?></span>
                                             <?php if ($lecturasGasMes !== [] && $canCorrectGas): ?>
                                                 <button
                                                     type="button"
@@ -3146,12 +3163,12 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                                 ><i class="bi bi-pencil" aria-hidden="true"></i></button>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="cell-num js-servicio-agua js-month-col<?php echo $lecturasAguaMes !== [] ? ' water-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoAgua, 2, '.', '')); ?>">
+                                        <td class="cell-num js-servicio-agua js-month-col<?php echo $lecturasAguaMes !== [] ? ' water-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoAgua, 2, '.', '')); ?>" title="<?php echo msp2Escape('Agua completa: $ ' . number_format($montoAgua, 2, ',', '.')); ?>">
                                             <span
                                                 class="water-cell-value"
                                                 title="<?php echo msp2Escape('Agua: $ ' . number_format($montoAgua, 2, ',', '.')); ?>"
                                                 aria-label="<?php echo msp2Escape('Monto completo de agua: $ ' . number_format($montoAgua, 2, ',', '.')); ?>"
-                                            ><?php echo msp2Escape(number_format($montoAgua, 2, ',', '.')); ?></span>
+                                            ><?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($montoAgua)); ?></span>
                                             <?php if ($lecturasAguaMes !== [] && $canCorrectWater): ?>
                                                 <button
                                                     type="button"
@@ -3166,15 +3183,13 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             class="cell-num js-reserva js-month-col<?php echo $showReservaTooltip ? ' has-tooltip' : ''; ?>"
                                             data-month-key="<?php echo msp2Escape($monthKey); ?>"
                                             data-reserva-monto="<?php echo msp2Escape(number_format($montoReserva, 2, '.', '')); ?>"
-                                            <?php if ($showReservaTooltip): ?>
-                                                title="<?php echo msp2Escape($reservaTooltip); ?>"
-                                            <?php endif; ?>
+                                            title="<?php echo msp2Escape($showReservaTooltip ? $reservaTooltip : 'Reserva completa: $ ' . number_format($montoReserva, 2, ',', '.')); ?>"
                                         >
                                             <span class="reserva-cell-content">
                                                 <?php if ($showReservaTooltip): ?>
                                                     <i class="bi bi-info-circle-fill reserva-cell-info" aria-hidden="true"></i>
                                                 <?php endif; ?>
-                                                <span><?php echo msp2Escape(number_format($montoReserva, 2, ',', '.')); ?></span>
+                                                <span><?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($montoReserva)); ?></span>
                                             </span>
                                         </td>
                                         <td
@@ -3182,9 +3197,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             data-month-key="<?php echo msp2Escape($monthKey); ?>"
                                             data-total-doc="<?php echo $montoTotalFinalDoc !== null ? msp2Escape(number_format($montoTotalFinalDoc, 2, '.', '')) : ''; ?>"
                                             data-total-final-monto="<?php echo msp2Escape(number_format($totalFinalMes, 2, '.', '')); ?>"
-                                            <?php if ($showTotalTooltip): ?>
-                                                title="<?php echo msp2Escape($totalTooltip); ?>"
-                                            <?php endif; ?>
+                                            title="<?php echo msp2Escape($showTotalTooltip ? $totalTooltip : 'Total final completo: $ ' . number_format($totalFinalMes, 2, ',', '.')); ?>"
                                         >
                                             <?php echo msp2Escape(number_format($totalFinalMes, 2, ',', '.')); ?>
                                         </td>
@@ -3239,14 +3252,14 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                 <?php foreach ($renderMonths as $month): ?>
                                     <?php $monthKey = (string) $month['key']; ?>
                                     <td class="cell-num js-total-uf-base js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
-                                    <td class="cell-num js-total-neto js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
-                                    <td class="cell-num js-total-iva js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
-                                    <td class="cell-num js-total-subtotal js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
-                                    <td class="cell-num js-total-garantia js-month-col garantia-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
-                                    <td class="cell-num js-total-electricidad js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
-                                    <td class="cell-num js-total-gas js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
-                                    <td class="cell-num js-total-agua js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
-                                    <td class="cell-num js-total-reserva js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
+                                    <td class="cell-num js-total-neto js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0</td>
+                                    <td class="cell-num js-total-iva js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0</td>
+                                    <td class="cell-num js-total-subtotal js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0</td>
+                                    <td class="cell-num js-total-garantia js-month-col garantia-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0</td>
+                                    <td class="cell-num js-total-electricidad js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0</td>
+                                    <td class="cell-num js-total-gas js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0</td>
+                                    <td class="cell-num js-total-agua js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0</td>
+                                    <td class="cell-num js-total-reserva js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0</td>
                                     <td class="cell-num js-total-final js-month-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">0,00</td>
                                     <td class="js-month-col status-col" data-month-key="<?php echo msp2Escape($monthKey); ?>">-</td>
                                 <?php endforeach; ?>
@@ -3904,9 +3917,14 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
 
         if (arrDisplay) {
             arrDisplay.textContent = arrValue;
+            arrDisplay.title = 'Arrendatario completo: ' + arrValue;
+            arrDisplay.setAttribute('aria-label', 'Arrendatario completo: ' + arrValue);
         }
         if (rutDisplay) {
-            rutDisplay.textContent = rutValue !== '' ? rutValue : '-';
+            const rutVisible = rutValue !== '' ? rutValue : '-';
+            rutDisplay.textContent = rutVisible;
+            rutDisplay.title = 'RUT completo: ' + rutVisible;
+            rutDisplay.setAttribute('aria-label', 'RUT completo: ' + rutVisible);
         }
         if (liquidacionDisplay) {
             const isLiquidacion = liquidacionMap[monthKey] === true || liquidacionMap[monthKey] === 1;
@@ -3955,23 +3973,23 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                 totals.totalFinal += Number(values.totalFinal || 0);
             });
 
-            const setTotalCell = function (selector, value) {
+            const setTotalCell = function (selector, value, decimals) {
                 const cell = document.querySelector(selector + '[data-month-key="' + monthKey + '"]');
                 if (cell) {
-                    cell.textContent = formatNumber(value, 2);
+                    cell.textContent = formatNumber(value, decimals);
                 }
             };
 
-            setTotalCell('.js-total-uf-base', totals.ufBase);
-            setTotalCell('.js-total-neto', totals.neto);
-            setTotalCell('.js-total-iva', totals.iva);
-            setTotalCell('.js-total-subtotal', totals.subtotal);
-            setTotalCell('.js-total-garantia', totals.garantia);
-            setTotalCell('.js-total-electricidad', totals.electricidad);
-            setTotalCell('.js-total-gas', totals.gas);
-            setTotalCell('.js-total-agua', totals.agua);
-            setTotalCell('.js-total-reserva', totals.reserva);
-            setTotalCell('.js-total-final', totals.totalFinal);
+            setTotalCell('.js-total-uf-base', totals.ufBase, 2);
+            setTotalCell('.js-total-neto', totals.neto, 0);
+            setTotalCell('.js-total-iva', totals.iva, 0);
+            setTotalCell('.js-total-subtotal', totals.subtotal, 0);
+            setTotalCell('.js-total-garantia', totals.garantia, 0);
+            setTotalCell('.js-total-electricidad', totals.electricidad, 0);
+            setTotalCell('.js-total-gas', totals.gas, 0);
+            setTotalCell('.js-total-agua', totals.agua, 0);
+            setTotalCell('.js-total-reserva', totals.reserva, 0);
+            setTotalCell('.js-total-final', totals.totalFinal, 2);
         });
     }
 
