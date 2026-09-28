@@ -7,7 +7,6 @@ msp2RequireAccess();
 $flash = msp2PullFlash();
 $error = null;
 $garantias = [];
-$cuentasBanco = [];
 $recepciones = [];
 $archivosByRecepcion = [];
 $totales = ['pactado'=>0.0,'recibido'=>0.0,'pendiente'=>0.0];
@@ -65,10 +64,6 @@ try {
             }
         }
     }
-
-    $cuentasBanco = $conn->query(
-        'SELECT id_cuenta_tesoreria,nombre_cuenta,banco,numero_cuenta FROM dbo.msp_tesoreria_cuentas WHERE tipo_cuenta=N\'BANCO\' AND activo=1 ORDER BY banco,nombre_cuenta'
-    )->fetchAll() ?: [];
 
     $recepciones = $conn->query(
         'SELECT TOP (100) r.id_recepcion_garantia,r.fecha_recepcion,r.monto_recibido,r.medio_recepcion,r.referencia,r.banco_emisor,r.numero_cheque,r.estado_recepcion,
@@ -139,8 +134,7 @@ try {
                     <div class="col-md-3"><label class="form-label">Fecha recepción</label><input type="date" name="fecha_recepcion" class="form-control" value="<?php echo date('Y-m-d'); ?>" required></div>
                     <div class="col-md-3"><label class="form-label">Monto recibido</label><input type="number" name="monto_recibido" id="monto_recibido" min="0.01" step="0.01" class="form-control" required><div id="ayudaMonto" class="form-text"></div></div>
                     <div class="col-md-3"><label class="form-label">Medio</label><select name="medio_recepcion" id="medio_recepcion" class="form-select" required><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option><option value="CHEQUE">Cheque</option></select></div>
-                    <div class="col-md-6 campo-transferencia d-none"><label class="form-label">Cuenta bancaria destino</label><select name="id_cuenta_banco" class="form-select"><option value="">Seleccionar cuenta</option><?php foreach($cuentasBanco as $c): ?><option value="<?php echo (int)$c['id_cuenta_tesoreria']; ?>"><?php echo msp2Escape(($c['banco']??'').' · '.($c['nombre_cuenta']??'').' · '.($c['numero_cuenta']??'')); ?></option><?php endforeach; ?></select><?php if($cuentasBanco===[]): ?><div class="form-text text-danger">Agrega primero una cuenta bancaria.</div><?php endif; ?></div>
-                    <div class="col-md-6 campo-referencia d-none"><label class="form-label">Referencia transferencia</label><input name="referencia" maxlength="200" class="form-control"></div>
+                    <div class="col-md-6 campo-referencia d-none"><label class="form-label">Referencia transferencia</label><input name="referencia" maxlength="200" class="form-control"><div class="form-text">La cuenta bancaria de Tesorería se asignará automáticamente.</div></div>
                     <div class="col-md-4 campo-cheque d-none"><label class="form-label">Banco emisor</label><input name="banco_emisor" maxlength="120" class="form-control"></div>
                     <div class="col-md-4 campo-cheque d-none"><label class="form-label">Número cheque</label><input name="numero_cheque" maxlength="80" class="form-control"></div>
                     <div class="col-md-4 campo-cheque d-none"><label class="form-label">Fecha cheque</label><input type="date" name="fecha_cheque" class="form-control"></div>
