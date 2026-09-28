@@ -9,5 +9,9 @@ function tienePermiso($userId, $nombrePermiso, ?string $accion = null): bool
     if (!pgpValidateSession($conn) || (int)($_SESSION['usuario']['id'] ?? 0) !== (int)$userId) {
         return false;
     }
-    return pgpHasPermission($conn, (int)$userId, (string)$nombrePermiso, $accion ?? pgpRequestPermissionAction());
+    return pgpPermissionMapAllows(
+        pgpUserPermissionMap($conn, (int) $userId),
+        (string) $nombrePermiso,
+        $accion ?? pgpRequestPermissionAction()
+    );
 }

@@ -480,6 +480,7 @@ function pgpSecurityStartSession(): void
 
 function pgpSecurityDestroySession(): void
 {
+    pgpSecurityResetRequestCache();
     $_SESSION = [];
 
     if (session_status() === PHP_SESSION_ACTIVE && (bool) ini_get('session.use_cookies')) {
@@ -498,6 +499,27 @@ function pgpSecurityDestroySession(): void
     if (session_status() === PHP_SESSION_ACTIVE) {
         session_destroy();
     }
+}
+
+/**
+ * Clears only data memoized for the current PHP request. This does not keep
+ * authentication or authorization data between HTTP requests, so account
+ * disablement and security_version revocation are still checked on the next
+ * request.
+ */
+function pgpSecurityResetRequestCache(): void
+{
+    unset($GLOBALS['__pgp_security_request_cache']);
+}
+
+/** @return array<string,mixed> */
+function &pgpSecurityRequestCache(): array
+{
+    if (!isset($GLOBALS['__pgp_security_request_cache'])
+        || !is_array($GLOBALS['__pgp_security_request_cache'])) {
+        $GLOBALS['__pgp_security_request_cache'] = [];
+    }
+    return $GLOBALS['__pgp_security_request_cache'];
 }
 
 /** Session audience is explicit for external portals; legacy/internal sessions default to internal. */
@@ -522,30 +544,32 @@ function pgpSecurityUser(PDO $db, int $id): ?array
     return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
-function pgpValidateSession(PDO $db): bool
+function pgpValidateSession(PDO $db, bool $forceRefresh = false): bool
 {
-    static $requestCache = [];
-
     $id = (int) ($_SESSION['usuario']['id'] ?? 0);
     if ($id <= 0) {
         return false;
     }
     // Adopt existing development sessions only at initial version zero.
     $sessionVersion = (int) ($_SESSION['pgp_security_version'] ?? 0);
-    // Web requests keep one identity snapshot; CLI checks may mutate fixtures mid-process.
-    $cacheEnabled = PHP_SAPI !== 'cli';
+    $cache = &pgpSecurityRequestCache();
     $cacheKey = spl_object_id($db) . '|' . $id . '|' . $sessionVersion;
-    if ($cacheEnabled && array_key_exists($cacheKey, $requestCache)) {
-        return $requestCache[$cacheKey];
+    if (!$forceRefresh
+        && isset($cache['validated_sessions'][$cacheKey])
+        && is_array($cache['validated_sessions'][$cacheKey])) {
+        $cachedUser = $cache['validated_sessions'][$cacheKey];
+        $_SESSION['usuario']['rol_id'] = (int) ($cachedUser['rol_id'] ?? 0);
+        $_SESSION['usuario']['roles'] = ($cachedUser['nombre_rol'] ?? null) !== null
+            ? [(string) $cachedUser['nombre_rol']]
+            : [];
+        unset($_SESSION['usuario']['rol']);
+        return true;
     }
 
     $user = pgpSecurityUser($db, $id);
     $version = (int) ($user['security_version'] ?? -1);
 
     if (!$user || (int) $user['estado_id'] !== 1 || $version !== $sessionVersion) {
-        if ($cacheEnabled) {
-            $requestCache[$cacheKey] = false;
-        }
         pgpSecurityDestroySession();
         return false;
     }
@@ -553,10 +577,71 @@ function pgpValidateSession(PDO $db): bool
     $_SESSION['usuario']['rol_id'] = (int) $user['rol_id'];
     $_SESSION['usuario']['roles'] = $user['nombre_rol'] !== null ? [(string) $user['nombre_rol']] : [];
     unset($_SESSION['usuario']['rol']);
-    if ($cacheEnabled) {
-        $requestCache[$cacheKey] = true;
-    }
+    $cache = &pgpSecurityRequestCache();
+    $cache['validated_sessions'][$cacheKey] = $user;
     return true;
+}
+
+/**
+ * Loads the complete effective permission matrix for one enabled user in a
+ * single round trip. The matrix is request-scoped by design.
+ *
+ * @return array<string,array{lectura:bool,escritura:bool,eliminacion:bool}>
+ */
+function pgpUserPermissionMap(PDO $db, int $id, bool $forceRefresh = false): array
+{
+    if ($id <= 0) {
+        return [];
+    }
+
+    $cache = &pgpSecurityRequestCache();
+    $cacheKey = spl_object_id($db) . '|' . $id;
+    if (!$forceRefresh
+        && isset($cache['user_permissions'][$cacheKey])
+        && is_array($cache['user_permissions'][$cacheKey])) {
+        return $cache['user_permissions'][$cacheKey];
+    }
+
+    $stmt = $db->prepare(
+        'SELECT p.nombre_permiso,rp.lectura,rp.escritura,rp.eliminacion
+         FROM dbo.cr_usuarios u
+         INNER JOIN dbo.cr_rol_permisos rp ON rp.rol_id=u.rol_id
+         INNER JOIN dbo.cr_permisos p ON p.id=rp.permiso_id
+         WHERE u.id=:id AND u.estado_id=1'
+    );
+    $stmt->execute([':id' => $id]);
+    $permissions = [];
+    while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+        $name = trim((string) ($row['nombre_permiso'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $permissions[$name] = [
+            'lectura' => (int) ($row['lectura'] ?? 0) === 1,
+            'escritura' => (int) ($row['escritura'] ?? 0) === 1,
+            'eliminacion' => (int) ($row['eliminacion'] ?? 0) === 1,
+        ];
+    }
+    $cache['user_permissions'][$cacheKey] = $permissions;
+    return $permissions;
+}
+
+function pgpPermissionMapAllows(array $permissions, string $permission, string $action): bool
+{
+    if (!in_array($action, ['lectura', 'escritura', 'eliminacion'], true)) {
+        return false;
+    }
+    $flags = $permissions[$permission] ?? null;
+    if (!is_array($flags) || ($flags['lectura'] ?? false) !== true) {
+        return false;
+    }
+    if ($action === 'lectura') {
+        return true;
+    }
+    if (($flags['escritura'] ?? false) !== true) {
+        return false;
+    }
+    return $action !== 'eliminacion' || ($flags['eliminacion'] ?? false) === true;
 }
 
 function pgpSecurityAbort(int $status, string $message): never
@@ -659,58 +744,10 @@ function pgpRequestPermissionAction(?array $server = null, ?array $post = null):
 
 function pgpHasPermission(PDO $db, int $id, string $permission, string $action): bool
 {
-    static $requestCache = [];
-
     if ($id <= 0 || !in_array($action, ['lectura', 'escritura', 'eliminacion'], true)) {
         return false;
     }
-
-    // Load the complete role map once per web request instead of one query per check.
-    $cacheEnabled = PHP_SAPI !== 'cli';
-    $cacheKey = spl_object_id($db) . '|' . $id;
-    if (!$cacheEnabled || !array_key_exists($cacheKey, $requestCache)) {
-        $stmt = $db->prepare('SELECT p.nombre_permiso,rp.lectura,rp.escritura,rp.eliminacion
-        FROM dbo.cr_usuarios u
-        JOIN dbo.cr_rol_permisos rp ON rp.rol_id=u.rol_id
-        JOIN dbo.cr_permisos p ON p.id=rp.permiso_id
-        WHERE u.id=:id AND u.estado_id=1');
-        $stmt->execute([':id' => $id]);
-
-        $permissionMap = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $name = (string) ($row['nombre_permiso'] ?? '');
-            if ($name === '') {
-                continue;
-            }
-            $current = $permissionMap[$name] ?? [
-                'lectura' => 0,
-                'escritura' => 0,
-                'eliminacion' => 0,
-            ];
-            foreach (['lectura', 'escritura', 'eliminacion'] as $flag) {
-                $current[$flag] = max($current[$flag], (int) ($row[$flag] ?? 0));
-            }
-            $permissionMap[$name] = $current;
-        }
-
-        if ($cacheEnabled) {
-            $requestCache[$cacheKey] = $permissionMap;
-        }
-    } else {
-        $permissionMap = $requestCache[$cacheKey];
-    }
-
-    $flags = $permissionMap[$permission] ?? null;
-    if (!is_array($flags) || (int) ($flags['lectura'] ?? 0) !== 1) {
-        return false;
-    }
-    if ($action === 'lectura') {
-        return true;
-    }
-    if ((int) ($flags['escritura'] ?? 0) !== 1) {
-        return false;
-    }
-    return $action === 'escritura' || (int) ($flags['eliminacion'] ?? 0) === 1;
+    return pgpPermissionMapAllows(pgpUserPermissionMap($db, $id), $permission, $action);
 }
 
 function pgpCanManagePermissions(PDO $db, int $id): bool

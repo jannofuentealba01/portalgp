@@ -80,12 +80,19 @@ try {
     $assert(pgpValidateSession($conn), 'sesión existente habilitada aceptada');
     $oldSession = $_SESSION;
     $conn->exec('UPDATE dbo.cr_usuarios SET estado_id=2 WHERE id=99001');
-    $assert(!pgpValidateSession($conn) && $_SESSION === [], 'deshabilitar invalida sesión');
+    $assert(!pgpValidateSession($conn, true) && $_SESSION === [], 'deshabilitar invalida sesión en la siguiente validación forzada');
     $conn->exec('UPDATE dbo.cr_usuarios SET estado_id=1 WHERE id=99001');
     $_SESSION = $oldSession;
-    $assert(!pgpValidateSession($conn), 'rehabilitar no resucita sesión antigua');
+    $assert(!pgpValidateSession($conn, true), 'rehabilitar no resucita sesión antigua');
     $_SESSION = ['usuario' => ['id' => 99001], 'pgp_security_version' => pgpSecurityUser($conn,99001)['security_version']];
     $assert(pgpValidateSession($conn), 'nueva autenticación habilitada funciona');
+    $userPermissionMap = pgpUserPermissionMap($conn, 99001, true);
+    $assert(
+        pgpPermissionMapAllows($userPermissionMap, 'MSP Operacion', 'lectura')
+        && pgpPermissionMapAllows($userPermissionMap, 'MSP Operacion', 'escritura')
+        && pgpPermissionMapAllows($userPermissionMap, 'MSP Operacion', 'eliminacion'),
+        'la matriz de permisos de usuario conserva lectura, escritura y eliminación'
+    );
     $assert(pgpRequestPermissionAction(['REQUEST_METHOD'=>'POST','SCRIPT_NAME'=>'/msp/locales/guardar.php'], ['action'=>'lectura']) === 'escritura', 'POST no puede declararse lectura');
     $assert(pgpRequestPermissionAction(['REQUEST_METHOD'=>'POST','SCRIPT_NAME'=>'/msp/locales/eliminar.php'], ['action'=>'guardar']) === 'eliminacion', 'no se rebaja permiso de endpoint eliminar');
     $assert(pgpRequestPermissionAction(['REQUEST_METHOD'=>'POST','SCRIPT_NAME'=>'/roles.php'], ['action'=>'delete_role']) === 'eliminacion', 'eliminación en formulario mixto');

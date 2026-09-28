@@ -91,6 +91,7 @@ function pgpReplaceRolePermissions(PDO $db, int $actorId, int $roleId, mixed $ra
                 ':write' => $flags['escritura'], ':delete' => $flags['eliminacion']]);
         }
         $db->commit();
+        pgpSecurityResetRequestCache();
     } catch (Throwable $e) {
         if ($db->inTransaction()) {
             $db->rollBack();
