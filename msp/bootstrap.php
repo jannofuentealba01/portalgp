@@ -9,7 +9,6 @@ pgpSecurityStartSession();
 
 function msp2CurrentUserHasPermission(string $permission, string $action = 'lectura'): bool
 {
-    static $cache = [];
     $idUsuario = (int) ($_SESSION['usuario']['id'] ?? 0);
     if ($idUsuario <= 0) {
         return false;
@@ -17,14 +16,11 @@ function msp2CurrentUserHasPermission(string $permission, string $action = 'lect
     if (!pgpValidateSession($GLOBALS['conn'])) {
         return false;
     }
-    $cacheKey = $idUsuario . '|' . $permission . '|' . $action;
-    if (array_key_exists($cacheKey, $cache)) {
-        return $cache[$cacheKey];
-    }
-    if (tienePermiso($idUsuario, $permission, $action)) {
-        return $cache[$cacheKey] = true;
-    }
-    return $cache[$cacheKey] = false;
+    return pgpPermissionMapAllows(
+        pgpUserPermissionMap($GLOBALS['conn'], $idUsuario),
+        $permission,
+        $action
+    );
 }
 
 function msp2FunctionalPermissions(): array
@@ -1054,27 +1050,93 @@ function msp2RutFormatDisplay(?string $value): string
     return ($formattedBody ?? $body) . '-' . $dv;
 }
 
-function msp2TableExists(PDO $conn, string $tableName, string $schema = 'dbo'): bool
+/**
+ * Loads tables, columns and procedures with one catalog query per request.
+ * The previous helpers issued one remote INFORMATION_SCHEMA query for every
+ * distinct object, which is especially expensive when SQL Server is remote.
+ *
+ * @return array{tables:array<string,bool>,columns:array<string,bool>,procedures:array<string,bool>}
+ */
+function msp2SchemaMetadata(PDO $conn, bool $forceRefresh = false): array
 {
-    static $cache = [];
-    $cacheKey = strtolower($schema . '.' . $tableName);
-    if (array_key_exists($cacheKey, $cache)) {
-        return $cache[$cacheKey];
+    if (!isset($GLOBALS['__msp2_schema_metadata']) || !is_array($GLOBALS['__msp2_schema_metadata'])) {
+        $GLOBALS['__msp2_schema_metadata'] = [];
+    }
+    $connectionKey = (string) spl_object_id($conn);
+    if (!$forceRefresh && isset($GLOBALS['__msp2_schema_metadata'][$connectionKey])) {
+        return $GLOBALS['__msp2_schema_metadata'][$connectionKey];
     }
 
-    $stmt = $conn->prepare(
-        'SELECT COUNT(*)
+    $metadata = ['tables' => [], 'columns' => [], 'procedures' => []];
+    $stmt = $conn->query(
+        "SELECT N'TABLE' AS object_kind,
+                TABLE_SCHEMA AS schema_name,
+                TABLE_NAME AS object_name,
+                CAST(NULL AS NVARCHAR(128)) AS child_name
          FROM INFORMATION_SCHEMA.TABLES
-         WHERE TABLE_SCHEMA = :schema
-           AND TABLE_NAME = :table_name'
+         WHERE TABLE_SCHEMA=N'dbo'
+           AND (TABLE_NAME LIKE N'msp[_]%' OR TABLE_NAME LIKE N'cr[_]%')
+         UNION ALL
+         SELECT N'COLUMN',TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA=N'dbo'
+           AND (TABLE_NAME LIKE N'msp[_]%' OR TABLE_NAME LIKE N'cr[_]%')
+         UNION ALL
+         SELECT N'PROCEDURE',ROUTINE_SCHEMA,ROUTINE_NAME,CAST(NULL AS NVARCHAR(128))
+         FROM INFORMATION_SCHEMA.ROUTINES
+         WHERE ROUTINE_TYPE=N'PROCEDURE'
+           AND ROUTINE_SCHEMA=N'dbo'
+           AND (ROUTINE_NAME LIKE N'msp[_]%' OR ROUTINE_NAME LIKE N'cr[_]%')"
     );
-    $stmt->bindValue(':schema', $schema, PDO::PARAM_STR);
-    $stmt->bindValue(':table_name', $tableName, PDO::PARAM_STR);
-    $stmt->execute();
+    while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+        $schema = strtolower(trim((string) ($row['schema_name'] ?? '')));
+        $object = strtolower(trim((string) ($row['object_name'] ?? '')));
+        $kind = strtoupper(trim((string) ($row['object_kind'] ?? '')));
+        if ($schema === '' || $object === '') {
+            continue;
+        }
+        $objectKey = $schema . '.' . $object;
+        if ($kind === 'TABLE') {
+            $metadata['tables'][$objectKey] = true;
+        } elseif ($kind === 'PROCEDURE') {
+            $metadata['procedures'][$objectKey] = true;
+        } elseif ($kind === 'COLUMN') {
+            $column = strtolower(trim((string) ($row['child_name'] ?? '')));
+            if ($column !== '') {
+                $metadata['columns'][$objectKey . '.' . $column] = true;
+            }
+        }
+    }
 
-    $exists = (int) $stmt->fetchColumn() > 0;
-    $cache[$cacheKey] = $exists;
-    return $exists;
+    $GLOBALS['__msp2_schema_metadata'][$connectionKey] = $metadata;
+    return $metadata;
+}
+
+function msp2ResetSchemaMetadataCache(): void
+{
+    unset($GLOBALS['__msp2_schema_metadata']);
+}
+
+function msp2SchemaMetadataCovers(string $schema, string $objectName): bool
+{
+    $schema = strtolower(trim($schema));
+    $objectName = strtolower(trim($objectName));
+    return $schema === 'dbo'
+        && (str_starts_with($objectName, 'msp_') || str_starts_with($objectName, 'cr_'));
+}
+
+function msp2TableExists(PDO $conn, string $tableName, string $schema = 'dbo'): bool
+{
+    if (!msp2SchemaMetadataCovers($schema, $tableName)) {
+        $stmt = $conn->prepare(
+            'SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA=:schema AND TABLE_NAME=:object_name'
+        );
+        $stmt->execute([':schema' => $schema, ':object_name' => $tableName]);
+        return (int) $stmt->fetchColumn() > 0;
+    }
+    $metadata = msp2SchemaMetadata($conn);
+    return isset($metadata['tables'][strtolower($schema . '.' . $tableName)]);
 }
 
 /**
@@ -1195,52 +1257,34 @@ function msp2PagoPrioridadImputacion(?string $codigoItem): int
 
 function msp2ProcedureExists(PDO $conn, string $procedureName, string $schema = 'dbo'): bool
 {
-    static $cache = [];
-    $cacheKey = strtolower($schema . '.' . $procedureName);
-    if (array_key_exists($cacheKey, $cache)) {
-        return $cache[$cacheKey];
+    if (!msp2SchemaMetadataCovers($schema, $procedureName)) {
+        $stmt = $conn->prepare(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ROUTINES
+             WHERE ROUTINE_SCHEMA=:schema AND ROUTINE_NAME=:object_name AND ROUTINE_TYPE=N'PROCEDURE'"
+        );
+        $stmt->execute([':schema' => $schema, ':object_name' => $procedureName]);
+        return (int) $stmt->fetchColumn() > 0;
     }
-
-    $stmt = $conn->prepare(
-        'SELECT COUNT(*)
-         FROM INFORMATION_SCHEMA.ROUTINES
-         WHERE ROUTINE_SCHEMA = :schema
-           AND ROUTINE_NAME = :routine_name
-           AND ROUTINE_TYPE = :routine_type'
-    );
-    $stmt->bindValue(':schema', $schema, PDO::PARAM_STR);
-    $stmt->bindValue(':routine_name', $procedureName, PDO::PARAM_STR);
-    $stmt->bindValue(':routine_type', 'PROCEDURE', PDO::PARAM_STR);
-    $stmt->execute();
-
-    $exists = (int) $stmt->fetchColumn() > 0;
-    $cache[$cacheKey] = $exists;
-    return $exists;
+    $metadata = msp2SchemaMetadata($conn);
+    return isset($metadata['procedures'][strtolower($schema . '.' . $procedureName)]);
 }
 
 function msp2ColumnExists(PDO $conn, string $tableName, string $columnName, string $schema = 'dbo'): bool
 {
-    static $cache = [];
-    $cacheKey = strtolower($schema . '.' . $tableName . '.' . $columnName);
-    if (array_key_exists($cacheKey, $cache)) {
-        return $cache[$cacheKey];
+    if (!msp2SchemaMetadataCovers($schema, $tableName)) {
+        $stmt = $conn->prepare(
+            'SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=:schema AND TABLE_NAME=:object_name AND COLUMN_NAME=:column_name'
+        );
+        $stmt->execute([
+            ':schema' => $schema,
+            ':object_name' => $tableName,
+            ':column_name' => $columnName,
+        ]);
+        return (int) $stmt->fetchColumn() > 0;
     }
-
-    $stmt = $conn->prepare(
-        'SELECT COUNT(*)
-         FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_SCHEMA = :schema
-           AND TABLE_NAME = :table_name
-           AND COLUMN_NAME = :column_name'
-    );
-    $stmt->bindValue(':schema', $schema, PDO::PARAM_STR);
-    $stmt->bindValue(':table_name', $tableName, PDO::PARAM_STR);
-    $stmt->bindValue(':column_name', $columnName, PDO::PARAM_STR);
-    $stmt->execute();
-
-    $exists = (int) $stmt->fetchColumn() > 0;
-    $cache[$cacheKey] = $exists;
-    return $exists;
+    $metadata = msp2SchemaMetadata($conn);
+    return isset($metadata['columns'][strtolower($schema . '.' . $tableName . '.' . $columnName)]);
 }
 
 function msp2EnsureConfiguracionTable(PDO $conn): void

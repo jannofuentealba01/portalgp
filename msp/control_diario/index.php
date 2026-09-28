@@ -30,6 +30,11 @@ if ($requestedYear < 2020 || $requestedYear > 2100) {
     $requestedYear = (int) date('Y');
 }
 $selectedYear = $requestedYear;
+$compactDomMode = (string) ($_GET['full'] ?? '') !== '1';
+$selectedMonthRaw = trim((string) ($_GET['mes'] ?? ''));
+$focusMonthKey = '';
+$dataPeriodStart = sprintf('%04d-01-01', $selectedYear);
+$dataPeriodEndExclusive = sprintf('%04d-01-01', $selectedYear + 1);
 $returnDetailLocal = filter_input(INPUT_GET, 'detalle_local', FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
 ]);
@@ -89,6 +94,8 @@ $garantiaAplicadaByTiendaMonth = [];
 $clpFijoFallbackByTiendaMonth = [];
 $ufFallbackByTiendaMonth = [];
 $rentSnapshotsByTiendaMonth = [];
+$canAuthorizeProtectedCorrections = msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
+    || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura');
 $canCorrectElectricity = msp2CurrentUserHasPermission('MSP Operacion', 'escritura')
     && msp2TableExists($conn, 'msp_correcciones')
     && msp2TableExists($conn, 'msp_correcciones_impactos');
@@ -245,6 +252,33 @@ try {
             $months[$periodo]['uf'] = 0.0;
         }
     }
+
+    $monthKeys = array_keys($months);
+    $availableMonthKeys = array_values(array_filter(
+        $monthKeys,
+        static fn (string $key): bool => (bool) ($months[$key]['is_available'] ?? false)
+    ));
+    if ($selectedMonthRaw !== '' && isset($months[$selectedMonthRaw])) {
+        $focusMonthKey = $selectedMonthRaw;
+    } else {
+        $currentMonthKey = sprintf('%04d-%02d', $selectedYear, (int) date('n'));
+        if ($selectedYear === (int) date('Y') && isset($months[$currentMonthKey])) {
+            $focusMonthKey = $currentMonthKey;
+        } elseif ($availableMonthKeys !== []) {
+            $focusMonthKey = (string) end($availableMonthKeys);
+        } elseif ($monthKeys !== []) {
+            $focusMonthKey = (string) end($monthKeys);
+        }
+    }
+    $dataPeriodStart = sprintf('%04d-01-01', $selectedYear);
+    $dataPeriodEndExclusive = sprintf('%04d-01-01', $selectedYear + 1);
+    if ($compactDomMode && $focusMonthKey !== '') {
+        $periodDate = DateTimeImmutable::createFromFormat('!Y-m', $focusMonthKey);
+        if ($periodDate instanceof DateTimeImmutable) {
+            $dataPeriodStart = $periodDate->format('Y-m-01');
+            $dataPeriodEndExclusive = $periodDate->modify('first day of next month')->format('Y-m-d');
+        }
+    }
     $perfMark('periodos_y_uf');
 
     $canLoadServicios =
@@ -267,6 +301,42 @@ try {
     $canLoadDocStatus = msp2TableExists($conn, 'msp_documentos_cobro');
     $canLoadDocTotals = msp2TableExists($conn, 'msp_documentos_cobro');
 
+    $protectedDocumentSources = [];
+    foreach ([
+        'msp_pagos' => 'id_documento_cobro',
+        'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
+        'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
+        'msp_movimientos_garantia' => 'id_documento_cobro',
+        'msp_envio_lote_documentos' => 'id_documento_cobro',
+        'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
+        'msp_pago_contrato_archivos' => 'id_documento_cobro',
+    ] as $dependencyTable => $dependencyColumn) {
+        if (!msp2TableExists($conn, $dependencyTable)
+            || !msp2ColumnExists($conn, $dependencyTable, $dependencyColumn)) {
+            continue;
+        }
+        $protectedDocumentSources[] = 'SELECT ' . $dependencyColumn
+            . ' AS id_documento_cobro FROM dbo.' . $dependencyTable
+            . ' WHERE ' . $dependencyColumn . ' IS NOT NULL';
+    }
+    $protectedDocumentJoinSql = '';
+    $protectedDocumentSelectSql = 'CAST(0 AS BIT)';
+    if ($protectedDocumentSources !== []) {
+        $protectedDocumentJoinSql = ' LEFT JOIN (' . implode(' UNION ', $protectedDocumentSources)
+            . ') protected_doc ON protected_doc.id_documento_cobro=doc.id_documento_cobro ';
+        $protectedDocumentSelectSql = 'CAST(CASE WHEN protected_doc.id_documento_cobro IS NULL THEN 0 ELSE 1 END AS BIT)';
+    }
+    $activeAccountingEntryJoinSql = '';
+    $activeAccountingEntrySelectSql = 'CAST(0 AS BIT)';
+    if (msp2TableExists($conn, 'msp_acc_asientos')) {
+        $activeAccountingEntryJoinSql = " LEFT JOIN (
+            SELECT DISTINCT id_origen AS id_documento_cobro
+            FROM dbo.msp_acc_asientos
+            WHERE tabla_origen=N'msp_documentos_cobro' AND estado_asiento=1
+        ) active_entry ON active_entry.id_documento_cobro=doc.id_documento_cobro ";
+        $activeAccountingEntrySelectSql = 'CAST(CASE WHEN active_entry.id_documento_cobro IS NULL THEN 0 ELSE 1 END AS BIT)';
+    }
+
     if ($canLoadServicios) {
         $serviciosStmt = $conn->prepare(
             "SELECT
@@ -285,14 +355,16 @@ try {
                 ON ts.id_tipo_servicio = p.id_tipo_servicio
              INNER JOIN dbo.msp_medidores m
                 ON m.id_medidor = lm.id_medidor
-             WHERE YEAR(c.periodo_facturacion) = :anio
+             WHERE c.periodo_facturacion >= :period_start
+               AND c.periodo_facturacion < :period_end
                AND ts.codigo_servicio IN (N'LUZ', N'GAS', N'AGUA')
              GROUP BY
                 m.id_local,
                 CONVERT(CHAR(7), c.periodo_facturacion, 126),
                 ts.codigo_servicio"
         );
-        $serviciosStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $serviciosStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $serviciosStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $serviciosStmt->execute();
         while (($servicioRow = $serviciosStmt->fetch()) !== false) {
             $idLocalServicio = (int) ($servicioRow['id_local'] ?? 0);
@@ -328,31 +400,6 @@ try {
         && msp2TableExists($conn, 'msp_proceso_cobro_luz')
         && msp2TableExists($conn, 'msp_documentos_cobro')
         && msp2TableExists($conn, 'msp_documentos_cobro_detalle')) {
-        $dependenciasProtegidasSql = [];
-        $dependenciasDocumento = [
-            'msp_pagos' => 'id_documento_cobro',
-            'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
-            'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
-            'msp_movimientos_garantia' => 'id_documento_cobro',
-            'msp_envio_lote_documentos' => 'id_documento_cobro',
-            'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
-            'msp_pago_contrato_archivos' => 'id_documento_cobro',
-        ];
-        foreach ($dependenciasDocumento as $tablaDependencia => $columnaDependencia) {
-            if (!msp2TableExists($conn, $tablaDependencia)
-                || !msp2ColumnExists($conn, $tablaDependencia, $columnaDependencia)) {
-                continue;
-            }
-            $dependenciasProtegidasSql[] = 'EXISTS (SELECT 1 FROM dbo.' . $tablaDependencia
-                . ' dep WHERE dep.' . $columnaDependencia . '=doc.id_documento_cobro)';
-        }
-        $proteccionSql = $dependenciasProtegidasSql === []
-            ? 'CAST(0 AS BIT)'
-            : 'CAST(CASE WHEN ' . implode(' OR ', $dependenciasProtegidasSql) . ' THEN 1 ELSE 0 END AS BIT)';
-        $asientoSql = msp2TableExists($conn, 'msp_acc_asientos')
-            ? "CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.msp_acc_asientos acc WHERE acc.tabla_origen=N'msp_documentos_cobro' AND acc.id_origen=doc.id_documento_cobro AND acc.estado_asiento=1) THEN 1 ELSE 0 END AS BIT)"
-            : 'CAST(0 AS BIT)';
-
         $lecturasElectricidadStmt = $conn->prepare(
             "SELECT
                 COALESCE(doc.id_tienda, contrato_periodo.id_tienda) AS id_tienda,
@@ -366,8 +413,8 @@ try {
                 doc.saldo_pendiente,doc.estado_documento,cm.estado_cierre,
                 siguiente.id_lectura AS id_lectura_siguiente,
                 siguiente.lectura_actual AS lectura_siguiente,
-                $proteccionSql AS tiene_dependencias_protegidas,
-                $asientoSql AS tiene_asiento_activo
+                $protectedDocumentSelectSql AS tiene_dependencias_protegidas,
+                $activeAccountingEntrySelectSql AS tiene_asiento_activo
              FROM dbo.msp_lecturas_medidores lm
              INNER JOIN dbo.msp_medidores m ON m.id_medidor=lm.id_medidor
              INNER JOIN dbo.msp_locales l ON l.id_local=m.id_local
@@ -385,6 +432,8 @@ try {
                 WHERE dcd.id_cobro_servicio=cs.id_cobro_servicio
                 ORDER BY CASE WHEN dc.estado_documento=5 THEN 1 ELSE 0 END,dc.id_documento_cobro DESC
              ) doc
+             $protectedDocumentJoinSql
+             $activeAccountingEntryJoinSql
              OUTER APPLY (
                 SELECT TOP(1) ca.id_tienda,ca.id_contrato_arriendo
                 FROM dbo.msp_contrato_locales cl
@@ -405,12 +454,14 @@ try {
                   AND lm_sig.periodo_facturacion>lm.periodo_facturacion
                 ORDER BY lm_sig.periodo_facturacion,lm_sig.id_lectura
              ) siguiente
-             WHERE YEAR(cm.periodo_facturacion)=:anio_lecturas
+             WHERE cm.periodo_facturacion>=:period_start
+               AND cm.periodo_facturacion<:period_end
                AND UPPER(ts.codigo_servicio)=N'LUZ'
                AND COALESCE(doc.id_tienda,contrato_periodo.id_tienda) IS NOT NULL
              ORDER BY cm.periodo_facturacion,l.cdo_local,m.codigo_medidor,lm.id_lectura"
         );
-        $lecturasElectricidadStmt->bindValue(':anio_lecturas', $selectedYear, PDO::PARAM_INT);
+        $lecturasElectricidadStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $lecturasElectricidadStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $lecturasElectricidadStmt->execute();
         while (($lecturaElectricidad = $lecturasElectricidadStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $idTiendaLectura = (int) ($lecturaElectricidad['id_tienda'] ?? 0);
@@ -437,8 +488,7 @@ try {
             }
             $puedeAplicar = in_array($nivelCorreccion, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
                 || ($nivelCorreccion === 'AUTORIZACION'
-                    && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
-                        || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura')));
+                    && $canAuthorizeProtectedCorrections);
             $payloadLectura = [
                 'id_lectura' => (int) ($lecturaElectricidad['id_lectura'] ?? 0),
                 'id_contrato_arriendo' => (int) ($lecturaElectricidad['id_contrato_arriendo'] ?? 0),
@@ -473,31 +523,6 @@ try {
         && msp2TableExists($conn, 'msp_proceso_cobro_gas')
         && msp2TableExists($conn, 'msp_documentos_cobro')
         && msp2TableExists($conn, 'msp_documentos_cobro_detalle')) {
-        $dependenciasGasSql = [];
-        $dependenciasDocumentoGas = [
-            'msp_pagos' => 'id_documento_cobro',
-            'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
-            'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
-            'msp_movimientos_garantia' => 'id_documento_cobro',
-            'msp_envio_lote_documentos' => 'id_documento_cobro',
-            'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
-            'msp_pago_contrato_archivos' => 'id_documento_cobro',
-        ];
-        foreach ($dependenciasDocumentoGas as $tablaDependencia => $columnaDependencia) {
-            if (!msp2TableExists($conn, $tablaDependencia)
-                || !msp2ColumnExists($conn, $tablaDependencia, $columnaDependencia)) {
-                continue;
-            }
-            $dependenciasGasSql[] = 'EXISTS (SELECT 1 FROM dbo.' . $tablaDependencia
-                . ' dep WHERE dep.' . $columnaDependencia . '=doc.id_documento_cobro)';
-        }
-        $proteccionGasSql = $dependenciasGasSql === []
-            ? 'CAST(0 AS BIT)'
-            : 'CAST(CASE WHEN ' . implode(' OR ', $dependenciasGasSql) . ' THEN 1 ELSE 0 END AS BIT)';
-        $asientoGasSql = msp2TableExists($conn, 'msp_acc_asientos')
-            ? "CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.msp_acc_asientos acc WHERE acc.tabla_origen=N'msp_documentos_cobro' AND acc.id_origen=doc.id_documento_cobro AND acc.estado_asiento=1) THEN 1 ELSE 0 END AS BIT)"
-            : 'CAST(0 AS BIT)';
-
         $lecturasGasStmt = $conn->prepare(
             "SELECT
                 COALESCE(doc.id_tienda, contrato_periodo.id_tienda) AS id_tienda,
@@ -511,8 +536,8 @@ try {
                 doc.saldo_pendiente,doc.estado_documento,cm.estado_cierre,
                 siguiente.id_lectura AS id_lectura_siguiente,
                 siguiente.lectura_actual AS lectura_siguiente,
-                $proteccionGasSql AS tiene_dependencias_protegidas,
-                $asientoGasSql AS tiene_asiento_activo
+                $protectedDocumentSelectSql AS tiene_dependencias_protegidas,
+                $activeAccountingEntrySelectSql AS tiene_asiento_activo
              FROM dbo.msp_lecturas_medidores lm
              INNER JOIN dbo.msp_medidores m ON m.id_medidor=lm.id_medidor
              INNER JOIN dbo.msp_locales l ON l.id_local=m.id_local
@@ -530,6 +555,8 @@ try {
                 WHERE dcd.id_cobro_servicio=cs.id_cobro_servicio
                 ORDER BY CASE WHEN dc.estado_documento=5 THEN 1 ELSE 0 END,dc.id_documento_cobro DESC
              ) doc
+             $protectedDocumentJoinSql
+             $activeAccountingEntryJoinSql
              OUTER APPLY (
                 SELECT TOP(1) ca.id_tienda,ca.id_contrato_arriendo
                 FROM dbo.msp_contrato_locales cl
@@ -550,12 +577,14 @@ try {
                   AND lm_sig.periodo_facturacion>lm.periodo_facturacion
                 ORDER BY lm_sig.periodo_facturacion,lm_sig.id_lectura
              ) siguiente
-             WHERE YEAR(cm.periodo_facturacion)=:anio_lecturas_gas
+             WHERE cm.periodo_facturacion>=:period_start
+               AND cm.periodo_facturacion<:period_end
                AND UPPER(ts.codigo_servicio)=N'GAS'
                AND COALESCE(doc.id_tienda,contrato_periodo.id_tienda) IS NOT NULL
              ORDER BY cm.periodo_facturacion,l.cdo_local,m.codigo_medidor,lm.id_lectura"
         );
-        $lecturasGasStmt->bindValue(':anio_lecturas_gas', $selectedYear, PDO::PARAM_INT);
+        $lecturasGasStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $lecturasGasStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $lecturasGasStmt->execute();
         while (($lecturaGas = $lecturasGasStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $idTiendaLectura = (int) ($lecturaGas['id_tienda'] ?? 0);
@@ -580,8 +609,7 @@ try {
             }
             $puedeAplicar = in_array($nivelCorreccion, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
                 || ($nivelCorreccion === 'AUTORIZACION'
-                    && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
-                        || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura')));
+                    && $canAuthorizeProtectedCorrections);
             $gasReadingsByTiendaMonth[$idTiendaLectura][$periodoLectura][] = [
                 'id_lectura' => (int) ($lecturaGas['id_lectura'] ?? 0),
                 'id_contrato_arriendo' => (int) ($lecturaGas['id_contrato_arriendo'] ?? 0),
@@ -616,31 +644,6 @@ try {
         && msp2TableExists($conn, 'msp_proceso_cobro_agua')
         && msp2TableExists($conn, 'msp_documentos_cobro')
         && msp2TableExists($conn, 'msp_documentos_cobro_detalle')) {
-        $dependenciasAguaSql = [];
-        $dependenciasDocumentoAgua = [
-            'msp_pagos' => 'id_documento_cobro',
-            'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
-            'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
-            'msp_movimientos_garantia' => 'id_documento_cobro',
-            'msp_envio_lote_documentos' => 'id_documento_cobro',
-            'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
-            'msp_pago_contrato_archivos' => 'id_documento_cobro',
-        ];
-        foreach ($dependenciasDocumentoAgua as $tablaDependencia => $columnaDependencia) {
-            if (!msp2TableExists($conn, $tablaDependencia)
-                || !msp2ColumnExists($conn, $tablaDependencia, $columnaDependencia)) {
-                continue;
-            }
-            $dependenciasAguaSql[] = 'EXISTS (SELECT 1 FROM dbo.' . $tablaDependencia
-                . ' dep WHERE dep.' . $columnaDependencia . '=doc.id_documento_cobro)';
-        }
-        $proteccionAguaSql = $dependenciasAguaSql === []
-            ? 'CAST(0 AS BIT)'
-            : 'CAST(CASE WHEN ' . implode(' OR ', $dependenciasAguaSql) . ' THEN 1 ELSE 0 END AS BIT)';
-        $asientoAguaSql = msp2TableExists($conn, 'msp_acc_asientos')
-            ? "CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.msp_acc_asientos acc WHERE acc.tabla_origen=N'msp_documentos_cobro' AND acc.id_origen=doc.id_documento_cobro AND acc.estado_asiento=1) THEN 1 ELSE 0 END AS BIT)"
-            : 'CAST(0 AS BIT)';
-
         $lecturasAguaStmt = $conn->prepare(
             "SELECT
                 COALESCE(doc.id_tienda, contrato_consumo.id_tienda) AS id_tienda,
@@ -659,8 +662,8 @@ try {
                 doc.saldo_pendiente,doc.estado_documento,cm.estado_cierre,
                 siguiente.id_lectura AS id_lectura_siguiente,
                 siguiente.lectura_actual AS lectura_siguiente,
-                $proteccionAguaSql AS tiene_dependencias_protegidas,
-                $asientoAguaSql AS tiene_asiento_activo
+                $protectedDocumentSelectSql AS tiene_dependencias_protegidas,
+                $activeAccountingEntrySelectSql AS tiene_asiento_activo
              FROM dbo.msp_lecturas_medidores lm
              INNER JOIN dbo.msp_medidores m ON m.id_medidor=lm.id_medidor
              INNER JOIN dbo.msp_locales l ON l.id_local=m.id_local
@@ -678,6 +681,8 @@ try {
                 WHERE dcd.id_cobro_servicio=cs.id_cobro_servicio
                 ORDER BY CASE WHEN dc.estado_documento=5 THEN 1 ELSE 0 END,dc.id_documento_cobro DESC
              ) doc
+             $protectedDocumentJoinSql
+             $activeAccountingEntryJoinSql
              OUTER APPLY (
                 SELECT TOP(1) ca.id_tienda,ca.id_contrato_arriendo
                 FROM dbo.msp_contrato_locales cl
@@ -707,12 +712,14 @@ try {
                 ORDER BY COALESCE(lm_sig.fecha_hasta_consumo,lm_sig.fecha_lectura,lm_sig.periodo_facturacion),
                     lm_sig.periodo_facturacion,lm_sig.id_lectura
              ) siguiente
-             WHERE YEAR(cm.periodo_facturacion)=:anio_lecturas_agua
+             WHERE cm.periodo_facturacion>=:period_start
+               AND cm.periodo_facturacion<:period_end
                AND UPPER(ts.codigo_servicio)=N'AGUA'
                AND COALESCE(doc.id_tienda,contrato_consumo.id_tienda) IS NOT NULL
              ORDER BY cm.periodo_facturacion,l.cdo_local,m.codigo_medidor,lm.id_lectura"
         );
-        $lecturasAguaStmt->bindValue(':anio_lecturas_agua', $selectedYear, PDO::PARAM_INT);
+        $lecturasAguaStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $lecturasAguaStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $lecturasAguaStmt->execute();
         while (($lecturaAgua = $lecturasAguaStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $idTiendaLectura = (int) ($lecturaAgua['id_tienda'] ?? 0);
@@ -737,8 +744,7 @@ try {
             }
             $puedeAplicar = in_array($nivelCorreccion, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
                 || ($nivelCorreccion === 'AUTORIZACION'
-                    && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
-                        || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura')));
+                    && $canAuthorizeProtectedCorrections);
             $divisorAgua = (float) ($lecturaAgua['divisor'] ?? 0);
             $tarifaVariableAgua = $divisorAgua > 0
                 ? (
@@ -796,14 +802,16 @@ try {
                 ON dc.id_documento_cobro = dcd.id_documento_cobro
              INNER JOIN dbo.msp_tipo_item_documento tid
                 ON tid.id_tipo_item_documento = dcd.id_tipo_item_documento
-             WHERE YEAR(dc.periodo_facturacion) = :anio
+             WHERE dc.periodo_facturacion >= :period_start
+               AND dc.periodo_facturacion < :period_end
                AND dc.estado_documento <> 5
                AND tid.codigo_item IN (N'SERVICIO_LUZ', N'SERVICIO_GAS', N'SERVICIO_AGUA')
              GROUP BY
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
         );
-        $serviciosDocStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $serviciosDocStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $serviciosDocStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $serviciosDocStmt->execute();
         while (($serviciosDocRow = $serviciosDocStmt->fetch()) !== false) {
             $idTiendaServicioDoc = (int) ($serviciosDocRow['id_tienda'] ?? 0);
@@ -838,13 +846,15 @@ try {
                 ON dc.id_documento_cobro = dcd.id_documento_cobro
              INNER JOIN dbo.msp_tipo_item_documento tid
                 ON tid.id_tipo_item_documento = dcd.id_tipo_item_documento
-             WHERE YEAR(dc.periodo_facturacion) = :anio
+             WHERE dc.periodo_facturacion >= :period_start
+               AND dc.periodo_facturacion < :period_end
                AND dc.estado_documento <> 5
              GROUP BY
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
         );
-        $reservaCargosStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $reservaCargosStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $reservaCargosStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $reservaCargosStmt->execute();
         while (($reservaRow = $reservaCargosStmt->fetch()) !== false) {
             $idTiendaReserva = (int) ($reservaRow['id_tienda'] ?? 0);
@@ -894,7 +904,8 @@ try {
              FROM dbo.msp_pagos p
              INNER JOIN dbo.msp_documentos_cobro dc
                 ON dc.id_documento_cobro = p.id_documento_cobro
-             WHERE YEAR(dc.periodo_facturacion) = :anio
+             WHERE dc.periodo_facturacion >= :period_start
+               AND dc.periodo_facturacion < :period_end
                AND dc.estado_documento <> 5
                AND p.estado_pago = 1
                AND ISNULL(p.aplica_desde_saldo_favor, 0) = 1
@@ -902,7 +913,8 @@ try {
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
         );
-        $reservaSaldoStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $reservaSaldoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $reservaSaldoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $reservaSaldoStmt->execute();
         while (($saldoRow = $reservaSaldoStmt->fetch()) !== false) {
             $idTiendaReserva = (int) ($saldoRow['id_tienda'] ?? 0);
@@ -952,13 +964,15 @@ try {
                     ELSE N'OK'
                 END AS estado_control
              FROM dbo.msp_documentos_cobro dc
-             WHERE YEAR(dc.periodo_facturacion) = :anio
+             WHERE dc.periodo_facturacion >= :period_start
+               AND dc.periodo_facturacion < :period_end
                AND dc.estado_documento <> 5
              GROUP BY
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
         );
-        $docStatusStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $docStatusStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $docStatusStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $docStatusStmt->execute();
         while (($docStatusRow = $docStatusStmt->fetch()) !== false) {
             $idTiendaStatus = (int) ($docStatusRow['id_tienda'] ?? 0);
@@ -986,13 +1000,15 @@ try {
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
                 ROUND(SUM(dc.monto_total), 2) AS monto_total_documento
              FROM dbo.msp_documentos_cobro dc
-             WHERE YEAR(dc.periodo_facturacion) = :anio
+             WHERE dc.periodo_facturacion >= :period_start
+               AND dc.periodo_facturacion < :period_end
                AND dc.estado_documento <> 5
              GROUP BY
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
         );
-        $docTotalStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $docTotalStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $docTotalStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $docTotalStmt->execute();
         while (($docTotalRow = $docTotalStmt->fetch()) !== false) {
             $idTiendaDoc = (int) ($docTotalRow['id_tienda'] ?? 0);
@@ -1022,7 +1038,8 @@ try {
                         ORDER BY dc.id_documento_cobro DESC
                     ) AS rn
                  FROM dbo.msp_documentos_cobro dc
-                 WHERE YEAR(dc.periodo_facturacion) = :anio
+                 WHERE dc.periodo_facturacion >= :period_start
+                   AND dc.periodo_facturacion < :period_end
                    AND dc.estado_documento <> 5
             )
             SELECT
@@ -1033,7 +1050,8 @@ try {
             FROM documentos_periodo
             WHERE rn = 1"
         );
-        $docLinkStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $docLinkStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $docLinkStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $docLinkStmt->execute();
         while (($docLinkRow = $docLinkStmt->fetch()) !== false) {
             $idTiendaDocLink = (int) ($docLinkRow['id_tienda'] ?? 0);
@@ -1069,7 +1087,8 @@ try {
                 ON tmg.id_tipo_movimiento_garantia = mg.id_tipo_movimiento_garantia
              INNER JOIN dbo.msp_documentos_cobro dc
                 ON dc.id_documento_cobro = mg.id_documento_cobro
-             WHERE YEAR(dc.periodo_facturacion) = :anio
+             WHERE dc.periodo_facturacion >= :period_start_document
+               AND dc.periodo_facturacion < :period_end_document
                AND dc.estado_documento <> 5
                AND tmg.codigo_movimiento = N'APLICACION_CARGO'
              GROUP BY
@@ -1088,7 +1107,8 @@ try {
                AND p.estado_pago = 1
              INNER JOIN dbo.msp_documentos_cobro dc
                 ON dc.id_documento_cobro = p.id_documento_cobro
-             WHERE YEAR(dc.periodo_facturacion) = :anio_pago
+             WHERE dc.periodo_facturacion >= :period_start_payment
+               AND dc.periodo_facturacion < :period_end_payment
                AND dc.estado_documento <> 5
                AND tmg.codigo_movimiento = N'APLICACION_CARGO'
                AND mg.id_documento_cobro IS NULL
@@ -1096,8 +1116,10 @@ try {
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
         );
-        $garantiaAplicadaStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
-        $garantiaAplicadaStmt->bindValue(':anio_pago', $selectedYear, PDO::PARAM_INT);
+        $garantiaAplicadaStmt->bindValue(':period_start_document', $dataPeriodStart, PDO::PARAM_STR);
+        $garantiaAplicadaStmt->bindValue(':period_end_document', $dataPeriodEndExclusive, PDO::PARAM_STR);
+        $garantiaAplicadaStmt->bindValue(':period_start_payment', $dataPeriodStart, PDO::PARAM_STR);
+        $garantiaAplicadaStmt->bindValue(':period_end_payment', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $garantiaAplicadaStmt->execute();
         while (($garantiaAplicadaRow = $garantiaAplicadaStmt->fetch()) !== false) {
             $idTiendaGarantia = (int) ($garantiaAplicadaRow['id_tienda'] ?? 0);
@@ -1130,14 +1152,16 @@ try {
                 ON ca.id_contrato_arriendo = dc.id_contrato_arriendo
              INNER JOIN dbo.msp_tipo_item_documento tid
                 ON tid.id_tipo_item_documento = dcd.id_tipo_item_documento
-             WHERE YEAR(dc.periodo_facturacion) = :anio
+             WHERE dc.periodo_facturacion >= :period_start
+               AND dc.periodo_facturacion < :period_end
                AND dc.estado_documento <> 5
                AND tid.codigo_item = N'ARRIENDO'
              GROUP BY
                 COALESCE(dc.id_tienda, ca.id_tienda),
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
         );
-        $docArriendoStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $docArriendoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $docArriendoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $docArriendoStmt->execute();
         while (($docArriendoRow = $docArriendoStmt->fetch()) !== false) {
             $idTiendaArriendo = (int) ($docArriendoRow['id_tienda'] ?? 0);
@@ -1162,13 +1186,15 @@ try {
              FROM dbo.msp_arriendo_local_snapshot_periodo s
              LEFT JOIN dbo.msp_contratos_arriendo ca
                 ON ca.id_contrato_arriendo = s.id_contrato_arriendo
-             WHERE YEAR(s.periodo_facturacion) = :anio
+             WHERE s.periodo_facturacion >= :period_start
+               AND s.periodo_facturacion < :period_end
                AND s.estado_snapshot IN (1,2,3)
              GROUP BY
                 COALESCE(s.id_tienda, ca.id_tienda),
                 CONVERT(CHAR(7), s.periodo_facturacion, 126)"
         );
-        $snapshotArriendoStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $snapshotArriendoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $snapshotArriendoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $snapshotArriendoStmt->execute();
         while (($snapshotArriendoRow = $snapshotArriendoStmt->fetch()) !== false) {
             $idTiendaArriendo = (int) ($snapshotArriendoRow['id_tienda'] ?? 0);
@@ -1188,11 +1214,13 @@ try {
              FROM dbo.msp_arriendo_local_snapshot_periodo s
              LEFT JOIN dbo.msp_contratos_arriendo ca
                 ON ca.id_contrato_arriendo = s.id_contrato_arriendo
-             WHERE YEAR(s.periodo_facturacion) = :anio
+             WHERE s.periodo_facturacion >= :period_start
+               AND s.periodo_facturacion < :period_end
                AND s.estado_snapshot IN (1,2,3)
                AND UPPER(LTRIM(RTRIM(ISNULL(s.codigo_grupo_modalidad, N'')))) = N'CLP_FIJO_CONTRATO'"
         );
-        $snapshotClpFijoStmt->bindValue(':anio', $selectedYear, PDO::PARAM_INT);
+        $snapshotClpFijoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $snapshotClpFijoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $snapshotClpFijoStmt->execute();
         while (($snapshotClpFijoRow = $snapshotClpFijoStmt->fetch()) !== false) {
             $idTiendaClp = (int) ($snapshotClpFijoRow['id_tienda'] ?? 0);
@@ -1208,30 +1236,6 @@ try {
             && msp2TableExists($conn, 'msp_tipo_modalidad_arriendo')
             && msp2TableExists($conn, 'msp_documentos_cobro')
             && msp2TableExists($conn, 'msp_cierre_mensual')) {
-            $dependenciasRentSql = [];
-            $dependenciasDocumentoRent = [
-                'msp_pagos' => 'id_documento_cobro',
-                'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
-                'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
-                'msp_movimientos_garantia' => 'id_documento_cobro',
-                'msp_envio_lote_documentos' => 'id_documento_cobro',
-                'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
-                'msp_pago_contrato_archivos' => 'id_documento_cobro',
-            ];
-            foreach ($dependenciasDocumentoRent as $tablaDependencia => $columnaDependencia) {
-                if (!msp2TableExists($conn, $tablaDependencia)
-                    || !msp2ColumnExists($conn, $tablaDependencia, $columnaDependencia)) {
-                    continue;
-                }
-                $dependenciasRentSql[] = 'EXISTS (SELECT 1 FROM dbo.' . $tablaDependencia
-                    . ' dep WHERE dep.' . $columnaDependencia . '=doc.id_documento_cobro)';
-            }
-            $proteccionRentSql = $dependenciasRentSql === []
-                ? 'CAST(0 AS BIT)'
-                : 'CAST(CASE WHEN ' . implode(' OR ', $dependenciasRentSql) . ' THEN 1 ELSE 0 END AS BIT)';
-            $asientoRentSql = msp2TableExists($conn, 'msp_acc_asientos')
-                ? "CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.msp_acc_asientos acc WHERE acc.tabla_origen=N'msp_documentos_cobro' AND acc.id_origen=doc.id_documento_cobro AND acc.estado_asiento=1) THEN 1 ELSE 0 END AS BIT)"
-                : 'CAST(0 AS BIT)';
             $rentSnapshotStmt = $conn->prepare(
                 "SELECT
                     s.id_snapshot_arriendo,
@@ -1256,8 +1260,8 @@ try {
                     doc.estado_documento,
                     doc.monto_documento,
                     doc.saldo_pendiente,
-                    $proteccionRentSql AS tiene_dependencias_protegidas,
-                    $asientoRentSql AS tiene_asiento_activo
+                    $protectedDocumentSelectSql AS tiene_dependencias_protegidas,
+                    $activeAccountingEntrySelectSql AS tiene_asiento_activo
                  FROM dbo.msp_arriendo_local_snapshot_periodo s
                  INNER JOIN dbo.msp_contrato_locales cl
                     ON cl.id_contrato_local = s.id_contrato_local
@@ -1280,12 +1284,16 @@ try {
                       AND dc.estado_documento <> 5
                     ORDER BY dc.id_documento_cobro DESC
                  ) doc
-                 WHERE YEAR(s.periodo_facturacion) = :anio_uf_edit
+                 $protectedDocumentJoinSql
+                 $activeAccountingEntryJoinSql
+                 WHERE s.periodo_facturacion >= :period_start
+                   AND s.periodo_facturacion < :period_end
                    AND s.estado_snapshot IN (1,2,3)
                    AND tm.codigo_modalidad IN (N'UF_ESTATICO', N'DINAMICO_MENSUAL')
                  ORDER BY s.periodo_facturacion, " . msp2LocalCodeNaturalOrderSql('l.cdo_local') . ", s.id_snapshot_arriendo"
             );
-            $rentSnapshotStmt->bindValue(':anio_uf_edit', $selectedYear, PDO::PARAM_INT);
+            $rentSnapshotStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+            $rentSnapshotStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
             $rentSnapshotStmt->execute();
             while (($rentSnapshotRow = $rentSnapshotStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
                 $idTiendaRent = (int) ($rentSnapshotRow['id_tienda'] ?? 0);
@@ -1316,8 +1324,7 @@ try {
                 $puedeAplicarRent = $valorUfPeriodoRent > 0
                     && (in_array($nivelCorreccionRent, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
                         || ($nivelCorreccionRent === 'AUTORIZACION'
-                            && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
-                                || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura'))));
+                            && $canAuthorizeProtectedCorrections));
                 if ($idTiendaRent <= 0 || $periodoRent === '' || !isset($months[$periodoRent])) {
                     continue;
                 }
@@ -1348,8 +1355,9 @@ try {
     }
     $perfMark('carga_snapshots_arriendo');
 
-    $yearStart = sprintf('%04d-01-01', $selectedYear);
-    $yearEnd = sprintf('%04d-12-31', $selectedYear);
+    $yearStart = $dataPeriodStart;
+    $yearEndDate = (new DateTimeImmutable($dataPeriodEndExclusive))->modify('-1 day');
+    $yearEnd = $yearEndDate->format('Y-m-d');
 
     if (
         msp2TableExists($conn, 'msp_contrato_local_arriendo_regla')
@@ -1495,10 +1503,12 @@ try {
                     CONVERT(CHAR(7), ap.periodo_facturacion, 126) AS periodo_ym,
                     ROUND(ISNULL(ap.valor_periodo_uf, 0), 6) AS valor_periodo_uf
                  FROM dbo.msp_contrato_local_arriendo_periodo ap
-                 WHERE YEAR(ap.periodo_facturacion) = :anio_uf_fallback
+                 WHERE ap.periodo_facturacion >= :period_start
+                   AND ap.periodo_facturacion < :period_end
                    AND ap.estado_periodo = 1"
             );
-            $periodoUfStmt->bindValue(':anio_uf_fallback', $selectedYear, PDO::PARAM_INT);
+            $periodoUfStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+            $periodoUfStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
             $periodoUfStmt->execute();
             while (($periodoUfRow = $periodoUfStmt->fetch()) !== false) {
                 $idContratoLocalPeriodo = (int) ($periodoUfRow['id_contrato_local'] ?? 0);
@@ -1595,7 +1605,9 @@ try {
     }
     $perfMark('fallback_uf_reglas');
 
-    $buildContratoPendienteSql = static function (string $contratoAlias) use ($conn, $selectedYear): string {
+    $dataPeriodStartSql = $conn->quote($dataPeriodStart);
+    $dataPeriodEndSql = $conn->quote($dataPeriodEndExclusive);
+    $buildContratoPendienteSql = static function (string $contratoAlias) use ($conn, $dataPeriodStartSql, $dataPeriodEndSql): string {
         $parts = [];
         if (msp2TableExists($conn, 'msp_documentos_cobro')) {
             $parts[] = "EXISTS (
@@ -1656,7 +1668,8 @@ try {
                 INNER JOIN dbo.msp_cierre_mensual cm_serv_pend
                     ON cm_serv_pend.id_cierre_mensual = p_serv_pend.id_cierre_mensual
                 WHERE cl_serv_pend.id_contrato_arriendo = {$contratoAlias}.id_contrato_arriendo
-                  AND YEAR(cm_serv_pend.periodo_facturacion) = " . (int) $selectedYear . "
+                  AND cm_serv_pend.periodo_facturacion >= {$dataPeriodStartSql}
+                  AND cm_serv_pend.periodo_facturacion < {$dataPeriodEndSql}
             )";
         }
         if (msp2TableExists($conn, 'msp_liquidacion_servicios')
@@ -1671,7 +1684,8 @@ try {
                    AND c_tardio.estado_consumo <> 3
                 WHERE cl_tardio.id_contrato_arriendo = {$contratoAlias}.id_contrato_arriendo
                   AND (ls_tardio.estado_liquidacion IN (1,2)
-                       OR YEAR(c_tardio.periodo_emision) = " . (int) $selectedYear . ")
+                       OR (c_tardio.periodo_emision >= {$dataPeriodStartSql}
+                           AND c_tardio.periodo_emision < {$dataPeriodEndSql}))
             )";
         }
 
@@ -1682,7 +1696,7 @@ try {
         return "({$contratoAlias}.fecha_termino_efectiva IS NULL OR DATEADD(MONTH, 2, {$contratoAlias}.fecha_termino_efectiva) >= {$yearStartParam} OR " . $buildContratoPendienteSql($contratoAlias) . ')';
     };
 
-    $buildContratoLocalPendienteSql = static function (string $contratoAlias, string $contratoLocalAlias) use ($conn, $selectedYear): string {
+    $buildContratoLocalPendienteSql = static function (string $contratoAlias, string $contratoLocalAlias) use ($conn, $dataPeriodStartSql, $dataPeriodEndSql): string {
         $parts = [];
         if (msp2TableExists($conn, 'msp_documentos_cobro')) {
             $parts[] = "EXISTS (
@@ -1740,7 +1754,8 @@ try {
                 INNER JOIN dbo.msp_cierre_mensual cm_serv_pend
                     ON cm_serv_pend.id_cierre_mensual = p_serv_pend.id_cierre_mensual
                 WHERE m_serv_pend.id_local = {$contratoLocalAlias}.id_local
-                  AND YEAR(cm_serv_pend.periodo_facturacion) = " . (int) $selectedYear . "
+                  AND cm_serv_pend.periodo_facturacion >= {$dataPeriodStartSql}
+                  AND cm_serv_pend.periodo_facturacion < {$dataPeriodEndSql}
             )";
         }
         if (msp2TableExists($conn, 'msp_liquidacion_servicios')
@@ -1753,7 +1768,8 @@ try {
                    AND c_tardio.estado_consumo <> 3
                 WHERE ls_tardio.id_contrato_local = {$contratoLocalAlias}.id_contrato_local
                   AND (ls_tardio.estado_liquidacion IN (1,2)
-                       OR YEAR(c_tardio.periodo_emision) = " . (int) $selectedYear . ")
+                       OR (c_tardio.periodo_emision >= {$dataPeriodStartSql}
+                           AND c_tardio.periodo_emision < {$dataPeriodEndSql}))
             )";
         }
 
@@ -1824,14 +1840,16 @@ try {
                 tiene_pendientes,
                 marca_termino
              FROM dbo.msp_vw_control_diario_base
-             WHERE YEAR(periodo_facturacion) = :anio_estado
+             WHERE periodo_facturacion >= :period_start
+               AND periodo_facturacion < :period_end
              ORDER BY
                 id_tienda,
                 periodo_facturacion,
                 CASE WHEN vigente_arriendo = 1 THEN 0 WHEN en_liquidacion = 1 THEN 1 ELSE 2 END,
                 id_contrato_arriendo DESC"
         );
-        $estadoOperativoStmt->bindValue(':anio_estado', $selectedYear, PDO::PARAM_INT);
+        $estadoOperativoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $estadoOperativoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $estadoOperativoStmt->execute();
         while (($estadoOperativoRow = $estadoOperativoStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $idTiendaEstado = (int) ($estadoOperativoRow['id_tienda'] ?? 0);
@@ -1863,10 +1881,12 @@ try {
                 ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
              INNER JOIN dbo.msp_arrendatarios a
                 ON a.id_arrendatario = ca.id_arrendatario
-             WHERE YEAR(c.periodo_emision) = :anio_tardio
+             WHERE c.periodo_emision >= :period_start
+               AND c.periodo_emision < :period_end
                AND c.estado_consumo IN (1,2)"
         );
-        $estadoTardioStmt->bindValue(':anio_tardio', $selectedYear, PDO::PARAM_INT);
+        $estadoTardioStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
+        $estadoTardioStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
         $estadoTardioStmt->execute();
         while (($estadoTardioRow = $estadoTardioStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $idTiendaTardio = (int) ($estadoTardioRow['id_tienda'] ?? 0);
@@ -2657,33 +2677,10 @@ if ($perfEnabled) {
         'marks' => $perfMarks,
     ];
 }
-$compactDomMode = (string) ($_GET['full'] ?? '') !== '1';
 $renderMonths = $months;
 $viewMonthKey = '';
-if ($compactDomMode && $months !== []) {
-    $monthKeys = array_keys($months);
-    $availableMonthKeys = array_values(array_filter(
-        $monthKeys,
-        static fn (string $k): bool => (bool) (($months[$k]['is_available'] ?? false) === true)
-    ));
-    $selectedMonthRaw = trim((string) ($_GET['mes'] ?? ''));
-    $focusMonthKey = '';
-    if ($selectedMonthRaw !== '' && isset($months[$selectedMonthRaw])) {
-        $focusMonthKey = $selectedMonthRaw;
-    } else {
-        $currentYear = (int) date('Y');
-        $currentMonthKey = sprintf('%04d-%02d', $selectedYear, (int) date('n'));
-        if ($selectedYear === $currentYear && in_array($currentMonthKey, $monthKeys, true)) {
-            $focusMonthKey = $currentMonthKey;
-        } elseif ($availableMonthKeys !== []) {
-            $focusMonthKey = (string) end($availableMonthKeys);
-        } else {
-            $focusMonthKey = (string) end($monthKeys);
-        }
-    }
-    if ($focusMonthKey !== '' && isset($months[$focusMonthKey])) {
-        $renderMonths = [$focusMonthKey => $months[$focusMonthKey]];
-    }
+if ($compactDomMode && $focusMonthKey !== '' && isset($months[$focusMonthKey])) {
+    $renderMonths = [$focusMonthKey => $months[$focusMonthKey]];
 }
 $viewMonthKey = (string) (array_key_first($renderMonths) ?? '');
 $allMonthKeys = array_keys($months);
