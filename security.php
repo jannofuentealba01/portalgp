@@ -747,15 +747,7 @@ function pgpHasPermission(PDO $db, int $id, string $permission, string $action):
     if ($id <= 0 || !in_array($action, ['lectura', 'escritura', 'eliminacion'], true)) {
         return false;
     }
-    // Column is exclusively from the allowlist above.
-    $stmt = $db->prepare('SELECT COUNT(*) FROM dbo.cr_usuarios u
-        JOIN dbo.cr_rol_permisos rp ON rp.rol_id=u.rol_id
-        JOIN dbo.cr_permisos p ON p.id=rp.permiso_id
-        WHERE u.id=:id AND u.estado_id=1 AND p.nombre_permiso=:permission
-          AND rp.lectura=1 AND rp.' . $action . '=1'
-        . ($action === 'eliminacion' ? ' AND rp.escritura=1' : ''));
-    $stmt->execute([':id' => $id, ':permission' => $permission]);
-    return (int) $stmt->fetchColumn() > 0;
+    return pgpPermissionMapAllows(pgpUserPermissionMap($db, $id), $permission, $action);
 }
 
 function pgpCanManagePermissions(PDO $db, int $id): bool
