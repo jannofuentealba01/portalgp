@@ -3086,7 +3086,11 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             <?php if (($row['calc_mode'] ?? 'UF') === 'NETO_FIJO'): ?>
                                                 -
                                             <?php else: ?>
-                                                <span class="rent-cell-value"><?php echo msp2Escape(number_format($ufBaseMes, 2, ',', '.')); ?></span>
+                                                <span
+                                                    class="rent-cell-value"
+                                                    title="<?php echo msp2Escape('UF base: ' . number_format($ufBaseMes, 2, ',', '.')); ?>"
+                                                    aria-label="<?php echo msp2Escape('UF base completa: ' . number_format($ufBaseMes, 2, ',', '.')); ?>"
+                                                ><?php echo msp2Escape(number_format($ufBaseMes, 2, ',', '.')); ?></span>
                                                 <?php if ($snapshotsArriendoMes !== [] && $canCorrectRent): ?>
                                                     <button
                                                         type="button"
@@ -3111,7 +3115,11 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             <?php echo msp2Escape(number_format($montoGarantia, 2, ',', '.')); ?>
                                         </td>
                                         <td class="cell-num js-servicio-electricidad js-month-col<?php echo $lecturasElectricidadMes !== [] ? ' electricity-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoElectricidad, 2, '.', '')); ?>">
-                                            <span class="electricity-cell-value"><?php echo msp2Escape(number_format($montoElectricidad, 2, ',', '.')); ?></span>
+                                            <span
+                                                class="electricity-cell-value"
+                                                title="<?php echo msp2Escape('Electricidad: $ ' . number_format($montoElectricidad, 2, ',', '.')); ?>"
+                                                aria-label="<?php echo msp2Escape('Monto completo de electricidad: $ ' . number_format($montoElectricidad, 2, ',', '.')); ?>"
+                                            ><?php echo msp2Escape(number_format($montoElectricidad, 2, ',', '.')); ?></span>
                                             <?php if ($lecturasElectricidadMes !== [] && $canCorrectElectricity): ?>
                                                 <button
                                                     type="button"
@@ -3123,7 +3131,11 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             <?php endif; ?>
                                         </td>
                                         <td class="cell-num js-servicio-gas js-month-col<?php echo $lecturasGasMes !== [] ? ' gas-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoGas, 2, '.', '')); ?>">
-                                            <span class="gas-cell-value"><?php echo msp2Escape(number_format($montoGas, 2, ',', '.')); ?></span>
+                                            <span
+                                                class="gas-cell-value"
+                                                title="<?php echo msp2Escape('Gas: $ ' . number_format($montoGas, 2, ',', '.')); ?>"
+                                                aria-label="<?php echo msp2Escape('Monto completo de gas: $ ' . number_format($montoGas, 2, ',', '.')); ?>"
+                                            ><?php echo msp2Escape(number_format($montoGas, 2, ',', '.')); ?></span>
                                             <?php if ($lecturasGasMes !== [] && $canCorrectGas): ?>
                                                 <button
                                                     type="button"
@@ -3135,7 +3147,11 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             <?php endif; ?>
                                         </td>
                                         <td class="cell-num js-servicio-agua js-month-col<?php echo $lecturasAguaMes !== [] ? ' water-edit-cell' : ''; ?>" data-month-key="<?php echo msp2Escape($monthKey); ?>" data-servicio-monto="<?php echo msp2Escape(number_format($montoAgua, 2, '.', '')); ?>">
-                                            <span class="water-cell-value"><?php echo msp2Escape(number_format($montoAgua, 2, ',', '.')); ?></span>
+                                            <span
+                                                class="water-cell-value"
+                                                title="<?php echo msp2Escape('Agua: $ ' . number_format($montoAgua, 2, ',', '.')); ?>"
+                                                aria-label="<?php echo msp2Escape('Monto completo de agua: $ ' . number_format($montoAgua, 2, ',', '.')); ?>"
+                                            ><?php echo msp2Escape(number_format($montoAgua, 2, ',', '.')); ?></span>
                                             <?php if ($lecturasAguaMes !== [] && $canCorrectWater): ?>
                                                 <button
                                                     type="button"
