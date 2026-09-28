@@ -74,7 +74,6 @@ $idGarantia = filter_input(INPUT_POST, 'id_garantia', FILTER_VALIDATE_INT, ['opt
 $fecha = trim((string) ($_POST['fecha_recepcion'] ?? ''));
 $medio = strtoupper(trim((string) ($_POST['medio_recepcion'] ?? '')));
 $modalidad = strtoupper(trim((string) ($_POST['modalidad_recepcion'] ?? 'ABONO')));
-$referencia = msp2NormalizeText((string) ($_POST['referencia'] ?? ''));
 $bancoEmisor = msp2NormalizeText((string) ($_POST['banco_emisor'] ?? ''));
 $numeroCheque = msp2NormalizeText((string) ($_POST['numero_cheque'] ?? ''));
 $fechaCheque = trim((string) ($_POST['fecha_cheque'] ?? ''));
@@ -95,11 +94,8 @@ if (!$fechaObj || $fechaObj->format('Y-m-d') !== $fecha) {
 if (!in_array($medio, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'], true)) {
     msp2RecepcionGarantiaFail('Selecciona un medio de recepción válido.');
 }
-if (mb_strlen($referencia) > 200 || mb_strlen($bancoEmisor) > 120 || mb_strlen($numeroCheque) > 80 || mb_strlen($observaciones) > 500) {
+if (mb_strlen($bancoEmisor) > 120 || mb_strlen($numeroCheque) > 80 || mb_strlen($observaciones) > 500) {
     msp2RecepcionGarantiaFail('Uno de los textos supera el largo permitido.');
-}
-if ($medio === 'TRANSFERENCIA' && $referencia === '') {
-    msp2RecepcionGarantiaFail('La transferencia requiere una referencia.');
 }
 if ($medio === 'CHEQUE') {
     if ($numeroCheque === '' || $bancoEmisor === '') {
@@ -212,7 +208,7 @@ try {
     foreach ($asignaciones as $asignacion) {
         $stmtRecepcion->execute([
             ':garantia'=>$asignacion['id_garantia'], ':fecha'=>$fecha, ':monto'=>$asignacion['monto'], ':medio'=>$medio,
-            ':referencia'=>$referencia!==''?$referencia:null, ':banco'=>$bancoEmisor!==''?$bancoEmisor:null,
+            ':referencia'=>null, ':banco'=>$bancoEmisor!==''?$bancoEmisor:null,
             ':cheque'=>$numeroCheque!==''?$numeroCheque:null, ':fecha_cheque'=>$fechaCheque!==''?$fechaCheque:null,
             ':observaciones'=>$observaciones!==''?$observaciones:null, ':usuario'=>(int)$_SESSION['usuario']['id'],
         ]);
@@ -222,7 +218,7 @@ try {
         }
         $stmtMovimiento->execute([
             ':cuenta'=>$idCuenta, ':fecha'=>$fecha, ':monto'=>$asignacion['monto'], ':medio'=>$medio,
-            ':referencia'=>$referencia!==''?$referencia:($numeroCheque!==''?$numeroCheque:null),
+            ':referencia'=>$numeroCheque!==''?$numeroCheque:null,
             ':recepcion'=>$idRecepcion, ':observaciones'=>$observaciones!==''?$observaciones:null,
             ':usuario'=>(int)$_SESSION['usuario']['id'],
         ]);
