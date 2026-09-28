@@ -126,4 +126,3 @@ if ($mode === '--apply' && $missing !== []) {
 if ($mode === '--rollback' && $present !== []) {
     exit(1);
 }
-
