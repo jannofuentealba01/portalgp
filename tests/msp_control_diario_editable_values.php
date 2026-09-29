@@ -14,6 +14,18 @@ $assertions = [
     'agua expone el monto completo' => preg_match('/class="water-cell-value"\s+title="<\?php echo msp2Escape\(\'Agua:/s', $source) === 1,
     'valores completos tienen descripción accesible' => substr_count($source, 'aria-label="<?php echo msp2Escape(') >= 4,
     'el lápiz de electricidad continúa disponible' => str_contains($source, 'class="electricity-edit-btn js-electricity-edit"'),
+    'el modal de electricidad mantiene visible su pie' => preg_match(
+        '/id="electricityCorrectionModal".*?modal-dialog-scrollable[^>]*>\s*<form class="modal-content"/s',
+        $source
+    ) === 1,
+    'electricidad permite autorizar ajustes financieros protegidos' => preg_match(
+        '/\$puedeAplicar\s*=\s*in_array\(\$nivelCorreccion.*?\[\'AUTORIZACION\',\'AJUSTE_FINANCIERO\'\]/s',
+        $source
+    ) === 1,
+    'electricidad explica que conserva los movimientos financieros' => str_contains(
+        $source,
+        'se versionará el documento y se aplicará solamente la diferencia eléctrica.'
+    ),
     'el lápiz de gas continúa disponible' => str_contains($source, 'class="gas-edit-btn js-gas-edit"'),
     'el lápiz de agua continúa disponible' => str_contains($source, 'class="water-edit-btn js-water-edit"'),
     'el lápiz de UF base continúa disponible' => str_contains($source, 'class="rent-edit-btn js-rent-edit"'),

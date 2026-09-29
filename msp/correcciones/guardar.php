@@ -107,6 +107,7 @@ try {
                     ? $analisisControlado['registro_exacto']
                     : [];
             $servicioControlado = strtoupper((string) ($registroControlado['servicio'] ?? ''));
+            $esElectricidadControlada = $tipoControlado === 'LECTURA' && $servicioControlado === 'LUZ';
             $esArriendoControlado = $tipoControlado === 'ARRIENDO_PERIODO'
                 && strtoupper((string) ($registroControlado['unidad_correccion'] ?? '')) === 'UF_BASE';
             if ($tipoControlado === 'LECTURA' && !in_array($servicioControlado, ['LUZ','GAS','AGUA'], true)) {
@@ -116,10 +117,14 @@ try {
                 throw new RuntimeException('La ejecución controlada de arriendo está habilitada solamente para UF Base.');
             }
             $nivelControlado = strtoupper((string) ($correccionControlada['nivel_correcion'] ?? ''));
-            if ($nivelControlado === 'AJUSTE_FINANCIERO' && !$esArriendoControlado) {
-                throw new RuntimeException('El ajuste financiero automático está habilitado solamente para UF Base.');
+            if ($nivelControlado === 'AJUSTE_FINANCIERO'
+                && !$esArriendoControlado
+                && !$esElectricidadControlada) {
+                throw new RuntimeException('El ajuste financiero automático está habilitado solamente para UF Base y electricidad.');
             }
-            $nombreControlado = $esArriendoControlado ? 'arriendo' : $servicioControlado;
+            $nombreControlado = $esArriendoControlado
+                ? 'arriendo'
+                : ($esElectricidadControlada ? 'electricidad' : $servicioControlado);
 
             if (in_array($nivelControlado, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)
                 && !msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')

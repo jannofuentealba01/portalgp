@@ -203,7 +203,7 @@ final class CorreccionesService
             require_once __DIR__ . '/ArriendoCorreccionService.php';
             return ArriendoCorreccionService::ejecutar($conn, $corr, $usuario);
         }
-        if ($tipo === 'LECTURA' && in_array($nivel, ['REGENERACION_CONTROLADA', 'AUTORIZACION'], true)) {
+        if ($tipo === 'LECTURA' && in_array($nivel, ['REGENERACION_CONTROLADA', 'AUTORIZACION', 'AJUSTE_FINANCIERO'], true)) {
             $analisis = json_decode((string) ($corr['resultado_analisis'] ?? ''), true);
             $registro = is_array($analisis) && is_array($analisis['registro_exacto'] ?? null)
                 ? $analisis['registro_exacto']
@@ -212,6 +212,9 @@ final class CorreccionesService
             if ($servicio === 'LUZ') {
                 require_once __DIR__ . '/ElectricidadCorreccionService.php';
                 return ElectricidadCorreccionService::ejecutar($conn, $corr, $usuario);
+            }
+            if ($nivel === 'AJUSTE_FINANCIERO') {
+                throw new RuntimeException('El ajuste financiero automático de lecturas está habilitado actualmente para electricidad.');
             }
             if ($servicio === 'GAS') {
                 require_once __DIR__ . '/GasCorreccionService.php';
