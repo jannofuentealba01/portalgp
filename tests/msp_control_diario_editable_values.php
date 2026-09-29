@@ -77,6 +77,16 @@ $assertions = [
         && str_contains($styles, '.gas-edit-cell:hover .gas-edit-btn,')
         && str_contains($styles, '.water-edit-cell:hover .water-edit-btn,')
         && str_contains($styles, '.rent-edit-cell:hover .rent-edit-btn,'),
+    'gas y agua usan ancho compacto' => str_contains($styles, '.control-grid.month-single-mode .gas-col,')
+        && str_contains($styles, 'width: 84px;')
+        && str_contains($source, 'class="js-month-col gas-col"')
+        && str_contains($source, 'class="js-month-col agua-col"'),
+    'reserva usa ancho compacto' => str_contains($styles, '.control-grid.month-single-mode .reserva-col,')
+        && str_contains($styles, 'width: 76px;')
+        && str_contains($source, 'class="js-month-col reserva-col"'),
+    'locales y arrendatario tienen una sola separación' => str_contains($styles, '.control-grid .sticky-col-local {')
+        && str_contains($styles, 'box-shadow: none;')
+        && str_contains($styles, 'border-left: 1px solid var(--color-border);'),
 ];
 
 $failures = array_keys(array_filter($assertions, static fn (bool $passed): bool => !$passed));

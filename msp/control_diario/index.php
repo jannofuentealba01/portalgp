@@ -2956,9 +2956,9 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                     <th class="js-month-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Subtotal</th>
                                     <th class="js-month-col garantia-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Garantía</th>
                                     <th class="js-month-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Electricidad</th>
-                                    <th class="js-month-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Gas</th>
-                                    <th class="js-month-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Agua</th>
-                                    <th class="js-month-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Reserva</th>
+                                    <th class="js-month-col gas-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Gas</th>
+                                    <th class="js-month-col agua-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Agua</th>
+                                    <th class="js-month-col reserva-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Reserva</th>
                                     <th class="js-month-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Total final</th>
                                     <th class="js-month-col status-col" data-month-key="<?php echo msp2Escape($month['key']); ?>">Estado</th>
                                 <?php endforeach; ?>
