@@ -86,11 +86,17 @@ $check('Historial muestra movimientos en una sola tabla continua', static functi
 });
 
 $check('Encabezado del historial no se superpone a los movimientos', static function () use ($root): bool {
+    $source = file_get_contents($root . '/msp/garantias/historial.php');
     $styles = file_get_contents($root . '/msp/assets/views/garantias--historial.css');
-    return is_string($styles)
-        && str_contains($styles, '.msp-guarantee-ledger-table.gp-table-sticky thead th')
-        && str_contains($styles, 'position: static;')
-        && str_contains($styles, 'top: auto;');
+    $tableSystem = file_get_contents($root . '/msp/assets/table_system.js');
+    return is_string($source)
+        && is_string($styles)
+        && is_string($tableSystem)
+        && str_contains($source, 'data-gp-table-sticky="false"')
+        && str_contains($tableSystem, "table.dataset.gpTableSticky !== 'false'")
+        && str_contains($styles, '.gp-module-msp table.msp-guarantee-ledger-table.gp-table-sticky thead th')
+        && str_contains($styles, 'position: static !important;')
+        && str_contains($styles, 'top: auto !important;');
 });
 
 $check('Historial se ordena naturalmente por local antes de la fecha', static function () use ($root): bool {

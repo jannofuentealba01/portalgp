@@ -374,7 +374,7 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
     <?php if ($movimientos !== []): ?>
         <section class="card shadow-sm msp-guarantee-ledger-group">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-guarantee-ledger-table">
+                <table class="table table-hover align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-guarantee-ledger-table" data-gp-table-sticky="false">
                     <thead class="table-light">
                     <tr>
                         <th>Fecha</th>
