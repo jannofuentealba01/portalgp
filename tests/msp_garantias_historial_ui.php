@@ -94,6 +94,40 @@ $check('Recepciones distinguen abono parcial y pago total acumulado', static fun
         && str_contains($source, 'montoRecepcionAcumulado + 0.009 >= $montoPactado');
 });
 
+$check('Buscador admite coincidencias parciales sin distinguir acentos', static function () use ($root): bool {
+    $source = file_get_contents($root . '/msp/garantias/historial.php');
+    return is_string($source)
+        && str_contains($source, 'msp2GarantiasHistorialPatronBusqueda')
+        && str_contains($source, 'Latin1_General_100_CI_AI LIKE :q_nombre')
+        && str_contains($source, "ESCAPE N\\'~\\'")
+        && str_contains($source, 'type="search"')
+        && str_contains($source, 'coincidencias parciales');
+});
+
+$check('Buscador parcial encuentra coincidencias reales', static function () use ($conn): bool|string {
+    $candidate = $conn->query(
+        "SELECT TOP 1 nombre_arrendatario
+         FROM dbo.msp_vw_garantias_historial_arrendatario
+         WHERE LEN(LTRIM(RTRIM(ISNULL(nombre_arrendatario,N''))))>=5
+         ORDER BY nombre_arrendatario"
+    )->fetchColumn();
+    if (!is_string($candidate) || trim($candidate) === '') {
+        return true;
+    }
+
+    $fragment = mb_substr(trim($candidate), 0, 5, 'UTF-8');
+    $statement = $conn->prepare(
+        "SELECT COUNT(*)
+         FROM dbo.msp_vw_garantias_historial_arrendatario
+         WHERE ISNULL(nombre_arrendatario,N'') COLLATE Latin1_General_100_CI_AI
+               LIKE :fragment ESCAPE N'~'"
+    );
+    $statement->execute([':fragment' => '%' . $fragment . '%']);
+    $matches = (int) $statement->fetchColumn();
+
+    return $matches > 0 ? true : 'No se encontraron coincidencias para el fragmento ' . $fragment;
+});
+
 $check('Primera página respeta máximo y orden', static function () use ($conn): bool|string {
     $rows = $conn->query(
         'SELECT *
