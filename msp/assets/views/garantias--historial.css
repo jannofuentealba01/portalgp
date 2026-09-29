@@ -32,9 +32,9 @@
 
 /* Esta vista se desplaza con la página completa. El encabezado automático del
    sistema de tablas dejaba un espacio vacío y se superponía a la primera fila. */
-.msp-guarantee-ledger-table.gp-table-sticky thead th {
-    position: static;
-    top: auto;
+.gp-module-msp table.msp-guarantee-ledger-table.gp-table-sticky thead th {
+    position: static !important;
+    top: auto !important;
 }
 
 .msp-guarantee-ledger-movement {

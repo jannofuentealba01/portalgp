@@ -326,7 +326,7 @@
         prepareBody(table, definitions);
 
         const rowCount = Array.from(table.tBodies).reduce((total, body) => total + body.rows.length, 0);
-        if (rowCount >= 12) {
+        if (rowCount >= 12 && table.dataset.gpTableSticky !== 'false') {
             table.classList.add('gp-table-sticky');
             wrapper?.classList.add('gp-table-shell--sticky');
         }
