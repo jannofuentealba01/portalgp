@@ -27,6 +27,18 @@ $assertions = [
         'se versionará el documento y se aplicará solamente la diferencia eléctrica.'
     ),
     'el lápiz de gas continúa disponible' => str_contains($source, 'class="gas-edit-btn js-gas-edit"'),
+    'el modal de gas mantiene visible su pie' => preg_match(
+        '/id="gasCorrectionModal".*?modal-dialog-scrollable[^>]*>\s*<form class="modal-content"/s',
+        $source
+    ) === 1,
+    'gas permite autorizar ajustes financieros protegidos' => str_contains(
+        $source,
+        "in_array(\$nivelCorreccion, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)"
+    ),
+    'gas explica que conserva los movimientos financieros' => str_contains(
+        $source,
+        'Se versionará el documento, se corregirá el gas y se aplicará solamente la diferencia financiera.'
+    ),
     'el lápiz de agua continúa disponible' => str_contains($source, 'class="water-edit-btn js-water-edit"'),
     'el lápiz de UF base continúa disponible' => str_contains($source, 'class="rent-edit-btn js-rent-edit"'),
     'el modal UF mantiene visible su pie en pantallas de altura limitada' => preg_match(
