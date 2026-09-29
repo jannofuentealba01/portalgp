@@ -1493,7 +1493,7 @@ try {
                 }
                 $puedeAplicarRent = $valorUfPeriodoRent > 0
                     && (in_array($nivelCorreccionRent, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
-                        || ($nivelCorreccionRent === 'AUTORIZACION'
+                        || (in_array($nivelCorreccionRent, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)
                             && $canAuthorizeProtectedCorrections));
                 if ($idTiendaRent <= 0 || $periodoRent === '' || !isset($months[$periodoRent])) {
                     continue;
@@ -4542,7 +4542,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             let error = '';
             if (activeSnapshot.puede_aplicar !== true) {
                 error = activeSnapshot.nivel === 'AJUSTE_FINANCIERO'
-                    ? 'El documento tiene pagos, garantía, saldo a favor o historial de envío. La UF no puede sobrescribirse; corresponde un ajuste financiero.'
+                    ? 'El documento tiene movimientos financieros protegidos. Se requiere permiso de cierre mensual o configuración para autorizar el ajuste.'
                     : 'El estado actual requiere revisión antes de permitir la corrección de UF Base.';
             } else if (!Number.isFinite(newUf) || newUf < 0) {
                 error = 'Ingresa un valor UF igual o mayor que cero.';
@@ -4607,7 +4607,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                 EDICION_SIMPLE: 'Sin documento emitido: se actualizará solamente el snapshot mensual y su trazabilidad.',
                 REGENERACION_CONTROLADA: 'Documento emitido sin movimientos protegidos: se conservará su versión anterior y se recalcularán detalle, total, saldo y PDF.',
                 AUTORIZACION: 'Período cerrado o contabilizado: al autorizar se conservará la versión anterior y se revertirá y regenerará el asiento contable.',
-                AJUSTE_FINANCIERO: 'Documento con pagos, garantía, saldo a favor o envío registrado: no se sobrescribirá; corresponde un ajuste financiero.',
+                AJUSTE_FINANCIERO: 'Documento protegido: se conservarán pagos, garantía, saldo a favor y envíos. Se versionará el documento, se corregirá la UF Base y se aplicará solamente la diferencia financiera.',
                 REVISION: 'El documento no está disponible para una corrección automática y debe revisarse.',
             };
             levelMessage.textContent = levelTexts[level] || 'La corrección requiere revisión.';

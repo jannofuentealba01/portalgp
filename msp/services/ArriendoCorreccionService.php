@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/DocumentoProteccionService.php';
+
 /** Corrección controlada de UF Base en arriendos ya documentados o contabilizados. */
 final class ArriendoCorreccionService
 {
@@ -14,6 +16,8 @@ final class ArriendoCorreccionService
         $registro = is_array($analisis) && is_array($analisis['registro_exacto'] ?? null)
             ? $analisis['registro_exacto']
             : [];
+        $nivelCorreccion = strtoupper(trim((string) ($corr['nivel_correcion'] ?? '')));
+        $esAjusteFinanciero = $nivelCorreccion === 'AJUSTE_FINANCIERO';
         $ufBaseNueva = self::numero($registro['valor_uf_base_nuevo'] ?? null);
         $ufPeriodoAnalizada = self::numero($registro['valor_uf_periodo_correccion'] ?? null);
 
@@ -41,11 +45,16 @@ final class ArriendoCorreccionService
         try {
             $claim = $conn->prepare(
                 "UPDATE dbo.msp_correcciones
-                 SET estado_correccion=N'EJECUTANDO',estrategia_ejecucion=N'ARRIENDO_UF_CONTROLADO',
+                 SET estado_correccion=N'EJECUTANDO',estrategia_ejecucion=:estrategia,
                      fecha_actualizacion=SYSDATETIME()
                  WHERE id_correccion=:id AND estado_correccion=N'APROBADA'"
             );
-            $claim->execute([':id' => $idCorreccion]);
+            $claim->execute([
+                ':estrategia' => $esAjusteFinanciero
+                    ? 'ARRIENDO_UF_AJUSTE_FINANCIERO'
+                    : 'ARRIENDO_UF_CONTROLADO',
+                ':id' => $idCorreccion,
+            ]);
             if ($claim->rowCount() !== 1) {
                 throw new RuntimeException('La corrección ya fue ejecutada o está siendo procesada.');
             }
@@ -83,7 +92,7 @@ final class ArriendoCorreccionService
             if ($idDocumento > 0) {
                 self::bloquearDocumento($conn, $idDocumento);
                 $dependencias = self::dependenciasProtegidas($conn, $idDocumento);
-                if ($dependencias !== []) {
+                if ($dependencias !== [] && !$esAjusteFinanciero) {
                     throw new RuntimeException(
                         'El documento tiene ' . implode(', ', $dependencias)
                         . '. Debe resolverse mediante un ajuste financiero; no se modificó ningún valor.'
@@ -107,12 +116,15 @@ final class ArriendoCorreccionService
                     $netoNuevo,
                     $idCorreccion,
                     $usuario,
-                    $rehacerAsiento
+                    $rehacerAsiento,
+                    $esAjusteFinanciero
                 );
             }
 
             $resultado = [
-                'estrategia' => 'ARRIENDO_UF_CONTROLADO',
+                'estrategia' => $esAjusteFinanciero
+                    ? 'ARRIENDO_UF_AJUSTE_FINANCIERO'
+                    : 'ARRIENDO_UF_CONTROLADO',
                 'id_snapshot' => $idSnapshot,
                 'uf_base_anterior' => round((float) ($snapshot['valor_base_uf'] ?? 0), 6),
                 'uf_base_nueva' => $ufBaseNueva,
@@ -127,7 +139,9 @@ final class ArriendoCorreccionService
                 $idCorreccion,
                 'EJECUTADA',
                 $usuario,
-                'UF Base corregida con regeneración documental y contable controlada.',
+                $esAjusteFinanciero
+                    ? 'UF Base corregida mediante ajuste financiero; movimientos anteriores conservados.'
+                    : 'UF Base corregida con regeneración documental y contable controlada.',
                 $resultado
             );
             if ($transaccionPropia) {
@@ -183,27 +197,7 @@ final class ArriendoCorreccionService
 
     private static function dependenciasProtegidas(PDO $conn, int $idDocumento): array
     {
-        $encontradas = [];
-        $checks = [
-            'msp_pagos' => ['id_documento_cobro','pagos registrados'],
-            'msp_saldo_favor_periodo_aplicaciones' => ['id_documento_cobro','saldo a favor aplicado'],
-            'msp_garantia_documento_aplicaciones' => ['id_documento_cobro','garantía aplicada'],
-            'msp_movimientos_garantia' => ['id_documento_cobro','movimientos de garantía'],
-            'msp_envio_lote_documentos' => ['id_documento_cobro','historial de envío'],
-            'msp_pago_contrato_operacion_detalle' => ['id_documento_cobro','operaciones de pago'],
-            'msp_pago_contrato_archivos' => ['id_documento_cobro','respaldos de pago'],
-        ];
-        foreach ($checks as $tabla => [$columna,$label]) {
-            if (!msp2TableExists($conn, $tabla) || !msp2ColumnExists($conn, $tabla, $columna)) {
-                continue;
-            }
-            $q = $conn->prepare('SELECT TOP(1) 1 FROM dbo.' . $tabla . ' WHERE ' . $columna . '=:documento');
-            $q->execute([':documento' => $idDocumento]);
-            if ($q->fetchColumn() !== false) {
-                $encontradas[] = $label;
-            }
-        }
-        return array_values(array_unique($encontradas));
+        return DocumentoProteccionService::listar($conn, $idDocumento);
     }
 
     private static function revertirContabilidad(PDO $conn, int $idDocumento, int $idCorreccion): bool
@@ -321,7 +315,8 @@ final class ArriendoCorreccionService
         float $netoNuevo,
         int $idCorreccion,
         int $usuario,
-        bool $rehacerAsiento
+        bool $rehacerAsiento,
+        bool $esAjusteFinanciero
     ): array {
         $qDocumento = $conn->prepare(
             'SELECT subtotal_arriendo,subtotal_servicios,monto_total,saldo_pendiente,estado_documento
@@ -333,7 +328,8 @@ final class ArriendoCorreccionService
         if ($documento === false || (int) ($documento['estado_documento'] ?? 0) === 5) {
             throw new RuntimeException('El documento afectado ya no está disponible para corrección.');
         }
-        if (abs((float) $documento['monto_total'] - (float) $documento['saldo_pendiente']) > 0.01) {
+        if (!$esAjusteFinanciero
+            && abs((float) $documento['monto_total'] - (float) $documento['saldo_pendiente']) > 0.01) {
             throw new RuntimeException('El documento presenta un saldo financiero distinto del total. Debe corregirse mediante un ajuste financiero.');
         }
 
@@ -411,7 +407,11 @@ final class ArriendoCorreccionService
         $nuevoSubtotalArriendo = round((float) $documento['subtotal_arriendo'] - $netoAnterior + $netoNuevo, 2);
         $nuevoTotal = round($nuevoSubtotalArriendo * 1.19 + (float) $documento['subtotal_servicios'], 2);
         $deltaTotal = round($nuevoTotal - (float) $documento['monto_total'], 2);
-        $nuevoSaldo = round((float) $documento['saldo_pendiente'] + $deltaTotal, 2);
+        $saldoCalculado = round((float) $documento['saldo_pendiente'] + $deltaTotal, 2);
+        $saldoFavorGenerado = $esAjusteFinanciero && $saldoCalculado < -0.009
+            ? round(abs($saldoCalculado), 2)
+            : 0.0;
+        $nuevoSaldo = $esAjusteFinanciero ? max(0.0, $saldoCalculado) : $saldoCalculado;
         if ($nuevoSubtotalArriendo < -0.009 || $nuevoTotal < -0.009 || $nuevoSaldo < -0.009) {
             throw new RuntimeException('La corrección dejaría valores negativos en el documento.');
         }
@@ -425,15 +425,20 @@ final class ArriendoCorreccionService
         if (abs((float) $qSumaDetalle->fetchColumn() - $nuevoSubtotalArriendo) > 0.01) {
             throw new RuntimeException('El detalle de arriendo no concilia con el encabezado del documento.');
         }
+        $nuevoEstado = $nuevoSaldo <= 0.009
+            ? 4
+            : ($nuevoSaldo < $nuevoTotal - 0.009 ? 3 : 2);
         $updateDocumento = $conn->prepare(
             'UPDATE dbo.msp_documentos_cobro
-             SET subtotal_arriendo=:arriendo,monto_total=:total,saldo_pendiente=:saldo
+             SET subtotal_arriendo=:arriendo,monto_total=:total,saldo_pendiente=:saldo,
+                 estado_documento=:estado
              WHERE id_documento_cobro=:documento'
         );
         $updateDocumento->execute([
             ':arriendo' => $nuevoSubtotalArriendo,
             ':total' => $nuevoTotal,
             ':saldo' => $nuevoSaldo,
+            ':estado' => $nuevoEstado,
             ':documento' => $idDocumento,
         ]);
         if ($updateDocumento->rowCount() !== 1) {
@@ -443,21 +448,35 @@ final class ArriendoCorreccionService
             $asiento = $conn->prepare('EXEC dbo.msp_acc_generar_asiento_documento @id_documento_cobro=:documento');
             $asiento->execute([':documento' => $idDocumento]);
         }
+        $idMovimientoSaldoFavor = $saldoFavorGenerado > 0
+            ? self::registrarSaldoFavorCorreccion(
+                $conn,
+                (int) $snapshot['id_tienda'],
+                (string) $snapshot['periodo_facturacion'],
+                $idDocumento,
+                $idCorreccion,
+                $saldoFavorGenerado
+            )
+            : null;
         require_once __DIR__ . '/DocumentoCobroTrazabilidadService.php';
-        DocumentoCobroTrazabilidadService::registrar($conn, $idDocumento, 'RECALCULO', 'SISTEMA', $usuario, [
+        DocumentoCobroTrazabilidadService::registrar($conn, $idDocumento, $esAjusteFinanciero ? 'AJUSTE' : 'RECALCULO', 'SISTEMA', $usuario, [
             'id_correccion' => $idCorreccion,
             'tipo' => 'ARRIENDO_UF',
             'delta_neto' => round($netoNuevo - $netoAnterior, 2),
             'delta_documento' => $deltaTotal,
+            'saldo_favor_generado' => $saldoFavorGenerado,
         ]);
-        self::impacto($conn, $idCorreccion, 'DOCUMENTO_COBRO', $idDocumento, 'RECALCULO', [
+        self::impacto($conn, $idCorreccion, 'DOCUMENTO_COBRO', $idDocumento, $esAjusteFinanciero ? 'AJUSTE_FINANCIERO' : 'RECALCULO', [
             'subtotal_arriendo' => (float) $documento['subtotal_arriendo'],
             'monto_total' => (float) $documento['monto_total'],
             'saldo_pendiente' => (float) $documento['saldo_pendiente'],
+            'estado_documento' => (int) $documento['estado_documento'],
         ], [
             'subtotal_arriendo' => $nuevoSubtotalArriendo,
             'monto_total' => $nuevoTotal,
             'saldo_pendiente' => $nuevoSaldo,
+            'estado_documento' => $nuevoEstado,
+            'saldo_favor_generado' => $saldoFavorGenerado,
         ], true);
         return [
             'id_documento' => $idDocumento,
@@ -465,7 +484,86 @@ final class ArriendoCorreccionService
             'monto_total' => $nuevoTotal,
             'saldo_pendiente' => $nuevoSaldo,
             'delta_total' => $deltaTotal,
+            'saldo_favor_generado' => $saldoFavorGenerado,
+            'id_movimiento_saldo_favor' => $idMovimientoSaldoFavor,
         ];
+    }
+
+    private static function registrarSaldoFavorCorreccion(
+        PDO $conn,
+        int $idTienda,
+        string $periodo,
+        int $idDocumento,
+        int $idCorreccion,
+        float $monto
+    ): int {
+        if ($idTienda <= 0 || $idDocumento <= 0 || $idCorreccion <= 0 || $monto <= 0) {
+            throw new RuntimeException('No fue posible determinar el saldo a favor de la corrección.');
+        }
+        if (!msp2TableExists($conn, 'msp_movimientos_saldo_favor_tienda')) {
+            throw new RuntimeException('Falta el libro de saldo a favor requerido para completar la corrección.');
+        }
+        $observacion = 'Excedente por corrección UF Base #' . $idCorreccion
+            . ' sobre documento #' . $idDocumento;
+        $insert = $conn->prepare(
+            'DECLARE @out TABLE(id_movimiento_saldo_favor INT);
+             INSERT dbo.msp_movimientos_saldo_favor_tienda
+                (id_tienda,fecha_movimiento,tipo_movimiento,monto_movimiento,
+                 id_documento_cobro,observaciones)
+             OUTPUT INSERTED.id_movimiento_saldo_favor INTO @out(id_movimiento_saldo_favor)
+             VALUES(:tienda,CONVERT(date,SYSDATETIME()),5,:monto,:documento,:observacion);
+             SELECT TOP(1) id_movimiento_saldo_favor FROM @out;'
+        );
+        $insert->execute([
+            ':tienda' => $idTienda,
+            ':monto' => $monto,
+            ':documento' => $idDocumento,
+            ':observacion' => $observacion,
+        ]);
+        $idMovimiento = self::primerEscalar($insert);
+        if ($idMovimiento <= 0) {
+            throw new RuntimeException('No fue posible identificar el saldo a favor creado por la corrección.');
+        }
+
+        if (msp2TableExists($conn, 'msp_saldo_favor_periodo_items')) {
+            $item = $conn->prepare(
+                'INSERT dbo.msp_saldo_favor_periodo_items
+                    (periodo_facturacion,id_tienda,fecha_movimiento,monto_original,
+                     id_movimiento_saldo_favor,observaciones)
+                 VALUES(:periodo,:tienda,CONVERT(date,SYSDATETIME()),:monto,:movimiento,:observacion)'
+            );
+            $item->execute([
+                ':periodo' => $periodo,
+                ':tienda' => $idTienda,
+                ':monto' => $monto,
+                ':movimiento' => $idMovimiento,
+                ':observacion' => $observacion,
+            ]);
+        }
+        self::impacto(
+            $conn,
+            $idCorreccion,
+            'SALDO_FAVOR',
+            $idMovimiento,
+            'CREACION_EXCEDENTE',
+            null,
+            ['monto' => $monto, 'id_tienda' => $idTienda, 'id_documento' => $idDocumento],
+            true
+        );
+        return $idMovimiento;
+    }
+
+    private static function primerEscalar(PDOStatement $statement): int
+    {
+        do {
+            if ($statement->columnCount() > 0) {
+                $value = $statement->fetchColumn();
+                if ($value !== false) {
+                    return (int) $value;
+                }
+            }
+        } while ($statement->nextRowset());
+        return 0;
     }
 
     private static function versionarDocumento(PDO $conn, int $idDocumento, int $idCorreccion, int $usuario, string $motivo): void

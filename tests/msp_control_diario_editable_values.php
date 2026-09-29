@@ -17,6 +17,18 @@ $assertions = [
     'el lápiz de gas continúa disponible' => str_contains($source, 'class="gas-edit-btn js-gas-edit"'),
     'el lápiz de agua continúa disponible' => str_contains($source, 'class="water-edit-btn js-water-edit"'),
     'el lápiz de UF base continúa disponible' => str_contains($source, 'class="rent-edit-btn js-rent-edit"'),
+    'UF base permite autorizar ajustes financieros protegidos' => str_contains(
+        $source,
+        "in_array(\$nivelCorreccionRent, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)"
+    ),
+    'UF base explica que conserva los movimientos financieros' => str_contains(
+        $source,
+        'Se versionará el documento, se corregirá la UF Base y se aplicará solamente la diferencia financiera.'
+    ),
+    'UF base ya no presenta el ajuste financiero como una acción imposible' => !str_contains(
+        $source,
+        'La UF no puede sobrescribirse; corresponde un ajuste financiero.'
+    ),
     'todos los lápices usan el mismo estado inicial' => preg_match_all(
         '/\.gas-edit-btn,\s*\.water-edit-btn,\s*\.rent-edit-btn\s*\{\s*opacity:\s*1/s',
         $styles

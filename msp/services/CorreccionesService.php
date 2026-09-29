@@ -199,7 +199,7 @@ final class CorreccionesService
         }
         $nivel = strtoupper((string) ($corr['nivel_correcion'] ?? ''));
         $tipo = strtoupper((string) ($corr['tipo_correccion'] ?? ''));
-        if ($tipo === 'ARRIENDO_PERIODO' && in_array($nivel, ['REGENERACION_CONTROLADA', 'AUTORIZACION'], true)) {
+        if ($tipo === 'ARRIENDO_PERIODO' && in_array($nivel, ['REGENERACION_CONTROLADA', 'AUTORIZACION', 'AJUSTE_FINANCIERO'], true)) {
             require_once __DIR__ . '/ArriendoCorreccionService.php';
             return ArriendoCorreccionService::ejecutar($conn, $corr, $usuario);
         }

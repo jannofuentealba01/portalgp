@@ -435,9 +435,12 @@ function corrMonto(mixed $value): string
             && strtoupper((string) ($registroExacto['unidad_correccion'] ?? '')) === 'UF_BASE';
         $esCorreccionControlada = $esLecturaControlada || $esArriendoControlado;
         $puedeAplicarControlada = $esCorreccionControlada
-            && in_array($nivelCorreccion, ['REGENERACION_CONTROLADA','AUTORIZACION'], true)
+            && in_array($nivelCorreccion, ['REGENERACION_CONTROLADA','AUTORIZACION','AJUSTE_FINANCIERO'], true)
             && in_array($estadoCorreccion, ['BORRADOR','ANALIZADA','PENDIENTE_APROBACION','ERROR','APROBADA'], true);
-        if ($nivelCorreccion === 'AUTORIZACION') {
+        if ($nivelCorreccion === 'AJUSTE_FINANCIERO' && !$esArriendoControlado) {
+            $puedeAplicarControlada = false;
+        }
+        if (in_array($nivelCorreccion, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)) {
             $puedeAplicarControlada = $puedeAplicarControlada
                 && (msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
                     || msp2CurrentUserHasPermission('MSP Configuracion', 'escritura'));
@@ -476,9 +479,11 @@ function corrMonto(mixed $value): string
                             <input type="hidden" name="accion" value="aplicar_controlada">
                             <input type="hidden" name="id_correccion" value="<?php echo (int) ($correccion['id_correccion'] ?? 0); ?>">
                             <button class="btn btn-warning btn-sm">
-                                <?php echo $nivelCorreccion === 'AUTORIZACION'
+                                <?php echo $nivelCorreccion === 'AJUSTE_FINANCIERO'
+                                    ? 'Autorizar y aplicar ajuste financiero'
+                                    : ($nivelCorreccion === 'AUTORIZACION'
                                     ? ($esArriendoControlado ? 'Autorizar y corregir UF Base' : 'Autorizar y corregir lectura')
-                                    : 'Aplicar corrección controlada'; ?>
+                                    : 'Aplicar corrección controlada'); ?>
                             </button>
                         </form><?php endif; ?>
                     </div>
@@ -495,9 +500,13 @@ function corrMonto(mixed $value): string
                     <?php else: ?>
                         <?php echo msp2Escape($mensajesNivel[$nivelCorreccion] ?? 'La solicitud requiere una estrategia controlada antes de ejecutarse.'); ?>
                         <?php if ($puedeAplicarControlada): ?>
-                            Se conservará una versión anterior, se recalculará el documento y, si corresponde, se revertirá y regenerará su asiento contable. La operación completa es transaccional.
+                            <?php if ($nivelCorreccion === 'AJUSTE_FINANCIERO'): ?>
+                                Se conservarán los pagos, aplicaciones de garantía, saldos a favor y envíos. El documento anterior quedará versionado, se aplicará solamente la diferencia y cualquier excedente quedará como saldo a favor. La operación completa es transaccional.
+                            <?php else: ?>
+                                Se conservará una versión anterior, se recalculará el documento y, si corresponde, se revertirá y regenerará su asiento contable. La operación completa es transaccional.
+                            <?php endif; ?>
                         <?php elseif ($nivelCorreccion === 'AJUSTE_FINANCIERO'): ?>
-                            El documento no será sobrescrito. Debe registrarse una diferencia mediante ajuste financiero.
+                            El ajuste financiero requiere permiso de cierre mensual o configuración.
                         <?php elseif ($nivelCorreccion === 'AUTORIZACION' && $esCorreccionControlada): ?>
                             El usuario actual no tiene autorización para corregir un período cerrado ni ejecutar una eventual reversa contable.
                         <?php else: ?>

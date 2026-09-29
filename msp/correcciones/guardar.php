@@ -94,7 +94,7 @@ try {
         if ($accion === 'APLICAR_CONTROLADA') {
             $correccionControlada = CorreccionesService::obtener($conn, (int) $idCorreccion);
             if (!$correccionControlada
-                || !in_array(strtoupper((string) ($correccionControlada['nivel_correcion'] ?? '')), ['REGENERACION_CONTROLADA','AUTORIZACION'], true)) {
+                || !in_array(strtoupper((string) ($correccionControlada['nivel_correcion'] ?? '')), ['REGENERACION_CONTROLADA','AUTORIZACION','AJUSTE_FINANCIERO'], true)) {
                 throw new RuntimeException('La solicitud no corresponde a una corrección controlada disponible.');
             }
             $tipoControlado = strtoupper((string) ($correccionControlada['tipo_correccion'] ?? ''));
@@ -115,13 +115,16 @@ try {
             if ($tipoControlado === 'ARRIENDO_PERIODO' && !$esArriendoControlado) {
                 throw new RuntimeException('La ejecución controlada de arriendo está habilitada solamente para UF Base.');
             }
+            $nivelControlado = strtoupper((string) ($correccionControlada['nivel_correcion'] ?? ''));
+            if ($nivelControlado === 'AJUSTE_FINANCIERO' && !$esArriendoControlado) {
+                throw new RuntimeException('El ajuste financiero automático está habilitado solamente para UF Base.');
+            }
             $nombreControlado = $esArriendoControlado ? 'arriendo' : $servicioControlado;
 
-            $nivelControlado = strtoupper((string) ($correccionControlada['nivel_correcion'] ?? ''));
-            if ($nivelControlado === 'AUTORIZACION'
+            if (in_array($nivelControlado, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)
                 && !msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
                 && !msp2CurrentUserHasPermission('MSP Configuracion', 'escritura')) {
-                throw new RuntimeException('La corrección requiere permiso de cierre mensual o configuración para autorizar la reversa contable.');
+                throw new RuntimeException('La corrección requiere permiso de cierre mensual o configuración para autorizar sus efectos financieros.');
             }
 
             $estadoControlado = strtoupper((string) ($correccionControlada['estado_correccion'] ?? ''));
@@ -137,9 +140,11 @@ try {
                         (int) $idCorreccion,
                         'APROBADA',
                         $usuarioId,
-                        $nivelControlado === 'AUTORIZACION'
-                            ? 'Corrección de '.$nombreControlado.' y reversa contable autorizadas.'
-                            : 'Corrección controlada de '.$nombreControlado.' aprobada.'
+                        $nivelControlado === 'AJUSTE_FINANCIERO'
+                            ? 'Ajuste financiero de '.$nombreControlado.' autorizado.'
+                            : ($nivelControlado === 'AUTORIZACION'
+                                ? 'Corrección de '.$nombreControlado.' y reversa contable autorizadas.'
+                                : 'Corrección controlada de '.$nombreControlado.' aprobada.')
                     );
                 }
                 $resultadoEjecucion = CorreccionesService::ejecutar($conn, (int) $idCorreccion, $usuarioId);
