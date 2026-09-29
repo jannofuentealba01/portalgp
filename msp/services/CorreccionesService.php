@@ -217,9 +217,6 @@ final class CorreccionesService
                 require_once __DIR__ . '/GasCorreccionService.php';
                 return GasCorreccionService::ejecutar($conn, $corr, $usuario);
             }
-            if ($nivel === 'AJUSTE_FINANCIERO') {
-                throw new RuntimeException('El ajuste financiero automático de lecturas está habilitado actualmente para electricidad y gas.');
-            }
             if ($servicio === 'AGUA') {
                 require_once __DIR__ . '/AguaCorreccionService.php';
                 return AguaCorreccionService::ejecutar($conn, $corr, $usuario);

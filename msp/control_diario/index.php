@@ -732,7 +732,7 @@ try {
                 $nivelCorreccion = 'AUTORIZACION';
             }
             $puedeAplicar = in_array($nivelCorreccion, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
-                || ($nivelCorreccion === 'AUTORIZACION'
+                || (in_array($nivelCorreccion, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)
                     && $canAuthorizeProtectedCorrections);
             $divisorAgua = (float) ($lecturaAgua['divisor'] ?? 0);
             $tarifaVariableAgua = $divisorAgua > 0
@@ -3601,8 +3601,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
 
 <div class="modal fade" id="waterCorrectionModal" tabindex="-1" aria-labelledby="waterCorrectionModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <form method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="water-correction-form">
+        <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="water-correction-form">
                 <?php msp2CsrfField(); ?>
                 <input type="hidden" name="accion" value="crear">
                 <input type="hidden" name="entidad_afectada" value="lectura">
@@ -3674,8 +3673,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                     <button type="submit" class="btn btn-primary" id="water-submit">Registrar corrección</button>
                 </div>
-            </form>
-        </div>
+        </form>
     </div>
 </div>
 
@@ -5257,9 +5255,13 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                 className = 'alert alert-warning mb-3';
                 message = 'El período está cerrado o posee asiento contable. La aplicación requiere autorización y regeneración contable trazable.';
             } else if (level === 'AJUSTE_FINANCIERO') {
-                className = 'alert alert-danger mb-3';
-                message = 'El documento tiene pagos, aplicaciones, respaldos o envíos asociados. Debe resolverse con un ajuste financiero formal.';
-                allowed = false;
+                className = reading.puede_aplicar === true
+                    ? 'alert alert-warning mb-3'
+                    : 'alert alert-danger mb-3';
+                message = reading.puede_aplicar === true
+                    ? 'Documento protegido: se conservarán pagos, garantía, saldo a favor y envíos. Se versionará el documento, se corregirá el agua y se aplicará solamente la diferencia financiera.'
+                    : 'El documento está protegido y tu usuario no posee permiso de cierre mensual o configuración para autorizar el ajuste financiero de agua.';
+                allowed = reading.puede_aplicar === true;
             } else if (level === 'REVISION') {
                 className = 'alert alert-danger mb-3';
                 message = 'El documento está anulado o no está disponible. La lectura requiere revisión antes de cualquier cambio.';

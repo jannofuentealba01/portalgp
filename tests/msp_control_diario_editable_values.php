@@ -40,6 +40,18 @@ $assertions = [
         'Se versionará el documento, se corregirá el gas y se aplicará solamente la diferencia financiera.'
     ),
     'el lápiz de agua continúa disponible' => str_contains($source, 'class="water-edit-btn js-water-edit"'),
+    'el modal de agua mantiene visible su pie' => preg_match(
+        '/id="waterCorrectionModal".*?modal-dialog-scrollable[^>]*>\s*<form class="modal-content"/s',
+        $source
+    ) === 1,
+    'agua permite autorizar ajustes financieros protegidos' => str_contains(
+        $source,
+        'Se versionará el documento, se corregirá el agua y se aplicará solamente la diferencia financiera.'
+    ),
+    'agua explica que conserva los movimientos financieros' => str_contains(
+        $source,
+        'El documento está protegido y tu usuario no posee permiso de cierre mensual o configuración para autorizar el ajuste financiero de agua.'
+    ),
     'el lápiz de UF base continúa disponible' => str_contains($source, 'class="rent-edit-btn js-rent-edit"'),
     'el modal UF mantiene visible su pie en pantallas de altura limitada' => preg_match(
         '/id="rentCorrectionModal".*?modal-dialog-scrollable[^>]*>\s*<form class="modal-content"/s',
