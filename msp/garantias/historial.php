@@ -110,7 +110,6 @@ $pagina = max(1, (int) ($_GET['pagina'] ?? 1));
 $error = null;
 $warning = null;
 $movimientos = [];
-$grupos = [];
 $totalMovimientos = 0;
 $totalArrendatarios = 0;
 $totalPaginas = 1;
@@ -193,6 +192,7 @@ try {
                 ON r.id_garantia_tienda=h.id_garantia_tienda
         ), filtrado AS (
             SELECT h.*,
+                   local_orden.local_orden,
                    ROW_NUMBER() OVER (
                        PARTITION BY h.id_arrendatario
                        ORDER BY h.fecha_evento,h.prioridad_evento,h.fecha_registro,
@@ -200,12 +200,57 @@ try {
                    ) AS secuencia_arrendatario,
                    COUNT(*) OVER (PARTITION BY h.id_arrendatario) AS total_arrendatario
             FROM historial h
+            CROSS APPLY (VALUES (
+                COALESCE(
+                    NULLIF(LTRIM(RTRIM(h.locales)),N\'\'),
+                    NULLIF(LTRIM(RTRIM(h.local_destino)),N\'\'),
+                    NULLIF(LTRIM(RTRIM(h.tienda)),N\'\'),
+                    NULLIF(LTRIM(RTRIM(h.nombre_arrendatario)),N\'\'),
+                    N\'\'
+                )
+            )) AS local_base(local_base)
+            CROSS APPLY (VALUES (
+                LTRIM(RTRIM(LEFT(
+                    local_base.local_base,
+                    CHARINDEX(N\'/\',local_base.local_base+N\'/\')-1
+                )))
+            )) AS local_orden(local_orden)
             WHERE ' . $where . '
         )
         SELECT *
         FROM filtrado
-        ORDER BY nombre_arrendatario,rut,id_arrendatario,
+        ORDER BY
+                 CASE
+                     WHEN local_orden LIKE N\'[A-Za-z]%-%[0-9]%\' THEN 0
+                     WHEN local_orden LIKE N\'[0-9]%\' THEN 1
+                     ELSE 2
+                 END,
+                 CASE
+                     WHEN local_orden LIKE N\'[A-Za-z]%-%[0-9]%\'
+                     THEN LEFT(local_orden,CHARINDEX(N\'-\',local_orden)-1)
+                     ELSE N\'\'
+                 END COLLATE Latin1_General_100_CI_AI,
+                 CASE
+                     WHEN local_orden LIKE N\'[A-Za-z]%-%[0-9]%\' THEN
+                         TRY_CONVERT(INT,LEFT(
+                             SUBSTRING(local_orden,CHARINDEX(N\'-\',local_orden)+1,100),
+                             PATINDEX(N\'%[^0-9]%\',SUBSTRING(local_orden,CHARINDEX(N\'-\',local_orden)+1,100)+N\'X\')-1
+                         ))
+                     WHEN local_orden LIKE N\'[0-9]%\' THEN
+                         TRY_CONVERT(INT,LEFT(
+                             local_orden,
+                             PATINDEX(N\'%[^0-9]%\',local_orden+N\'X\')-1
+                         ))
+                     ELSE 2147483647
+                 END,
+                 CASE
+                     WHEN local_orden LIKE N\'[A-Za-z]%-%[0-9]%\' OR local_orden LIKE N\'[0-9]%\' THEN N\'\'
+                     ELSE local_orden
+                 END COLLATE Latin1_General_100_CI_AI,
+                 local_orden COLLATE Latin1_General_100_CI_AI,
+                 locales COLLATE Latin1_General_100_CI_AI,
                  fecha_evento,prioridad_evento,fecha_registro,
+                 nombre_arrendatario,rut,id_arrendatario,
                  id_garantia_tienda,origen_evento,id_evento
         OFFSET :offset ROWS FETCH NEXT :limite ROWS ONLY'
     );
@@ -216,22 +261,6 @@ try {
     $dataStatement->bindValue(':limite', MSP2_GARANTIAS_HISTORIAL_POR_PAGINA, PDO::PARAM_INT);
     $dataStatement->execute();
     $movimientos = $dataStatement->fetchAll() ?: [];
-
-    foreach ($movimientos as $movimiento) {
-        $key = (int) $movimiento['id_arrendatario'];
-        if (!isset($grupos[$key])) {
-            $grupos[$key] = [
-                'nombre' => (string) $movimiento['nombre_arrendatario'],
-                'rut' => (string) $movimiento['rut'],
-                'movimientos' => [],
-                'continua_antes' => (int) $movimiento['secuencia_arrendatario'] > 1,
-                'continua_despues' => false,
-                'total' => (int) $movimiento['total_arrendatario'],
-            ];
-        }
-        $grupos[$key]['movimientos'][] = $movimiento;
-        $grupos[$key]['continua_despues'] = (int) $movimiento['secuencia_arrendatario'] < (int) $movimiento['total_arrendatario'];
-    }
 } catch (Throwable $exception) {
     $error = pgpPublicOrBusinessException(
         $exception,
@@ -265,7 +294,7 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
         <div>
             <p class="text-muted mb-1">MSP / Garantías</p>
             <h1 class="h3 mb-1">Historial de garantías</h1>
-            <p class="text-muted mb-0">Registro completo agrupado alfabéticamente por arrendatario.</p>
+            <p class="text-muted mb-0">Registro completo ordenado por local y cronológicamente dentro de cada local.</p>
         </div>
         <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/control_historial.php')); ?>">
             <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a Control e historial
@@ -338,11 +367,11 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
         </div>
     </section>
 
-    <?php if ($error === null && $grupos === []): ?>
+    <?php if ($error === null && $movimientos === []): ?>
         <div class="card shadow-sm"><div class="card-body text-center text-muted py-5">No existen movimientos que coincidan con los filtros.</div></div>
     <?php endif; ?>
 
-    <?php if ($grupos !== []): ?>
+    <?php if ($movimientos !== []): ?>
         <section class="card shadow-sm msp-guarantee-ledger-group">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0 gp-table-compact gp-table-mobile-cards msp-guarantee-ledger-table">
@@ -358,8 +387,7 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
                     </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($grupos as $grupo): ?>
-                        <?php foreach ($grupo['movimientos'] as $movimiento): ?>
+                    <?php foreach ($movimientos as $movimiento): ?>
                             <?php
                             $codigoEvento = (string) $movimiento['codigo_evento'];
                             $nombreMovimiento = $tiposMovimiento[$codigoEvento] ?? str_replace('_', ' ', $codigoEvento);
@@ -414,7 +442,6 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
                                     <?php if (!empty($movimiento['medio'])): ?><div class="small text-muted"><?php echo msp2Escape((string) $movimiento['medio']); ?><?php echo !empty($movimiento['cuenta']) ? ' · ' . msp2Escape((string) $movimiento['cuenta']) : ''; ?></div><?php endif; ?>
                                 </td>
                             </tr>
-                        <?php endforeach; ?>
                     <?php endforeach; ?>
                     </tbody>
                 </table>

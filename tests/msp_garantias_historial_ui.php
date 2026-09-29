@@ -85,6 +85,26 @@ $check('Historial muestra movimientos en una sola tabla continua', static functi
         && !str_contains($source, 'El historial de este arrendatario continúa');
 });
 
+$check('Encabezado del historial no se superpone a los movimientos', static function () use ($root): bool {
+    $styles = file_get_contents($root . '/msp/assets/views/garantias--historial.css');
+    return is_string($styles)
+        && str_contains($styles, '.msp-guarantee-ledger-table.gp-table-sticky thead th')
+        && str_contains($styles, 'position: static;')
+        && str_contains($styles, 'top: auto;');
+});
+
+$check('Historial se ordena naturalmente por local antes de la fecha', static function () use ($root): bool {
+    $source = file_get_contents($root . '/msp/garantias/historial.php');
+    return is_string($source)
+        && str_contains($source, 'AS local_orden(local_orden)')
+        && str_contains($source, "WHEN local_orden LIKE N\\'[A-Za-z]%-%[0-9]%\\' THEN 0")
+        && str_contains($source, "WHEN local_orden LIKE N\\'[0-9]%\\' THEN 1")
+        && str_contains($source, 'TRY_CONVERT(INT,LEFT(')
+        && str_contains($source, 'foreach ($movimientos as $movimiento)')
+        && !str_contains($source, 'foreach ($grupos as $grupo)')
+        && strpos($source, 'locales COLLATE Latin1_General_100_CI_AI') < strpos($source, 'fecha_evento,prioridad_evento');
+});
+
 $check('Recepciones distinguen abono parcial y pago total acumulado', static function () use ($root): bool {
     $source = file_get_contents($root . '/msp/garantias/historial.php');
     return is_string($source)
@@ -128,16 +148,71 @@ $check('Buscador parcial encuentra coincidencias reales', static function () use
     return $matches > 0 ? true : 'No se encontraron coincidencias para el fragmento ' . $fragment;
 });
 
-$check('Primera página respeta máximo y orden', static function () use ($conn): bool|string {
+$check('Primera página respeta máximo y orden natural por local', static function () use ($conn): bool|string {
     $rows = $conn->query(
-        'SELECT *
-         FROM dbo.msp_vw_garantias_historial_arrendatario
-         ORDER BY nombre_arrendatario,rut,id_arrendatario,
-                  fecha_evento,prioridad_evento,fecha_registro,
-                  id_garantia_tienda,origen_evento,id_evento
+        'WITH movimientos AS (
+            SELECT h.*,
+                   LTRIM(RTRIM(LEFT(
+                       local_base.local_base,
+                       CHARINDEX(N\'/\',local_base.local_base+N\'/\')-1
+                   ))) AS local_orden
+            FROM dbo.msp_vw_garantias_historial_arrendatario h
+            CROSS APPLY (VALUES (
+                COALESCE(
+                    NULLIF(LTRIM(RTRIM(h.locales)),N\'\'),
+                    NULLIF(LTRIM(RTRIM(h.local_destino)),N\'\'),
+                    NULLIF(LTRIM(RTRIM(h.tienda)),N\'\'),
+                    NULLIF(LTRIM(RTRIM(h.nombre_arrendatario)),N\'\'),
+                    N\'\'
+                )
+            )) AS local_base(local_base)
+         )
+         SELECT * FROM movimientos
+         ORDER BY
+             CASE
+                 WHEN local_orden LIKE N\'[A-Za-z]%-%[0-9]%\' THEN 0
+                 WHEN local_orden LIKE N\'[0-9]%\' THEN 1
+                 ELSE 2
+             END,
+             CASE
+                 WHEN local_orden LIKE N\'[A-Za-z]%-%[0-9]%\'
+                 THEN LEFT(local_orden,CHARINDEX(N\'-\',local_orden)-1)
+                 ELSE N\'\'
+             END COLLATE Latin1_General_100_CI_AI,
+             CASE
+                 WHEN local_orden LIKE N\'[A-Za-z]%-%[0-9]%\' THEN
+                     TRY_CONVERT(INT,LEFT(
+                         SUBSTRING(local_orden,CHARINDEX(N\'-\',local_orden)+1,100),
+                         PATINDEX(N\'%[^0-9]%\',SUBSTRING(local_orden,CHARINDEX(N\'-\',local_orden)+1,100)+N\'X\')-1
+                     ))
+                 WHEN local_orden LIKE N\'[0-9]%\' THEN
+                     TRY_CONVERT(INT,LEFT(local_orden,PATINDEX(N\'%[^0-9]%\',local_orden+N\'X\')-1))
+                 ELSE 2147483647
+             END,
+             CASE
+                 WHEN local_orden LIKE N\'[A-Za-z]%-%[0-9]%\' OR local_orden LIKE N\'[0-9]%\' THEN N\'\'
+                 ELSE local_orden
+             END COLLATE Latin1_General_100_CI_AI,
+             local_orden COLLATE Latin1_General_100_CI_AI,
+             locales COLLATE Latin1_General_100_CI_AI,
+             fecha_evento,prioridad_evento,fecha_registro,
+             nombre_arrendatario,rut,id_arrendatario,
+             id_garantia_tienda,origen_evento,id_evento
          OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY'
     )->fetchAll();
-    return count($rows) <= 50 ? true : count($rows) . ' movimientos obtenidos';
+    if (count($rows) > 50) {
+        return count($rows) . ' movimientos obtenidos';
+    }
+
+    $locals = array_values(array_unique(array_map(
+        static fn(array $row): string => (string) $row['local_orden'],
+        $rows
+    )));
+    $aIndex = array_search('A-1', $locals, true);
+    $numericIndex = array_search('95', $locals, true);
+    return $aIndex === false || $numericIndex === false || $aIndex < $numericIndex
+        ? true
+        : 'Los locales alfanuméricos no quedaron antes de los locales numéricos.';
 });
 
 $failed = 0;
