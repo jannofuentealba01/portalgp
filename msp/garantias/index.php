@@ -60,7 +60,8 @@ try {
                     CASE WHEN g.estado_conciliacion=N'OK' THEN N'OK' ELSE N'REVISAR' END AS alerta_codigo
              FROM dbo.msp_vw_garantias_tienda_resumen g
             WHERE {$search['sql']}
-            ORDER BY g.alerta_nivel DESC,g.nombre_locatario,g.nombre_comercial"
+            ORDER BY CASE WHEN g.estado_conciliacion=N'OK' THEN 0 ELSE 1 END DESC,
+                     g.nombre_locatario,g.nombre_comercial"
         );
         foreach ($search['params'] as $param => $value) {
             $stmt->bindValue($param, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
@@ -89,9 +90,11 @@ try {
         });
     }
 } catch (Throwable $exception) {
-    $error = $exception instanceof RuntimeException
-        ? $exception->getMessage()
-        : 'No fue posible cargar el módulo de garantías.';
+    $error = pgpPublicOrBusinessException(
+        $exception,
+        'msp.garantias.index',
+        'No fue posible cargar el módulo de garantías.'
+    );
 }
 ?>
 <!doctype html>
