@@ -99,9 +99,6 @@ if (mb_strlen($bancoEmisor) > 120 || mb_strlen($numeroCheque) > 80 || mb_strlen(
     msp2RecepcionGarantiaFail('Uno de los textos supera el largo permitido.');
 }
 if ($medio === 'CHEQUE') {
-    if ($numeroCheque === '' || $bancoEmisor === '') {
-        msp2RecepcionGarantiaFail('El cheque requiere banco emisor y número de cheque.');
-    }
     if ($fechaCheque !== '') {
         $fechaChequeObj = DateTimeImmutable::createFromFormat('!Y-m-d', $fechaCheque);
         if (!$fechaChequeObj || $fechaChequeObj->format('Y-m-d') !== $fechaCheque) {
@@ -197,7 +194,10 @@ try {
         ':garantia'=>$idGarantiaOperativa, ':garantia_tienda'=>$idGarantiaTienda,
         ':fecha'=>$fecha, ':monto'=>$monto, ':medio'=>$medio,
         ':referencia'=>null, ':banco'=>$bancoEmisor!==''?$bancoEmisor:null,
-        ':cheque'=>$numeroCheque!==''?$numeroCheque:null, ':fecha_cheque'=>$fechaCheque!==''?$fechaCheque:null,
+        // La base histórica exige un valor no NULL cuando el medio es cheque.
+        // Una cadena vacía conserva el antecedente como realmente no informado
+        // sin impedir la recepción ni inventar un número de cheque.
+        ':cheque'=>$medio==='CHEQUE'?$numeroCheque:null, ':fecha_cheque'=>$fechaCheque!==''?$fechaCheque:null,
         ':observaciones'=>$observaciones!==''?$observaciones:null, ':usuario'=>(int)$_SESSION['usuario']['id'],
     ]);
     $idRecepcion=(int)$stmtRecepcion->fetchColumn();
