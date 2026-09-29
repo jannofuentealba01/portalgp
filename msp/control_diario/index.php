@@ -3376,8 +3376,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
 
 <div class="modal fade" id="rentCorrectionModal" tabindex="-1" aria-labelledby="rentCorrectionModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <form method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="rent-correction-form">
+        <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="rent-correction-form">
                 <?php msp2CsrfField(); ?>
                 <input type="hidden" name="accion" value="crear">
                 <input type="hidden" name="entidad_afectada" value="arriendo">
@@ -3449,8 +3448,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                     <button type="submit" class="btn btn-primary" id="rent-submit">Registrar corrección</button>
                 </div>
-            </form>
-        </div>
+        </form>
     </div>
 </div>
 
