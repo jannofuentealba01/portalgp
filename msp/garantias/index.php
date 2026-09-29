@@ -207,9 +207,9 @@ try {
         <div>
             <div class="garantia-option"><div class="garantia-option-body">
                 <div class="garantia-option-icon bg-info-subtle text-info-emphasis mb-2"><i class="bi bi-clipboard-data"></i></div>
-                <h2 class="h5">Control integral de garantías</h2>
-                <p class="text-muted flex-grow-1">Consultar montos pactados, recibidos, disponibles, reservados, aplicados y devueltos, junto con sus alertas.</p>
-                <a class="btn btn-primary" href="<?php echo msp2Escape(msp2Url('garantias/reporte.php')); ?>">Ingresar al control</a>
+                <h2 class="h5">Control e historial de garantías</h2>
+                <p class="text-muted flex-grow-1">Acceder al registro completo de movimientos por arrendatario y al control de saldos y alertas.</p>
+                <a class="btn btn-primary" href="<?php echo msp2Escape(msp2Url('garantias/control_historial.php')); ?>">Ingresar</a>
             </div></div>
         </div>
         <?php endif; ?>

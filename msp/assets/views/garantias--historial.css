@@ -1,0 +1,48 @@
+/* Page-specific history ledger. Source: msp/garantias/historial.php */
+
+.msp-guarantee-ledger .gp-indicator-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.msp-guarantee-ledger-period {
+    font-size: 1rem;
+    white-space: nowrap;
+}
+
+.msp-guarantee-ledger-group {
+    overflow: hidden;
+}
+
+.msp-guarantee-ledger-group .card-header {
+    background: #fff;
+}
+
+.msp-guarantee-ledger-table {
+    min-width: 1180px;
+    table-layout: fixed;
+}
+
+.msp-guarantee-ledger-table th:nth-child(1) { width: 8%; }
+.msp-guarantee-ledger-table th:nth-child(2) { width: 20%; }
+.msp-guarantee-ledger-table th:nth-child(3) { width: 19%; }
+.msp-guarantee-ledger-table th:nth-child(4) { width: 17%; }
+.msp-guarantee-ledger-table th:nth-child(5),
+.msp-guarantee-ledger-table th:nth-child(6) { width: 10%; }
+.msp-guarantee-ledger-table th:nth-child(7) { width: 16%; }
+
+@media (max-width: 991.98px) {
+    .msp-guarantee-ledger .gp-indicator-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .msp-guarantee-ledger-table {
+        min-width: 0;
+        table-layout: auto;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .msp-guarantee-ledger .gp-indicator-strip {
+        grid-template-columns: 1fr;
+    }
+}
