@@ -22,6 +22,19 @@ function msp2GarantiasHistorialMonto(mixed $value): string
     return '$ ' . number_format((float) $value, 2, ',', '.');
 }
 
+function msp2GarantiasHistorialPatronBusqueda(string $value): string
+{
+    // SQL Server interpreta %, _, [ y el propio caracter de escape dentro de LIKE.
+    // Se escapan para que la busqueda sea siempre por el texto escrito por el usuario.
+    $escaped = str_replace(
+        ['~', '%', '_', '['],
+        ['~~', '~%', '~_', '~['],
+        $value
+    );
+
+    return '%' . $escaped . '%';
+}
+
 function msp2GarantiasHistorialFechaVisible(mixed $value): string
 {
     $raw = substr((string) $value, 0, 10);
@@ -113,16 +126,18 @@ if ($desde !== '' && $hasta !== '' && $desde > $hasta) {
 $conditions = ['1=1'];
 $params = [];
 if ($query !== '') {
-    $like = '%' . $query . '%';
-    $conditions[] = '(ISNULL(nombre_arrendatario,N\'\') LIKE :q_nombre
-        OR ISNULL(rut,N\'\') LIKE :q_rut
-        OR ISNULL(tienda,N\'\') LIKE :q_tienda
-        OR ISNULL(locales,N\'\') LIKE :q_locales
-        OR ISNULL(local_destino,N\'\') LIKE :q_local_destino
-        OR ISNULL(referencia,N\'\') LIKE :q_referencia
-        OR CAST(id_contrato_arriendo AS NVARCHAR(20)) LIKE :q_contrato
-        OR CAST(id_garantia_tienda AS NVARCHAR(20)) LIKE :q_garantia)';
-    foreach (['q_nombre','q_rut','q_tienda','q_locales','q_local_destino','q_referencia','q_contrato','q_garantia'] as $parameter) {
+    $like = msp2GarantiasHistorialPatronBusqueda($query);
+    $conditions[] = '(ISNULL(nombre_arrendatario,N\'\') COLLATE Latin1_General_100_CI_AI LIKE :q_nombre ESCAPE N\'~\'
+        OR ISNULL(rut,N\'\') COLLATE Latin1_General_100_CI_AI LIKE :q_rut ESCAPE N\'~\'
+        OR ISNULL(tienda,N\'\') COLLATE Latin1_General_100_CI_AI LIKE :q_tienda ESCAPE N\'~\'
+        OR ISNULL(locales,N\'\') COLLATE Latin1_General_100_CI_AI LIKE :q_locales ESCAPE N\'~\'
+        OR ISNULL(local_destino,N\'\') COLLATE Latin1_General_100_CI_AI LIKE :q_local_destino ESCAPE N\'~\'
+        OR ISNULL(referencia,N\'\') COLLATE Latin1_General_100_CI_AI LIKE :q_referencia ESCAPE N\'~\'
+        OR ISNULL(medio,N\'\') COLLATE Latin1_General_100_CI_AI LIKE :q_medio ESCAPE N\'~\'
+        OR ISNULL(cuenta,N\'\') COLLATE Latin1_General_100_CI_AI LIKE :q_cuenta ESCAPE N\'~\'
+        OR CAST(id_contrato_arriendo AS NVARCHAR(20)) LIKE :q_contrato ESCAPE N\'~\'
+        OR CAST(id_garantia_tienda AS NVARCHAR(20)) LIKE :q_garantia ESCAPE N\'~\')';
+    foreach (['q_nombre','q_rut','q_tienda','q_locales','q_local_destino','q_referencia','q_medio','q_cuenta','q_contrato','q_garantia'] as $parameter) {
         $params[':' . $parameter] = $like;
     }
 }
@@ -268,7 +283,11 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
         <div class="row g-2 align-items-end">
             <div class="col-12 col-xl-4">
                 <label class="form-label" for="historial_q">Buscar dentro del registro</label>
-                <input id="historial_q" name="q" value="<?php echo msp2Escape($query); ?>" class="form-control" placeholder="Arrendatario, RUT, tienda, contrato, local o referencia">
+                <div class="input-group">
+                    <span class="input-group-text" aria-hidden="true"><i class="bi bi-search"></i></span>
+                    <input id="historial_q" type="search" name="q" value="<?php echo msp2Escape($query); ?>" class="form-control" placeholder="Ej.: franc, RUT, tienda, contrato o local" autocomplete="off">
+                </div>
+                <div class="form-text">Busca coincidencias parciales sin distinguir mayúsculas ni acentos.</div>
             </div>
             <div class="col-12 col-md-4 col-xl-3">
                 <label class="form-label" for="historial_tipo">Movimiento</label>
@@ -288,7 +307,7 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
                 <input id="historial_hasta" type="date" name="hasta" value="<?php echo msp2Escape($hasta); ?>" class="form-control">
             </div>
             <div class="col-12 col-md-2 col-xl-1 d-grid gap-1">
-                <button class="btn btn-primary" type="submit">Filtrar</button>
+                <button class="btn btn-primary" type="submit">Buscar</button>
                 <?php if ($query !== '' || $tipo !== '' || $desde !== '' || $hasta !== ''): ?>
                     <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/historial.php')); ?>">Limpiar</a>
                 <?php endif; ?>
