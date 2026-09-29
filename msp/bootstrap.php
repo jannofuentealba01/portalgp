@@ -1050,10 +1050,22 @@ function msp2RutFormatDisplay(?string $value): string
     return ($formattedBody ?? $body) . '-' . $dv;
 }
 
+function msp2SchemaMetadataSharedCacheKey(): string
+{
+    return 'portalgp:msp:schema_metadata:v1';
+}
+
+function msp2SchemaMetadataSharedCacheAvailable(): bool
+{
+    return function_exists('apcu_fetch')
+        && function_exists('apcu_store')
+        && filter_var(ini_get('apc.enabled'), FILTER_VALIDATE_BOOL);
+}
+
 /**
- * Loads tables, columns and procedures with one catalog query per request.
- * The previous helpers issued one remote INFORMATION_SCHEMA query for every
- * distinct object, which is especially expensive when SQL Server is remote.
+ * Loads tables, columns and procedures with one catalog query and keeps the
+ * result for five minutes between PHP-FPM requests when APCu is available.
+ * The request cache remains as a transparent fallback for local environments.
  *
  * @return array{tables:array<string,bool>,columns:array<string,bool>,procedures:array<string,bool>}
  */
@@ -1065,6 +1077,24 @@ function msp2SchemaMetadata(PDO $conn, bool $forceRefresh = false): array
     $connectionKey = (string) spl_object_id($conn);
     if (!$forceRefresh && isset($GLOBALS['__msp2_schema_metadata'][$connectionKey])) {
         return $GLOBALS['__msp2_schema_metadata'][$connectionKey];
+    }
+
+    $sharedCacheKey = msp2SchemaMetadataSharedCacheKey();
+    if ($forceRefresh && msp2SchemaMetadataSharedCacheAvailable()) {
+        apcu_delete($sharedCacheKey);
+    } elseif (msp2SchemaMetadataSharedCacheAvailable()) {
+        $cacheHit = false;
+        $cachedMetadata = apcu_fetch($sharedCacheKey, $cacheHit);
+        if (
+            $cacheHit
+            && is_array($cachedMetadata)
+            && is_array($cachedMetadata['tables'] ?? null)
+            && is_array($cachedMetadata['columns'] ?? null)
+            && is_array($cachedMetadata['procedures'] ?? null)
+        ) {
+            $GLOBALS['__msp2_schema_metadata'][$connectionKey] = $cachedMetadata;
+            return $cachedMetadata;
+        }
     }
 
     $metadata = ['tables' => [], 'columns' => [], 'procedures' => []];
@@ -1109,12 +1139,136 @@ function msp2SchemaMetadata(PDO $conn, bool $forceRefresh = false): array
     }
 
     $GLOBALS['__msp2_schema_metadata'][$connectionKey] = $metadata;
+    if (msp2SchemaMetadataSharedCacheAvailable()) {
+        apcu_store($sharedCacheKey, $metadata, 300);
+    }
     return $metadata;
 }
 
 function msp2ResetSchemaMetadataCache(): void
 {
     unset($GLOBALS['__msp2_schema_metadata']);
+    if (msp2SchemaMetadataSharedCacheAvailable()) {
+        apcu_delete(msp2SchemaMetadataSharedCacheKey());
+    }
+}
+
+/**
+ * Ejecuta varias lecturas SELECT en un solo viaje a SQL Server.
+ *
+ * Cada elemento debe tener la forma:
+ *   ['sql' => 'SELECT ... WHERE id=:id', 'params' => [':id' => [1, PDO::PARAM_INT]]]
+ *
+ * @param array<string,array{sql:string,params?:array<string,mixed>}> $queries
+ * @return array<string,array<int,array<string,mixed>>>
+ */
+function msp2FetchReadBatch(PDO $conn, array $queries): array
+{
+    if ($queries === []) {
+        return [];
+    }
+
+    $sqlParts = ['SET NOCOUNT ON'];
+    $bindings = [];
+    $queryKeys = [];
+
+    foreach ($queries as $queryIndex => $query) {
+        if (!is_string($queryIndex) || $queryIndex === '') {
+            throw new InvalidArgumentException('Cada consulta agrupada debe tener una clave de texto.');
+        }
+
+        $querySql = trim((string) ($query['sql'] ?? ''));
+        if ($querySql === '') {
+            throw new InvalidArgumentException('La consulta agrupada ' . $queryIndex . ' no contiene SQL.');
+        }
+
+        foreach (($query['params'] ?? []) as $parameterName => $parameterValue) {
+            $normalizedName = ltrim((string) $parameterName, ':');
+            if ($normalizedName === '' || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $normalizedName) !== 1) {
+                throw new InvalidArgumentException('Parámetro no válido en la consulta agrupada ' . $queryIndex . '.');
+            }
+
+            $batchName = 'msp_batch_' . count($queryKeys) . '_' . $normalizedName;
+            $pattern = '/(?<!:):' . preg_quote($normalizedName, '/') . '\\b/';
+            $querySql = preg_replace($pattern, ':' . $batchName, $querySql, -1, $replacementCount);
+            if ($replacementCount === 0) {
+                throw new InvalidArgumentException('El parámetro :' . $normalizedName . ' no existe en la consulta ' . $queryIndex . '.');
+            }
+
+            $value = $parameterValue;
+            $type = null;
+            if (is_array($parameterValue) && array_key_exists(0, $parameterValue)) {
+                $value = $parameterValue[0];
+                $type = isset($parameterValue[1]) ? (int) $parameterValue[1] : null;
+            }
+            if ($type === null) {
+                $type = is_int($value) || is_bool($value) ? PDO::PARAM_INT : PDO::PARAM_STR;
+            }
+            $bindings[':' . $batchName] = [$value, $type];
+        }
+
+        $sqlParts[] = rtrim($querySql, "; \t\n\r\0\x0B") . ';';
+        $queryKeys[] = $queryIndex;
+    }
+
+    $stmt = $conn->prepare(implode("\n", $sqlParts));
+    foreach ($bindings as $parameterName => [$value, $type]) {
+        $stmt->bindValue($parameterName, $value, $type);
+    }
+    $stmt->execute();
+
+    $results = [];
+    foreach ($queryKeys as $resultIndex => $queryKey) {
+        while ($stmt->columnCount() === 0) {
+            if (!$stmt->nextRowset()) {
+                throw new RuntimeException('SQL Server no devolvió el resultado esperado para ' . $queryKey . '.');
+            }
+        }
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results[$queryKey] = is_array($rows) ? $rows : [];
+
+        if ($resultIndex < count($queryKeys) - 1 && !$stmt->nextRowset()) {
+            throw new RuntimeException('SQL Server finalizó antes de devolver todas las lecturas agrupadas.');
+        }
+    }
+
+    return $results;
+}
+
+final class Msp2BufferedReadRows
+{
+    /** @var array<int,array<string,mixed>> */
+    private array $rows;
+    private int $position = 0;
+
+    /** @param array<int,array<string,mixed>> $rows */
+    public function __construct(array $rows)
+    {
+        $this->rows = array_values($rows);
+    }
+
+    /** @return array<string,mixed>|false */
+    public function fetch(?int $mode = null): array|false
+    {
+        if (!isset($this->rows[$this->position])) {
+            return false;
+        }
+
+        return $this->rows[$this->position++];
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function fetchAll(?int $mode = null): array
+    {
+        if ($this->position === 0) {
+            $this->position = count($this->rows);
+            return $this->rows;
+        }
+
+        $remaining = array_slice($this->rows, $this->position);
+        $this->position = count($this->rows);
+        return $remaining;
+    }
 }
 
 function msp2SchemaMetadataCovers(string $schema, string $objectName): bool
