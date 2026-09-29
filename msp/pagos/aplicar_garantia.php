@@ -30,15 +30,15 @@ try {
     if (!$montoValido || $montoAplicar === null || $montoAplicar <= 0) {
         throw new RuntimeException('El monto a aplicar debe ser mayor a cero.');
     }
-    if (!msp2ProcedureExists($conn, 'msp_garantia_aplicar_documento')) {
-        throw new RuntimeException('No existe el procedimiento dbo.msp_garantia_aplicar_documento. Ejecuta los patches de garantia.');
+    if (!msp2ProcedureExists($conn, 'msp_garantia_tienda_aplicar_documento')) {
+        throw new RuntimeException('No existe el procedimiento dbo.msp_garantia_tienda_aplicar_documento. Ejecuta los patches de garantía por tienda.');
     }
 
     $stmt = $conn->prepare(
         'DECLARE @id_pago INT, @id_mov INT;
-         EXEC dbo.msp_garantia_aplicar_documento
+         EXEC dbo.msp_garantia_tienda_aplicar_documento
             @id_documento_cobro = :id_documento_cobro,
-            @id_garantia = NULL,
+            @id_garantia_tienda = NULL,
             @fecha_pago = :fecha_pago,
             @monto_aplicar = :monto_aplicar,
             @observaciones = :observaciones,

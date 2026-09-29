@@ -19,14 +19,15 @@ function msp2GarantiasHubMonto(mixed $value): string
 }
 
 try {
-    if (!msp2TableExists($conn, 'msp_vw_garantias_control_integral')) {
-        throw new RuntimeException('No está disponible la vista integral de garantías.');
+    if (!msp2TableExists($conn, 'msp_vw_garantias_tienda_resumen')) {
+        throw new RuntimeException('No está disponible la vista de garantías por tienda.');
     }
 
     $totalesRow = $conn->query(
-        'SELECT COUNT(DISTINCT id_contrato_arriendo) garantias, ISNULL(SUM(monto_pactado),0) pactado,
-                ISNULL(SUM(monto_recibido),0) recibido, ISNULL(SUM(monto_aplicado),0) aplicado, ISNULL(SUM(monto_devuelto),0) devuelto, ISNULL(SUM(monto_disponible),0) disponible
-         FROM dbo.msp_vw_garantias_control_integral'
+        'SELECT COUNT(*) garantias, ISNULL(SUM(monto_pactado),0) pactado,
+                ISNULL(SUM(monto_recibido),0) recibido, ISNULL(SUM(monto_aplicado),0) aplicado,
+                ISNULL(SUM(total_devuelto),0) devuelto, ISNULL(SUM(monto_disponible),0) disponible
+         FROM dbo.msp_vw_garantias_tienda_resumen'
     )->fetch() ?: [];
     $totales = [
         'garantias' => (int) ($totalesRow['garantias'] ?? 0),
@@ -46,35 +47,18 @@ try {
                 'g.rut',
                 "REPLACE(REPLACE(REPLACE(g.rut,N'.',N''),N'-',N''),N' ',N'')",
                 'g.nombre_comercial',
-                'g.cdo_local',
-                "REPLACE(REPLACE(g.cdo_local,N'-',N''),N'.',N'')",
-                'g.desc_local_busqueda',
+                'g.locales',
+                "REPLACE(REPLACE(g.locales,N'-',N''),N'.',N'')",
                 'g.id_contrato_arriendo',
-                'g.ids_garantia_busqueda',
-            ], 'garantias_buscar', "EXISTS(SELECT 1 FROM dbo.msp_vw_garantias_control_integral gx WHERE gx.id_contrato_arriendo=g.id_contrato_arriendo AND gx.id_garantia={{id}})");
+                'g.id_garantia_tienda',
+            ], 'garantias_buscar', 'g.id_garantia_tienda={{id}}');
         $stmt = $conn->prepare(
-            "WITH garantia_consolidada AS (
-                SELECT
-                    MIN(id_garantia) AS id_garantia,
-                    id_contrato_arriendo,
-                    nombre_locatario,
-                    rut,
-                    nombre_comercial,
-                    STRING_AGG(CONVERT(NVARCHAR(MAX),cdo_local),N' / ') WITHIN GROUP (ORDER BY cdo_local) AS cdo_local,
-                    STRING_AGG(CONVERT(NVARCHAR(MAX),ISNULL(desc_local,N'')),N' ') AS desc_local_busqueda,
-                    STRING_AGG(CONVERT(NVARCHAR(MAX),id_garantia),N' ') AS ids_garantia_busqueda,
-                    SUM(monto_pactado) AS monto_pactado,
-                    SUM(monto_recibido) AS monto_recibido,
-                    SUM(monto_aplicado) AS monto_aplicado,
-                    SUM(monto_devuelto) AS monto_devuelto,
-                    SUM(monto_disponible) AS monto_disponible,
-                    MAX(alerta_nivel) AS alerta_nivel,
-                    CASE WHEN MAX(alerta_nivel)=0 THEN N'OK' ELSE N'REVISAR' END AS alerta_codigo
-                FROM dbo.msp_vw_garantias_control_integral
-                GROUP BY id_contrato_arriendo,nombre_locatario,rut,nombre_comercial
-            )
-            SELECT g.*
-            FROM garantia_consolidada g
+            "SELECT g.id_garantia_tienda,g.id_contrato_arriendo,g.nombre_locatario,g.rut,g.nombre_comercial,
+                    g.locales AS cdo_local,g.monto_pactado,g.monto_recibido,g.monto_aplicado,
+                    g.total_devuelto AS monto_devuelto,g.monto_disponible,
+                    CASE WHEN g.estado_conciliacion=N'OK' THEN 0 ELSE 1 END AS alerta_nivel,
+                    CASE WHEN g.estado_conciliacion=N'OK' THEN N'OK' ELSE N'REVISAR' END AS alerta_codigo
+             FROM dbo.msp_vw_garantias_tienda_resumen g
             WHERE {$search['sql']}
             ORDER BY g.alerta_nivel DESC,g.nombre_locatario,g.nombre_comercial"
         );
@@ -175,7 +159,7 @@ try {
                         <td data-gp-label="Egresos"><span class="gp-data-pair"><span>Aplicado</span><strong class="text-warning-emphasis"><?php echo msp2Escape(msp2GarantiasHubMonto($row['monto_aplicado'])); ?></strong></span><span class="gp-data-pair"><span>Devuelto</span><strong class="text-danger"><?php echo msp2Escape(msp2GarantiasHubMonto($row['monto_devuelto'])); ?></strong></span></td>
                         <td data-gp-label="Disponible" class="text-end garantia-disponible"><?php echo msp2Escape(msp2GarantiasHubMonto($row['monto_disponible'])); ?></td>
                         <td data-gp-label="Estado"><span class="badge text-bg-<?php echo ($row['alerta_codigo'] ?? '') === 'OK' ? 'success' : 'warning'; ?>"><?php echo msp2Escape(str_replace('_', ' ', (string) $row['alerta_codigo'])); ?></span></td>
-                        <td data-gp-label="Acciones" class="garantia-acciones gp-cell-actions"><div class="d-flex flex-wrap gap-1"><?php if($pendienteRecepcion>0 || (float)$row['monto_pactado']<=0): ?><a class="btn btn-outline-success btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/recepciones.php?id_contrato_arriendo='.(int)$row['id_contrato_arriendo'])); ?>">Recibir</a><?php else: ?><span class="badge text-bg-success align-self-center">Completa</span><?php endif; ?><a class="btn btn-outline-danger btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/devoluciones.php')); ?>">Devolver</a><a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/ficha.php?id=' . (int) $row['id_garantia'])); ?>">Historial</a></div></td>
+                        <td data-gp-label="Acciones" class="garantia-acciones gp-cell-actions"><div class="d-flex flex-wrap gap-1"><?php if($pendienteRecepcion>0 || (float)$row['monto_pactado']<=0): ?><a class="btn btn-outline-success btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/recepciones.php?id_garantia_tienda='.(int)$row['id_garantia_tienda'])); ?>">Recibir</a><?php else: ?><span class="badge text-bg-success align-self-center">Completa</span><?php endif; ?><a class="btn btn-outline-danger btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/devoluciones.php?id_garantia_tienda='.(int)$row['id_garantia_tienda'])); ?>">Devolver</a><a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/ficha.php?id_garantia_tienda=' . (int) $row['id_garantia_tienda'])); ?>">Historial</a></div></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

@@ -16,7 +16,7 @@ if($returnTo!=='')$redirectParams['return_to']=$returnTo;
 $redirect='garantias/aplicaciones.php'.($redirectParams!==[]?'?'.http_build_query($redirectParams):'');
 if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')msp2Redirect($redirect);
 
-$idGarantia=filter_input(INPUT_POST,'id_garantia',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+$idGarantia=filter_input(INPUT_POST,'id_garantia_tienda',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
 $idDocumento=filter_input(INPUT_POST,'id_documento_cobro',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
 $idTipo=filter_input(INPUT_POST,'id_tipo_item_documento',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
 $fecha=trim((string)($_POST['fecha_aplicacion']??''));
@@ -26,9 +26,9 @@ $date=DateTimeImmutable::createFromFormat('!Y-m-d',$fecha);
 if(!$idGarantia||!$idDocumento||!$idTipo||!$okMonto||$monto===null||(float)$monto<=0||!$date||$date->format('Y-m-d')!==$fecha||$obs===''||mb_strlen($obs)>500){msp2SetFlash('warning','Completa la aplicación e indica el motivo/autorización.');msp2Redirect($redirect);}
 
 try{
-    if(!msp2ProcedureExists($conn,'msp_garantia_aplicar_documento'))throw new RuntimeException('Falta instalar la aplicación de garantía sobre documentos.');
+    if(!msp2ProcedureExists($conn,'msp_garantia_tienda_aplicar_documento'))throw new RuntimeException('Falta instalar la aplicación de garantía por tienda sobre documentos.');
     $conn->beginTransaction();
-    $stmt=$conn->prepare('DECLARE @id_pago INT,@id_movimiento INT; EXEC dbo.msp_garantia_aplicar_documento @id_documento_cobro=:documento,@id_garantia=:garantia,@fecha_pago=:fecha,@monto_aplicar=:monto,@observaciones=:observaciones,@id_pago_generado=@id_pago OUTPUT,@id_movimiento_garantia=@id_movimiento OUTPUT,@id_tipo_item_documento=:tipo,@id_usuario=:usuario; SELECT @id_pago id_pago,@id_movimiento id_movimiento;');
+    $stmt=$conn->prepare('DECLARE @id_pago INT,@id_movimiento INT; EXEC dbo.msp_garantia_tienda_aplicar_documento @id_documento_cobro=:documento,@id_garantia_tienda=:garantia,@fecha_pago=:fecha,@monto_aplicar=:monto,@observaciones=:observaciones,@id_pago_generado=@id_pago OUTPUT,@id_movimiento_garantia=@id_movimiento OUTPUT,@id_tipo_item_documento=:tipo,@id_usuario=:usuario; SELECT @id_pago id_pago,@id_movimiento id_movimiento;');
     $stmt->execute([':documento'=>(int)$idDocumento,':garantia'=>(int)$idGarantia,':fecha'=>$fecha,':monto'=>$monto,':observaciones'=>$obs!==''?$obs:null,':tipo'=>(int)$idTipo,':usuario'=>(int)$_SESSION['usuario']['id']]);
     $result=$stmt->fetch()?:[];$idMov=(int)($result['id_movimiento']??0);$usuario=(int)$_SESSION['usuario']['id'];
     if($idMov<=0)throw new RuntimeException('La aplicación no entregó un movimiento de garantía válido.');

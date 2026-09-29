@@ -192,16 +192,15 @@ try {
     $garantiaAplicada = 0.0;
     $garantiaDisponible = 0.0;
     $garantiaDevuelta = 0.0;
-    if (msp2TableExists($conn, 'msp_garantias') && msp2TableExists($conn, 'msp_vw_garantias_control_integral')) {
+    if (msp2TableExists($conn, 'msp_garantias_tienda') && msp2TableExists($conn, 'msp_vw_garantias_tienda_resumen')) {
         $stmtReservas = $conn->prepare(
             'SELECT ISNULL(SUM(CASE WHEN gr.monto_reservado > 0 THEN 1 ELSE 0 END),0) AS reservas,
                     ISNULL(SUM(ISNULL(gr.monto_aplicado,0)),0) AS aplicada,
                     ISNULL(SUM(ISNULL(gr.monto_disponible,0)),0) AS disponible,
-                    ISNULL(SUM(ISNULL(gr.monto_devuelto,0)),0) AS devuelta
-             FROM dbo.msp_vw_garantias_control_integral gr
-             INNER JOIN dbo.msp_garantias g ON g.id_garantia = gr.id_garantia
-             WHERE g.id_contrato_arriendo = :id_contrato_arriendo
-               AND g.estado_garantia <> 6'
+                    ISNULL(SUM(ISNULL(gr.total_devuelto,0)),0) AS devuelta
+             FROM dbo.msp_vw_garantias_tienda_resumen gr
+             WHERE gr.id_contrato_arriendo = :id_contrato_arriendo
+               AND gr.estado_garantia <> 6'
         );
         $stmtReservas->bindValue(':id_contrato_arriendo', $idContratoArriendo, PDO::PARAM_INT);
         $stmtReservas->execute();
@@ -212,6 +211,9 @@ try {
         $garantiaDevuelta = (float) ($garantiaResumen['devuelta'] ?? 0);
         if ($reservasGarantia > 0) {
             throw new RuntimeException('No se puede cerrar financieramente: existen saldos reservados en garantía.');
+        }
+        if ($garantiaDisponible > 0.005) {
+            throw new RuntimeException('No se puede cerrar financieramente: todavía existe garantía disponible. Debes aplicarla o devolverla antes del cierre definitivo.');
         }
     }
 

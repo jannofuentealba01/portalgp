@@ -143,19 +143,17 @@ try {
     $garantias = [];
     $tieneReservas = false;
     $totalDisponible = 0.0;
-    if (msp2TableExists($conn, 'msp_garantias') && msp2TableExists($conn, 'msp_vw_garantias_control_integral')) {
+    if (msp2TableExists($conn, 'msp_garantias_tienda') && msp2TableExists($conn, 'msp_vw_garantias_tienda_resumen')) {
         $stmtGar = $conn->prepare(
             'SELECT
-                g.id_garantia,
-                l.cdo_local,
+                gr.id_garantia_tienda,
+                gr.locales,
                 CAST(ROUND(ISNULL(gr.monto_disponible, 0), 2) AS DECIMAL(18,2)) AS monto_disponible,
                 CAST(ROUND(ISNULL(gr.monto_reservado, 0), 2) AS DECIMAL(18,2)) AS monto_reservado
-             FROM dbo.msp_garantias g
-             INNER JOIN dbo.msp_vw_garantias_control_integral gr ON gr.id_garantia = g.id_garantia
-             LEFT JOIN dbo.msp_locales l ON l.id_local = g.id_local
-             WHERE g.id_contrato_arriendo = :id_contrato_origen
-               AND g.estado_garantia <> 6
-             ORDER BY g.id_garantia ASC'
+             FROM dbo.msp_vw_garantias_tienda_resumen gr
+             WHERE gr.id_contrato_arriendo = :id_contrato_origen
+               AND gr.estado_garantia <> 6
+             ORDER BY gr.id_garantia_tienda ASC'
         );
         $stmtGar->bindValue(':id_contrato_origen', $idContratoOrigen, PDO::PARAM_INT);
         $stmtGar->execute();
@@ -169,8 +167,8 @@ try {
                 $totalDisponible += $saldoDisponible;
             }
             $garantias[] = [
-                'id_garantia' => (int) ($row['id_garantia'] ?? 0),
-                'local' => msp2NormalizeLocalCode((string) ($row['cdo_local'] ?? '')),
+                'id_garantia_tienda' => (int) ($row['id_garantia_tienda'] ?? 0),
+                'locales' => (string) ($row['locales'] ?? ''),
                 'saldo_disponible' => msp2FormatoDecimal($saldoDisponible, 2, '$ '),
                 'saldo_reservado' => msp2FormatoDecimal($saldoReservado, 2, '$ '),
             ];

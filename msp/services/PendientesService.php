@@ -142,28 +142,18 @@ final class PendientesService
     /** @return array<int,array<string,mixed>> */
     private function consultarGarantias(): array
     {
-        if (!$this->table('msp_garantias') || !$this->table('msp_vw_garantias_control_integral')) {
+        if (!$this->table('msp_garantias_tienda') || !$this->table('msp_vw_garantias_tienda_resumen')) {
             return [];
         }
-        $tieneRecepciones = $this->table('msp_garantia_recepciones');
-        $recibidoSql = $tieneRecepciones
-            ? "ISNULL((SELECT SUM(r.monto_recibido) FROM dbo.msp_garantia_recepciones r WHERE r.id_garantia=g.id_garantia AND r.estado_recepcion=N'CONFIRMADA'),0)"
-            : '0';
-        $sql = "SELECT g.id_garantia,g.id_contrato_arriendo,g.id_local,g.fecha_constitucion,
-                       g.monto_inicial,gr.monto_disponible,gr.monto_reservado,
-                       {$recibidoSql} monto_recibido,
-                       a.nombre_locatario,a.rut,l.cdo_local,t.nombre_comercial
-                FROM dbo.msp_garantias g
-                INNER JOIN dbo.msp_vw_garantias_control_integral gr ON gr.id_garantia=g.id_garantia
-                LEFT JOIN dbo.msp_contratos_arriendo c ON c.id_contrato_arriendo=g.id_contrato_arriendo
-                LEFT JOIN dbo.msp_arrendatarios a ON a.id_arrendatario=c.id_arrendatario
-                LEFT JOIN dbo.msp_tiendas t ON t.id_tienda=c.id_tienda
-                LEFT JOIN dbo.msp_locales l ON l.id_local=g.id_local
-                WHERE g.estado_garantia<>6
-                  AND (g.monto_inicial<=0 OR {$recibidoSql}<>g.monto_inicial OR gr.monto_reservado>0)";
+        $sql = "SELECT id_garantia_tienda,id_contrato_arriendo,fecha_constitucion,
+                       monto_pactado,monto_recibido,monto_disponible,monto_reservado,
+                       nombre_locatario,rut,nombre_comercial,locales
+                FROM dbo.msp_vw_garantias_tienda_resumen
+                WHERE estado_garantia<>6
+                  AND (monto_pactado<=0 OR monto_recibido<>monto_pactado OR monto_reservado>0)";
         $items = [];
         foreach ($this->rows($sql) as $row) {
-            $pactado = (float) ($row['monto_inicial'] ?? 0);
+            $pactado = (float) ($row['monto_pactado'] ?? 0);
             $recibido = (float) ($row['monto_recibido'] ?? 0);
             $reservado = (float) ($row['monto_reservado'] ?? 0);
             if ($pactado <= 0) {
@@ -174,35 +164,35 @@ final class PendientesService
                     : (string) ($row['nombre_comercial'] ?? 'Garantía sin monto pactado');
                 $descripcion = 'Garantía sin monto pactado.';
                 $accion = 'Definir garantía';
-                $url = 'garantias/recepciones.php?id_garantia=' . (int) $row['id_garantia'];
+                $url = 'garantias/recepciones.php?id_garantia_tienda=' . (int) $row['id_garantia_tienda'];
             } elseif ($recibido <= 0) {
                 $subtipo = 'NO_RECIBIDA';
                 $prioridad = self::PRIORIDAD_NORMAL;
                 $titulo = 'Garantía pendiente de recepción';
                 $descripcion = 'Pactado $' . $this->monto($pactado) . '; aún no registra recepción.';
                 $accion = 'Registrar recepción';
-                $url = 'garantias/recepciones.php?id_garantia=' . (int) $row['id_garantia'];
+                $url = 'garantias/recepciones.php?id_garantia_tienda=' . (int) $row['id_garantia_tienda'];
             } elseif ($recibido < $pactado) {
                 $subtipo = 'RECEPCION_PARCIAL';
                 $prioridad = self::PRIORIDAD_ALTA;
                 $titulo = 'Recepción de garantía incompleta';
                 $descripcion = 'Recibido $' . $this->monto($recibido) . ' de $' . $this->monto($pactado) . '.';
                 $accion = 'Completar recepción';
-                $url = 'garantias/recepciones.php?id_garantia=' . (int) $row['id_garantia'];
+                $url = 'garantias/recepciones.php?id_garantia_tienda=' . (int) $row['id_garantia_tienda'];
             } elseif ($recibido > $pactado + 0.01) {
                 $subtipo = 'RECEPCION_EXCEDIDA';
                 $prioridad = self::PRIORIDAD_CRITICA;
                 $titulo = 'Recepción de garantía excedida';
                 $descripcion = 'El monto recibido supera lo pactado y requiere revisión.';
                 $accion = 'Revisar garantía';
-                $url = 'garantias/ficha.php?id=' . (int) $row['id_garantia'];
+                $url = 'garantias/ficha.php?id_garantia_tienda=' . (int) $row['id_garantia_tienda'];
             } elseif ($reservado > 0) {
                 $subtipo = 'SALDO_RESERVADO';
                 $prioridad = self::PRIORIDAD_ALTA;
                 $titulo = 'Garantía con saldo reservado';
                 $descripcion = 'Hay $' . $this->monto($reservado) . ' reservados que requieren resolución.';
                 $accion = 'Revisar aplicación';
-                $url = 'garantias/ficha.php?id=' . (int) $row['id_garantia'];
+                $url = 'garantias/ficha.php?id_garantia_tienda=' . (int) $row['id_garantia_tienda'];
             } else {
                 continue;
             }
@@ -211,12 +201,12 @@ final class PendientesService
                 'arrendatario' => $row['nombre_locatario'] ?? null,
                 'rut' => $row['rut'] ?? null,
                 'contrato' => $row['id_contrato_arriendo'] ?? null,
-                'local' => $row['cdo_local'] ?? null,
+                'local' => $row['locales'] ?? null,
                 'tienda' => $row['nombre_comercial'] ?? null,
                 'monto' => $subtipo === 'SIN_MONTO' ? null : max(0, $pactado - $recibido),
                 'accion_principal' => $accion,
                 'url_accion' => $url,
-                'entidad_id' => (int) $row['id_garantia'],
+                'entidad_id' => (int) $row['id_garantia_tienda'],
             ]);
         }
         return $items;
@@ -599,19 +589,15 @@ final class PendientesService
                 ]);
         }
 
-        if ($this->table('msp_garantias') && $this->table('msp_vw_garantias_control_integral') && $this->table('msp_garantia_devoluciones')) {
-            $sql = "SELECT g.id_garantia,g.id_contrato_arriendo,g.id_local,
-                           a.nombre_locatario,a.rut,t.nombre_comercial,l.cdo_local,
+        if ($this->table('msp_garantias_tienda') && $this->table('msp_vw_garantias_tienda_resumen') && $this->table('msp_garantia_devoluciones')) {
+            $sql = "SELECT gr.id_garantia_tienda,gr.id_contrato_arriendo,
+                           gr.nombre_locatario,gr.rut,gr.nombre_comercial,gr.locales,
                            gr.monto_disponible
-                    FROM dbo.msp_garantias g
-                    INNER JOIN dbo.msp_vw_garantias_control_integral gr ON gr.id_garantia=g.id_garantia
-                    INNER JOIN dbo.msp_contratos_arriendo c ON c.id_contrato_arriendo=g.id_contrato_arriendo AND c.estado_contrato=4
-                    LEFT JOIN dbo.msp_arrendatarios a ON a.id_arrendatario=c.id_arrendatario
-                    LEFT JOIN dbo.msp_tiendas t ON t.id_tienda=c.id_tienda
-                    LEFT JOIN dbo.msp_locales l ON l.id_local=g.id_local
-                    WHERE g.estado_garantia<>6 AND gr.monto_disponible>0
+                    FROM dbo.msp_vw_garantias_tienda_resumen gr
+                    INNER JOIN dbo.msp_contratos_arriendo c ON c.id_contrato_arriendo=gr.id_contrato_arriendo AND c.estado_contrato=4
+                    WHERE gr.estado_garantia<>6 AND gr.monto_disponible>0
                       AND NOT EXISTS (SELECT 1 FROM dbo.msp_garantia_devoluciones d
-                                      WHERE d.id_garantia=g.id_garantia AND d.estado_devolucion NOT IN(N'ANULADA'))";
+                                      WHERE d.id_garantia_tienda=gr.id_garantia_tienda AND d.estado_devolucion NOT IN(N'ANULADA'))";
             foreach ($this->rows($sql) as $row) {
                 $monto = (float) ($row['monto_disponible'] ?? 0);
                 $items[] = $this->item('GARANTIA', 'DEVOLUCION_PENDIENTE', self::PRIORIDAD_ALTA,
@@ -620,11 +606,11 @@ final class PendientesService
                         'rut' => $row['rut'] ?? null,
                         'tienda' => $row['nombre_comercial'] ?? null,
                         'contrato' => (int) $row['id_contrato_arriendo'],
-                        'local' => $row['cdo_local'] ?? null,
+                        'local' => $row['locales'] ?? null,
                         'monto' => $monto,
                         'accion_principal' => 'Gestionar devolución',
-                        'url_accion' => 'garantias/devoluciones.php?id_garantia=' . (int) $row['id_garantia'],
-                        'entidad_id' => (int) $row['id_garantia'],
+                        'url_accion' => 'garantias/devoluciones.php?id_garantia_tienda=' . (int) $row['id_garantia_tienda'],
+                        'entidad_id' => (int) $row['id_garantia_tienda'],
                     ]);
             }
         }
@@ -748,7 +734,7 @@ final class PendientesService
     {
         $grupos = [];
         foreach ($items as $item) {
-            // Cada garantía representa una obligación concreta de un contrato/local y
+            // Cada garantía representa una obligación concreta de una tienda/contrato y
             // debe conservar su propia tarea, acción y metadatos en la bandeja.
             $key = (string) $item['id'];
             if (!isset($grupos[$key])) {
