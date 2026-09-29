@@ -73,6 +73,19 @@ $tipos = [
     'REVERSA_APLICACION' => 'Reversas de aplicación',
 ];
 
+$tiposMovimiento = [
+    'RECEPCION' => 'Recepción',
+    'RESERVA' => 'Reserva',
+    'LIBERACION_RESERVA' => 'Liberación',
+    'APLICACION_CARGO' => 'Cargo aplicado',
+    'DEVOLUCION' => 'Devolución',
+    'AJUSTE_POSITIVO' => 'Ajuste positivo',
+    'AJUSTE_NEGATIVO' => 'Ajuste negativo',
+    'REVERSA_RECEPCION' => 'Reversa de recepción',
+    'REVERSA_DEVOLUCION' => 'Reversa de devolución',
+    'REVERSA_APLICACION' => 'Reversa de aplicación',
+];
+
 $query = msp2NormalizeText((string) ($_GET['q'] ?? ''));
 $tipo = strtoupper(trim((string) ($_GET['tipo'] ?? '')));
 if (!isset($tipos[$tipo])) {
@@ -214,7 +227,7 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
     <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
 </head>
-<body class="gp-layout bg-light">
+<body class="gp-layout gp-module-msp bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
 <main class="gp-main container-fluid py-3 px-lg-4 msp-guarantee-ledger">
     <header class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3" data-gp-commandbar>
@@ -311,18 +324,19 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
                     <thead class="table-light">
                     <tr>
                         <th>Fecha</th>
+                        <th>Tienda / contrato</th>
                         <th>Movimiento</th>
-                        <th>Tienda / origen</th>
+                        <th class="text-end">Recepción</th>
+                        <th>Saldo de garantía</th>
+                        <th class="text-end">Egreso</th>
                         <th>Documento / referencia</th>
-                        <th class="text-end">Entrada</th>
-                        <th class="text-end">Salida</th>
-                        <th>Saldo resultante</th>
                     </tr>
                     </thead>
                     <tbody>
                     <?php foreach ($grupo['movimientos'] as $movimiento): ?>
                         <?php
-                        $isTransfer = (string) $movimiento['naturaleza_evento'] === 'TRASPASO';
+                        $codigoEvento = (string) $movimiento['codigo_evento'];
+                        $nombreMovimiento = $tiposMovimiento[$codigoEvento] ?? str_replace('_', ' ', $codigoEvento);
                         $referenceParts = [];
                         if (!empty($movimiento['id_documento_cobro'])) {
                             $referenceParts[] = 'Documento #' . (int) $movimiento['id_documento_cobro'];
@@ -338,20 +352,7 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
                         ?>
                         <tr>
                             <td data-gp-label="Fecha" class="text-nowrap"><?php echo msp2Escape(msp2GarantiasHistorialFechaVisible($movimiento['fecha_evento'])); ?></td>
-                            <td data-gp-label="Movimiento" data-gp-allow-wrap="true">
-                                <div class="fw-semibold"><?php echo msp2Escape((string) $movimiento['concepto']); ?></div>
-                                <div class="d-flex flex-wrap gap-1 mt-1">
-                                    <span class="badge text-bg-light border"><?php echo msp2Escape(str_replace('_', ' ', (string) $movimiento['codigo_evento'])); ?></span>
-                                    <span class="badge text-bg-secondary"><?php echo msp2Escape((string) $movimiento['estado_evento']); ?></span>
-                                </div>
-                                <?php if ($isTransfer): ?>
-                                    <div class="small text-muted mt-1">Monto trasladado: <?php echo msp2Escape(msp2GarantiasHistorialMonto($movimiento['monto_operacion'])); ?></div>
-                                <?php endif; ?>
-                                <?php if (trim((string) ($movimiento['observaciones'] ?? '')) !== ''): ?>
-                                    <div class="small text-muted mt-1"><?php echo msp2Escape((string) $movimiento['observaciones']); ?></div>
-                                <?php endif; ?>
-                            </td>
-                            <td data-gp-label="Tienda / origen" data-gp-allow-wrap="true">
+                            <td data-gp-label="Tienda / contrato" data-gp-allow-wrap="true">
                                 <div class="fw-semibold"><?php echo msp2Escape((string) $movimiento['tienda']); ?></div>
                                 <div class="small text-muted">Contrato #<?php echo (int) $movimiento['id_contrato_arriendo']; ?> · Garantía #<?php echo (int) $movimiento['id_garantia_tienda']; ?></div>
                                 <div class="small text-muted">Locales <?php echo msp2Escape((string) ($movimiento['locales'] ?: '—')); ?></div>
@@ -359,21 +360,25 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
                                     <div class="small">Destino: <?php echo msp2Escape((string) $movimiento['local_destino']); ?></div>
                                 <?php endif; ?>
                             </td>
+                            <td data-gp-label="Movimiento">
+                                <span class="msp-guarantee-ledger-movement"><?php echo msp2Escape($nombreMovimiento); ?></span>
+                                <div class="small text-muted mt-1"><?php echo msp2Escape((string) $movimiento['estado_evento']); ?></div>
+                            </td>
+                            <td data-gp-label="Recepción" class="text-end fw-semibold text-success text-nowrap msp-guarantee-ledger-amount">
+                                <?php echo (float) $movimiento['monto_entrada'] > 0 ? msp2Escape(msp2GarantiasHistorialMonto($movimiento['monto_entrada'])) : '—'; ?>
+                            </td>
+                            <td data-gp-label="Saldo de garantía" class="msp-guarantee-ledger-balance">
+                                <span class="msp-guarantee-ledger-pair msp-guarantee-ledger-pair--total"><span>Disponible</span><strong><?php echo msp2Escape(msp2GarantiasHistorialMonto($movimiento['saldo_disponible_garantia'])); ?></strong></span>
+                                <span class="msp-guarantee-ledger-pair"><span>Reservado</span><strong><?php echo msp2Escape(msp2GarantiasHistorialMonto($movimiento['saldo_reservado_garantia'])); ?></strong></span>
+                                <span class="msp-guarantee-ledger-pair"><span>Total</span><strong><?php echo msp2Escape(msp2GarantiasHistorialMonto($movimiento['saldo_total_garantia'])); ?></strong></span>
+                            </td>
+                            <td data-gp-label="Egreso" class="text-end fw-semibold text-danger text-nowrap msp-guarantee-ledger-amount">
+                                <?php echo (float) $movimiento['monto_salida'] > 0 ? msp2Escape(msp2GarantiasHistorialMonto($movimiento['monto_salida'])) : '—'; ?>
+                            </td>
                             <td data-gp-label="Documento / referencia" data-gp-allow-wrap="true">
                                 <?php if ($referenceParts !== []): ?><div><?php echo msp2Escape(implode(' · ', $referenceParts)); ?></div><?php endif; ?>
                                 <div class="small text-muted">Ref. <?php echo msp2Escape((string) ($movimiento['referencia'] ?: '—')); ?></div>
                                 <?php if (!empty($movimiento['medio'])): ?><div class="small text-muted"><?php echo msp2Escape((string) $movimiento['medio']); ?><?php echo !empty($movimiento['cuenta']) ? ' · ' . msp2Escape((string) $movimiento['cuenta']) : ''; ?></div><?php endif; ?>
-                            </td>
-                            <td data-gp-label="Entrada" class="text-end fw-semibold text-success text-nowrap">
-                                <?php echo (float) $movimiento['monto_entrada'] > 0 ? msp2Escape(msp2GarantiasHistorialMonto($movimiento['monto_entrada'])) : '—'; ?>
-                            </td>
-                            <td data-gp-label="Salida" class="text-end fw-semibold text-danger text-nowrap">
-                                <?php echo (float) $movimiento['monto_salida'] > 0 ? msp2Escape(msp2GarantiasHistorialMonto($movimiento['monto_salida'])) : '—'; ?>
-                            </td>
-                            <td data-gp-label="Saldo resultante">
-                                <span class="gp-data-pair gp-data-pair--total"><span>Disponible</span><strong><?php echo msp2Escape(msp2GarantiasHistorialMonto($movimiento['saldo_disponible_garantia'])); ?></strong></span>
-                                <span class="gp-data-pair"><span>Reservado</span><strong><?php echo msp2Escape(msp2GarantiasHistorialMonto($movimiento['saldo_reservado_garantia'])); ?></strong></span>
-                                <span class="gp-data-pair"><span>Total</span><strong><?php echo msp2Escape(msp2GarantiasHistorialMonto($movimiento['saldo_total_garantia'])); ?></strong></span>
                             </td>
                         </tr>
                     <?php endforeach; ?>

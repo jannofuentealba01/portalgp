@@ -55,6 +55,27 @@ $check('Historial estrictamente de solo lectura', static function () use ($root)
         && !preg_match('/\b(INSERT|UPDATE|DELETE)\s+dbo\./i', $source);
 });
 
+$check('Historial usa orden financiero compacto', static function () use ($root): bool {
+    $source = file_get_contents($root . '/msp/garantias/historial.php');
+    $styles = file_get_contents($root . '/msp/assets/views/garantias--historial.css');
+    return is_string($source)
+        && is_string($styles)
+        && str_contains($source, '<th>Tienda / contrato</th>')
+        && str_contains($source, '<th class="text-end">Recepción</th>')
+        && str_contains($source, '<th>Saldo de garantía</th>')
+        && str_contains($source, '<th class="text-end">Egreso</th>')
+        && str_contains($source, 'msp-guarantee-ledger-pair')
+        && str_contains($styles, 'white-space: nowrap;');
+});
+
+$check('Historial no muestra leyendas narrativas', static function () use ($root): bool {
+    $source = file_get_contents($root . '/msp/garantias/historial.php');
+    return is_string($source)
+        && !str_contains($source, '$movimiento[\'concepto\']')
+        && !str_contains($source, '$movimiento[\'observaciones\']')
+        && !str_contains($source, 'Monto trasladado:');
+});
+
 $check('Primera página respeta máximo y orden', static function () use ($conn): bool|string {
     $rows = $conn->query(
         'SELECT *
