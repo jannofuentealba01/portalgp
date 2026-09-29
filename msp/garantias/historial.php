@@ -160,7 +160,23 @@ try {
     $offset = ($pagina - 1) * MSP2_GARANTIAS_HISTORIAL_POR_PAGINA;
 
     $dataStatement = $conn->prepare(
-        'WITH filtrado AS (
+        'WITH historial AS (
+            SELECT h.*,
+                   r.monto_pactado,
+                   SUM(CASE
+                       WHEN h.codigo_evento=N\'RECEPCION\' THEN h.monto_entrada
+                       WHEN h.codigo_evento=N\'REVERSA_RECEPCION\' THEN -h.monto_salida
+                       ELSE 0
+                   END) OVER (
+                       PARTITION BY h.id_garantia_tienda
+                       ORDER BY h.fecha_evento,h.prioridad_evento,h.fecha_registro,
+                                h.origen_evento,h.id_evento
+                       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                   ) AS monto_recepcion_acumulado
+            FROM dbo.msp_vw_garantias_historial_arrendatario h
+            INNER JOIN dbo.msp_vw_garantias_tienda_resumen r
+                ON r.id_garantia_tienda=h.id_garantia_tienda
+        ), filtrado AS (
             SELECT h.*,
                    ROW_NUMBER() OVER (
                        PARTITION BY h.id_arrendatario
@@ -168,7 +184,7 @@ try {
                                 h.id_garantia_tienda,h.origen_evento,h.id_evento
                    ) AS secuencia_arrendatario,
                    COUNT(*) OVER (PARTITION BY h.id_arrendatario) AS total_arrendatario
-            FROM dbo.msp_vw_garantias_historial_arrendatario h
+            FROM historial h
             WHERE ' . $where . '
         )
         SELECT *
@@ -328,6 +344,13 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
                             <?php
                             $codigoEvento = (string) $movimiento['codigo_evento'];
                             $nombreMovimiento = $tiposMovimiento[$codigoEvento] ?? str_replace('_', ' ', $codigoEvento);
+                            if ($codigoEvento === 'RECEPCION') {
+                                $montoPactado = (float) ($movimiento['monto_pactado'] ?? 0);
+                                $montoRecepcionAcumulado = (float) ($movimiento['monto_recepcion_acumulado'] ?? 0);
+                                $nombreMovimiento = $montoPactado > 0.009 && $montoRecepcionAcumulado + 0.009 >= $montoPactado
+                                    ? 'Pago total'
+                                    : 'Abono parcial';
+                            }
                             $referenceParts = [];
                             if (!empty($movimiento['id_documento_cobro'])) {
                                 $referenceParts[] = 'Documento #' . (int) $movimiento['id_documento_cobro'];

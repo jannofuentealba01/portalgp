@@ -85,6 +85,15 @@ $check('Historial muestra movimientos en una sola tabla continua', static functi
         && !str_contains($source, 'El historial de este arrendatario continúa');
 });
 
+$check('Recepciones distinguen abono parcial y pago total acumulado', static function () use ($root): bool {
+    $source = file_get_contents($root . '/msp/garantias/historial.php');
+    return is_string($source)
+        && str_contains($source, 'monto_recepcion_acumulado')
+        && str_contains($source, "'Pago total'")
+        && str_contains($source, "'Abono parcial'")
+        && str_contains($source, 'montoRecepcionAcumulado + 0.009 >= $montoPactado');
+});
+
 $check('Primera página respeta máximo y orden', static function () use ($conn): bool|string {
     $rows = $conn->query(
         'SELECT *
