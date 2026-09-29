@@ -17,6 +17,10 @@ $assertions = [
     'el lápiz de gas continúa disponible' => str_contains($source, 'class="gas-edit-btn js-gas-edit"'),
     'el lápiz de agua continúa disponible' => str_contains($source, 'class="water-edit-btn js-water-edit"'),
     'el lápiz de UF base continúa disponible' => str_contains($source, 'class="rent-edit-btn js-rent-edit"'),
+    'el modal UF mantiene visible su pie en pantallas de altura limitada' => preg_match(
+        '/id="rentCorrectionModal".*?modal-dialog-scrollable[^>]*>\s*<form class="modal-content"/s',
+        $source
+    ) === 1,
     'UF base permite autorizar ajustes financieros protegidos' => str_contains(
         $source,
         "in_array(\$nivelCorreccionRent, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)"
