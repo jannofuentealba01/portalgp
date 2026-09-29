@@ -433,8 +433,7 @@ function corrMonto(mixed $value): string
             && in_array($servicioLecturaControlada, ['LUZ','GAS','AGUA'], true);
         $esArriendoControlado = $tipoCorreccion === 'ARRIENDO_PERIODO'
             && strtoupper((string) ($registroExacto['unidad_correccion'] ?? '')) === 'UF_BASE';
-        $esAjusteFinancieroPermitido = $esArriendoControlado
-            || ($esLecturaControlada && in_array($servicioLecturaControlada, ['LUZ','GAS'], true));
+        $esAjusteFinancieroPermitido = $esArriendoControlado || $esLecturaControlada;
         $esCorreccionControlada = $esLecturaControlada || $esArriendoControlado;
         $puedeAplicarControlada = $esCorreccionControlada
             && in_array($nivelCorreccion, ['REGENERACION_CONTROLADA','AUTORIZACION','AJUSTE_FINANCIERO'], true)

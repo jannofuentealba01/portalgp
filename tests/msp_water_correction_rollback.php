@@ -44,7 +44,9 @@ $snapshotSql =
         cs.subtotal_variable,cs.cargo_fijo,cs.monto_total monto_cobro,
         pa.servicio_agua_potable,pa.servicio_alcantarillado,
         pa.tratamiento_aguas_servidas,pa.divisor,pa.cargo_fijo cargo_fijo_parametro,
-        dc.id_documento_cobro,dc.monto_total monto_documento,dc.saldo_pendiente,
+        dc.id_documento_cobro,dc.periodo_facturacion,dc.monto_total monto_documento,dc.saldo_pendiente,
+        (SELECT COUNT(*) FROM dbo.msp_pagos p
+         WHERE p.id_documento_cobro=dc.id_documento_cobro) pagos_registrados,
         (SELECT COUNT(*) FROM dbo.msp_acc_asientos a
          WHERE a.tabla_origen=N'msp_documentos_cobro'
            AND a.id_origen=dc.id_documento_cobro AND a.estado_asiento=1) asientos_activos
@@ -63,6 +65,7 @@ $before = $snapshotStmt->fetch(PDO::FETCH_ASSOC);
 waterTestAssert(is_array($before), 'No se encontró la lectura de agua de prueba.');
 waterTestAssert((int) ($before['id_documento_cobro'] ?? 0) > 0, 'La prueba requiere una lectura documentada.');
 waterTestAssert((int) ($before['asientos_activos'] ?? 0) > 0, 'La prueba requiere un asiento contable activo.');
+waterTestAssert((int) ($before['pagos_registrados'] ?? 0) === 0, 'La lectura base de prueba ya tiene pagos registrados.');
 
 $previous = (float) $before['lectura_anterior'];
 $current = (float) $before['lectura_actual'];
@@ -96,7 +99,7 @@ try {
     $correctionId = CorreccionesService::crearSolicitud($conn, [
         'tipo_correccion'=>'LECTURA',
         'modulo_origen'=>'tests/msp_water_correction_rollback.php',
-        'periodo_facturacion'=>'2026-04',
+        'periodo_facturacion'=>substr((string) $before['periodo_facturacion'], 0, 7),
         'id_contrato_arriendo'=>(int) $before['id_contrato_arriendo'],
         'id_tienda'=>(int) $before['id_tienda'],
         'id_local'=>(int) $before['id_local'],
@@ -138,6 +141,94 @@ try {
     $statusStmt->execute([':id'=>$correctionId]);
     waterTestAssert($statusStmt->fetchColumn() === 'EJECUTADA', 'La corrección no terminó en EJECUTADA.');
 
+    waterTestAssert(
+        msp2ProcedureExists($conn, 'msp_registrar_pago_documento'),
+        'La prueba protegida requiere el procedimiento de pago documental.'
+    );
+    $saldoFavorAntes = (float) ($conn->query(
+        'SELECT ISNULL(saldo_disponible,0) FROM dbo.msp_saldos_favor_tienda WHERE id_tienda=' . (int) $before['id_tienda']
+    )->fetchColumn() ?: 0);
+    $registrarPago = $conn->prepare(
+        'EXEC dbo.msp_registrar_pago_documento
+            @id_documento_cobro=:documento,@fecha_pago=:fecha,@monto_pagado=:monto,
+            @medio_pago=N\'PRUEBA\',@referencia_pago=N\'AGUA-AJUSTE-ROLLBACK\',
+            @observaciones=N\'Pago temporal para validar ajuste de agua protegido\''
+    );
+    $registrarPago->execute([
+        ':documento'=>(int) $before['id_documento_cobro'],
+        ':fecha'=>date('Y-m-d'),
+        ':monto'=>(float) $during['monto_documento'],
+    ]);
+    while ($registrarPago->nextRowset()) {
+        // Consumir todos los resultados del procedimiento antes de continuar.
+    }
+    $pagosProtegidos = $conn->prepare(
+        'SELECT COUNT(*) FROM dbo.msp_pagos
+         WHERE id_documento_cobro=:documento AND estado_pago=1'
+    );
+    $pagosProtegidos->execute([':documento'=>(int) $before['id_documento_cobro']]);
+    waterTestAssert((int) $pagosProtegidos->fetchColumn() === 1, 'No se creó el pago protegido de prueba.');
+
+    $protectedReading = round($newReading - 1, 4);
+    waterTestAssert($protectedReading >= $previous, 'La lectura no tiene margen para probar el ajuste protegido.');
+    $protectedCorrectionId = CorreccionesService::crearSolicitud($conn, [
+        'tipo_correccion'=>'LECTURA',
+        'modulo_origen'=>'tests/msp_water_correction_rollback.php',
+        'periodo_facturacion'=>substr((string) $before['periodo_facturacion'], 0, 7),
+        'id_contrato_arriendo'=>(int) $before['id_contrato_arriendo'],
+        'id_tienda'=>(int) $before['id_tienda'],
+        'id_local'=>(int) $before['id_local'],
+        'entidad_afectada'=>'lectura',
+        'id_registro_origen'=>$readingId,
+        'estado_correccion'=>'BORRADOR',
+        'nivel_correcion'=>'AJUSTE_FINANCIERO',
+        'valor_anterior'=>[
+            'lectura_anterior'=>$previous,
+            'lectura_actual'=>$newReading,
+            'consumo'=>(float) $during['consumo_informado'],
+        ],
+        'valor_nuevo'=>$protectedReading,
+        'motivo'=>'Prueba reversible de ajuste de agua protegido',
+        'resultado_analisis'=>[
+            'registro_exacto'=>['servicio'=>'AGUA','id_lectura'=>$readingId],
+            'clasificacion'=>['nivel'=>'AJUSTE_FINANCIERO'],
+        ],
+    ], $userId);
+    CorreccionesService::cambiarEstado(
+        $conn,
+        $protectedCorrectionId,
+        'APROBADA',
+        $userId,
+        'Aprobación temporal del ajuste de agua protegido.'
+    );
+    $protectedResult = CorreccionesService::ejecutar($conn, $protectedCorrectionId, $userId);
+    waterTestAssert(
+        (string) ($protectedResult['estrategia'] ?? '') === 'AGUA_AJUSTE_FINANCIERO',
+        'La corrección protegida no utilizó la estrategia financiera de agua.'
+    );
+    $documentResults = (array) ($protectedResult['resultado_documentos'] ?? []);
+    $documentResult = (array) ($documentResults[(int) $before['id_documento_cobro']] ?? []);
+    $saldoFavorGenerado = round((float) ($documentResult['saldo_favor_generado'] ?? 0), 2);
+    waterTestAssert($saldoFavorGenerado > 0, 'La rebaja de agua protegida no generó saldo a favor.');
+
+    $snapshotStmt->execute([':lectura'=>$readingId]);
+    $protectedDuring = $snapshotStmt->fetch(PDO::FETCH_ASSOC);
+    waterTestAssert(is_array($protectedDuring), 'No fue posible releer el ajuste de agua protegido.');
+    waterTestAssert(
+        abs((float) $protectedDuring['lectura_actual'] - $protectedReading) <= 0.0001,
+        'El ajuste protegido no actualizó la lectura.'
+    );
+    waterTestAssert(abs((float) $protectedDuring['saldo_pendiente']) <= 0.01, 'El documento pagado no permaneció saldado.');
+    $pagosProtegidos->execute([':documento'=>(int) $before['id_documento_cobro']]);
+    waterTestAssert((int) $pagosProtegidos->fetchColumn() === 1, 'El ajuste de agua alteró el pago existente.');
+    $saldoFavorDurante = (float) ($conn->query(
+        'SELECT ISNULL(saldo_disponible,0) FROM dbo.msp_saldos_favor_tienda WHERE id_tienda=' . (int) $before['id_tienda']
+    )->fetchColumn() ?: 0);
+    waterTestAssert(
+        abs($saldoFavorDurante - ($saldoFavorAntes + $saldoFavorGenerado)) <= 0.01,
+        'El saldo a favor de la tienda no refleja la diferencia de agua.'
+    );
+
     $conn->rollBack();
     $snapshotStmt->execute([':lectura'=>$readingId]);
     $after = $snapshotStmt->fetch(PDO::FETCH_ASSOC);
@@ -146,9 +237,17 @@ try {
     waterTestAssert(abs((float) $after['monto_cobro'] - (float) $before['monto_cobro']) <= 0.01, 'El rollback no restauró el cobro.');
     waterTestAssert(abs((float) $after['monto_documento'] - (float) $before['monto_documento']) <= 0.01, 'El rollback no restauró el documento.');
     waterTestAssert((int) $after['asientos_activos'] === (int) $before['asientos_activos'], 'El rollback no restauró la contabilidad.');
+    waterTestAssert((int) $after['pagos_registrados'] === 0, 'El rollback no eliminó el pago temporal.');
+    $saldoFavorDespues = (float) ($conn->query(
+        'SELECT ISNULL(saldo_disponible,0) FROM dbo.msp_saldos_favor_tienda WHERE id_tienda=' . (int) $before['id_tienda']
+    )->fetchColumn() ?: 0);
+    waterTestAssert(
+        abs($saldoFavorDespues - $saldoFavorAntes) <= 0.01,
+        'El rollback no restauró el saldo a favor de la tienda.'
+    );
     $archiveCountStmt->execute([':documento'=>(int) $before['id_documento_cobro']]);
     waterTestAssert((int) $archiveCountStmt->fetchColumn() === $archiveCountBefore, 'El rollback no restauró el respaldo de pago.');
-    echo "OK: corrección de agua, fórmula Excel, documento, trazabilidad y contabilidad validados con rollback.\n";
+    echo "OK: agua simple y protegida, fórmula Excel, pagos, saldo a favor, documento, trazabilidad, contabilidad y rollback validados.\n";
 } catch (Throwable $e) {
     if ($conn->inTransaction()) {
         $conn->rollBack();

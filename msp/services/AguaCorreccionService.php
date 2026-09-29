@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/DocumentoProteccionService.php';
+
 /** Corrección controlada de lecturas de agua ya documentadas. */
 final class AguaCorreccionService
 {
@@ -9,6 +11,8 @@ final class AguaCorreccionService
         $idCorreccion = (int) ($corr['id_correccion'] ?? 0);
         $idLectura = (int) ($corr['id_registro_origen'] ?? 0);
         $idContrato = (int) ($corr['id_contrato_arriendo'] ?? 0);
+        $nivelCorreccion = strtoupper(trim((string) ($corr['nivel_correcion'] ?? '')));
+        $esAjusteFinanciero = $nivelCorreccion === 'AJUSTE_FINANCIERO';
         $nuevo = self::numeroNuevo($corr['valor_nuevo'] ?? null);
         if ($idCorreccion <= 0 || $idLectura <= 0 || $idContrato <= 0 || $nuevo === null || $nuevo < 0) {
             throw new RuntimeException('La corrección controlada no contiene una lectura válida.');
@@ -26,11 +30,16 @@ final class AguaCorreccionService
         try {
             $claim = $conn->prepare(
                 "UPDATE dbo.msp_correcciones
-                 SET estado_correccion=N'EJECUTANDO',estrategia_ejecucion=N'LECTURA_AGUA_CONTROLADA',
+                 SET estado_correccion=N'EJECUTANDO',estrategia_ejecucion=:estrategia,
                      fecha_actualizacion=SYSDATETIME()
                  WHERE id_correccion=:id AND estado_correccion=N'APROBADA'"
             );
-            $claim->execute([':id' => $idCorreccion]);
+            $claim->execute([
+                ':estrategia' => $esAjusteFinanciero
+                    ? 'AGUA_AJUSTE_FINANCIERO'
+                    : 'LECTURA_AGUA_CONTROLADA',
+                ':id' => $idCorreccion,
+            ]);
             if ($claim->rowCount() !== 1) {
                 throw new RuntimeException('La corrección ya fue ejecutada o está siendo procesada.');
             }
@@ -141,16 +150,25 @@ final class AguaCorreccionService
                 $idDocumento = (int) $item['id_documento'];
                 if ($idDocumento <= 0) { continue; }
                 $dependencias = self::dependenciasProtegidas($conn, $idDocumento);
-                if ($dependencias !== []) {
+                if ($dependencias !== [] && !$esAjusteFinanciero) {
                     throw new RuntimeException('El documento ' . $idDocumento . ' tiene ' . implode(', ', $dependencias)
                         . '. Debe resolverse mediante un ajuste financiero; no se modificó ningún valor.');
                 }
                 $deltasDocumento[$idDocumento] = round((float) ($deltasDocumento[$idDocumento] ?? 0)
                     + ((float) $item['monto_nuevo'] - (float) $item['monto_anterior']), 2);
             }
-            self::aplicarCambios($conn, $corr, $usuario, $afectados, $deltasDocumento);
+            $documentosResultado = self::aplicarCambios(
+                $conn,
+                $corr,
+                $usuario,
+                $afectados,
+                $deltasDocumento,
+                $esAjusteFinanciero
+            );
             $resultado = [
-                'estrategia' => 'LECTURA_AGUA_CONTROLADA',
+                'estrategia' => $esAjusteFinanciero
+                    ? 'AGUA_AJUSTE_FINANCIERO'
+                    : 'LECTURA_AGUA_CONTROLADA',
                 'servicio' => 'AGUA',
                 'id_lectura' => $idLectura,
                 'lectura_original' => (float) $lectura['lectura_actual'],
@@ -161,10 +179,14 @@ final class AguaCorreccionService
                 'monto_anterior' => (float) ($lectura['monto_cobro'] ?? 0),
                 'monto_nuevo' => $montoNuevo,
                 'documentos_actualizados' => array_map('intval', array_keys($deltasDocumento)),
+                'resultado_documentos' => $documentosResultado,
                 'lectura_siguiente_actualizada' => $propagaSiguiente ? (int) ($siguiente['id_lectura'] ?? 0) : null,
             ];
             CorreccionesService::cambiarEstado($conn, $idCorreccion, 'EJECUTADA', $usuario,
-                'Lectura de agua corregida con regeneración documental y contable controlada.', $resultado);
+                $esAjusteFinanciero
+                    ? 'Lectura de agua corregida mediante ajuste financiero; movimientos anteriores conservados.'
+                    : 'Lectura de agua corregida con regeneración documental y contable controlada.',
+                $resultado);
             if ($transaccionPropia) { $conn->commit(); }
             return $resultado;
         } catch (Throwable $e) {
@@ -310,23 +332,7 @@ final class AguaCorreccionService
 
     private static function dependenciasProtegidas(PDO $conn, int $idDocumento): array
     {
-        $encontradas = [];
-        $checks = [
-            'msp_pagos' => ['id_documento_cobro','pagos registrados'],
-            'msp_saldo_favor_periodo_aplicaciones' => ['id_documento_cobro','saldo a favor aplicado'],
-            'msp_garantia_documento_aplicaciones' => ['id_documento_cobro','garantía aplicada'],
-            'msp_movimientos_garantia' => ['id_documento_cobro','movimientos de garantía'],
-            'msp_envio_lote_documentos' => ['id_documento_cobro','historial de envío'],
-            'msp_pago_contrato_operacion_detalle' => ['id_documento_cobro','operaciones de pago'],
-            'msp_pago_contrato_archivos' => ['id_documento_cobro','respaldos de pago'],
-        ];
-        foreach ($checks as $tabla => [$columna,$label]) {
-            if (!msp2TableExists($conn, $tabla) || !msp2ColumnExists($conn, $tabla, $columna)) { continue; }
-            $q = $conn->prepare('SELECT TOP(1) 1 FROM dbo.' . $tabla . ' WHERE ' . $columna . '=:documento');
-            $q->execute([':documento'=>$idDocumento]);
-            if ($q->fetchColumn() !== false) { $encontradas[] = $label; }
-        }
-        return array_values(array_unique($encontradas));
+        return DocumentoProteccionService::listar($conn, $idDocumento);
     }
 
     private static function numeroNuevo(mixed $raw): ?float
@@ -358,10 +364,18 @@ final class AguaCorreccionService
         return null;
     }
 
-    private static function aplicarCambios(PDO $conn, array $corr, int $usuario, array $afectados, array $deltasDocumento): void
+    private static function aplicarCambios(
+        PDO $conn,
+        array $corr,
+        int $usuario,
+        array $afectados,
+        array $deltasDocumento,
+        bool $esAjusteFinanciero
+    ): array
     {
         $idCorreccion = (int) ($corr['id_correccion'] ?? 0);
         $rehacerAsiento = [];
+        $resultadosDocumento = [];
         foreach (array_keys($deltasDocumento) as $idDocumento) {
             self::versionarDocumento($conn, (int) $idDocumento, $idCorreccion, $usuario, (string) ($corr['motivo'] ?? ''));
             $rehacerAsiento[(int) $idDocumento] = self::revertirContabilidad($conn, (int) $idDocumento, $idCorreccion);
@@ -370,9 +384,17 @@ final class AguaCorreccionService
             self::actualizarLecturaYCobro($conn, $item, $idCorreccion);
         }
         foreach ($deltasDocumento as $idDocumento => $delta) {
-            self::actualizarDocumento($conn, (int) $idDocumento, (float) $delta, $idCorreccion, $usuario,
-                (bool) ($rehacerAsiento[(int) $idDocumento] ?? false));
+            $resultadosDocumento[(int) $idDocumento] = self::actualizarDocumento(
+                $conn,
+                (int) $idDocumento,
+                (float) $delta,
+                $idCorreccion,
+                $usuario,
+                (bool) ($rehacerAsiento[(int) $idDocumento] ?? false),
+                $esAjusteFinanciero
+            );
         }
+        return $resultadosDocumento;
     }
 
     private static function revertirContabilidad(PDO $conn, int $idDocumento, int $idCorreccion): bool
@@ -460,24 +482,48 @@ final class AguaCorreccionService
         ], true);
     }
 
-    private static function actualizarDocumento(PDO $conn, int $idDocumento, float $delta, int $idCorreccion, int $usuario, bool $rehacerAsiento): void
+    private static function actualizarDocumento(
+        PDO $conn,
+        int $idDocumento,
+        float $delta,
+        int $idCorreccion,
+        int $usuario,
+        bool $rehacerAsiento,
+        bool $esAjusteFinanciero
+    ): array
     {
-        $actual = $conn->prepare('SELECT subtotal_servicios,monto_total,saldo_pendiente,estado_documento
+        $actual = $conn->prepare('SELECT id_tienda,periodo_facturacion,subtotal_servicios,monto_total,
+                saldo_pendiente,estado_documento
             FROM dbo.msp_documentos_cobro WITH(UPDLOCK,HOLDLOCK) WHERE id_documento_cobro=:id');
         $actual->execute([':id'=>$idDocumento]);
         $documento = $actual->fetch(PDO::FETCH_ASSOC);
         if ($documento === false || (int) ($documento['estado_documento'] ?? 0) === 5) {
             throw new RuntimeException('El documento afectado ya no está disponible para corrección.');
         }
-        if ((float) $documento['subtotal_servicios'] + $delta < -0.009
-            || (float) $documento['monto_total'] + $delta < -0.009
-            || (float) $documento['saldo_pendiente'] + $delta < -0.009) {
+        $subtotalServiciosNuevo = round((float) $documento['subtotal_servicios'] + $delta, 2);
+        $montoTotalNuevo = round((float) $documento['monto_total'] + $delta, 2);
+        $saldoCalculado = round((float) $documento['saldo_pendiente'] + $delta, 2);
+        $saldoFavorGenerado = $esAjusteFinanciero && $saldoCalculado < -0.009
+            ? round(abs($saldoCalculado), 2)
+            : 0.0;
+        $saldoNuevo = $esAjusteFinanciero ? max(0.0, $saldoCalculado) : $saldoCalculado;
+        if ($subtotalServiciosNuevo < -0.009 || $montoTotalNuevo < -0.009 || $saldoNuevo < -0.009) {
             throw new RuntimeException('La corrección dejaría valores negativos en el documento. No se modificó ningún dato.');
         }
+        $estadoNuevo = $saldoNuevo <= 0.009
+            ? 4
+            : ($saldoNuevo < $montoTotalNuevo - 0.009 ? 3 : 2);
         $upd = $conn->prepare('UPDATE dbo.msp_documentos_cobro
-            SET subtotal_servicios=ROUND(subtotal_servicios+:d1,2),monto_total=ROUND(monto_total+:d2,2),
-                saldo_pendiente=ROUND(saldo_pendiente+:d3,2) WHERE id_documento_cobro=:id');
-        $upd->execute([':d1'=>$delta,':d2'=>$delta,':d3'=>$delta,':id'=>$idDocumento]);
+            SET subtotal_servicios=:subtotal,monto_total=:total,saldo_pendiente=:saldo,
+                estado_documento=:estado
+            WHERE id_documento_cobro=:id');
+        $upd->execute([
+            ':subtotal'=>$subtotalServiciosNuevo,
+            ':total'=>$montoTotalNuevo,
+            ':saldo'=>$saldoNuevo,
+            ':estado'=>$estadoNuevo,
+            ':id'=>$idDocumento,
+        ]);
         if ($upd->rowCount() !== 1) {
             throw new RuntimeException('El documento cambió o dejó de existir durante la corrección.');
         }
@@ -485,12 +531,130 @@ final class AguaCorreccionService
             $asiento = $conn->prepare('EXEC dbo.msp_acc_generar_asiento_documento @id_documento_cobro=:id');
             $asiento->execute([':id'=>$idDocumento]);
         }
+        $idMovimientoSaldoFavor = $saldoFavorGenerado > 0
+            ? self::registrarSaldoFavorCorreccion(
+                $conn,
+                (int) $documento['id_tienda'],
+                (string) $documento['periodo_facturacion'],
+                $idDocumento,
+                $idCorreccion,
+                $saldoFavorGenerado
+            )
+            : null;
         require_once __DIR__ . '/DocumentoCobroTrazabilidadService.php';
-        DocumentoCobroTrazabilidadService::registrar($conn, $idDocumento, 'RECALCULO', 'SISTEMA', $usuario, [
-            'id_correccion'=>$idCorreccion,'tipo'=>'LECTURA_AGUA','delta_documento'=>$delta,
+        DocumentoCobroTrazabilidadService::registrar($conn, $idDocumento, $esAjusteFinanciero ? 'AJUSTE' : 'RECALCULO', 'SISTEMA', $usuario, [
+            'id_correccion'=>$idCorreccion,
+            'tipo'=>'LECTURA_AGUA',
+            'delta_documento'=>$delta,
+            'saldo_favor_generado'=>$saldoFavorGenerado,
         ]);
-        self::impacto($conn, $idCorreccion, 'DOCUMENTO_COBRO', $idDocumento, 'RECALCULO',
-            ['delta'=>0], ['delta'=>$delta], true);
+        self::impacto(
+            $conn,
+            $idCorreccion,
+            'DOCUMENTO_COBRO',
+            $idDocumento,
+            $esAjusteFinanciero ? 'AJUSTE_FINANCIERO' : 'RECALCULO',
+            [
+                'subtotal_servicios'=>(float) $documento['subtotal_servicios'],
+                'monto_total'=>(float) $documento['monto_total'],
+                'saldo_pendiente'=>(float) $documento['saldo_pendiente'],
+                'estado_documento'=>(int) $documento['estado_documento'],
+            ],
+            [
+                'subtotal_servicios'=>$subtotalServiciosNuevo,
+                'monto_total'=>$montoTotalNuevo,
+                'saldo_pendiente'=>$saldoNuevo,
+                'estado_documento'=>$estadoNuevo,
+                'delta'=>$delta,
+                'saldo_favor_generado'=>$saldoFavorGenerado,
+            ],
+            true
+        );
+        return [
+            'id_documento'=>$idDocumento,
+            'delta'=>$delta,
+            'monto_total'=>$montoTotalNuevo,
+            'saldo_pendiente'=>$saldoNuevo,
+            'estado_documento'=>$estadoNuevo,
+            'saldo_favor_generado'=>$saldoFavorGenerado,
+            'id_movimiento_saldo_favor'=>$idMovimientoSaldoFavor,
+        ];
+    }
+
+    private static function registrarSaldoFavorCorreccion(
+        PDO $conn,
+        int $idTienda,
+        string $periodo,
+        int $idDocumento,
+        int $idCorreccion,
+        float $monto
+    ): int {
+        if ($idTienda <= 0 || $idDocumento <= 0 || $idCorreccion <= 0 || $monto <= 0) {
+            throw new RuntimeException('No fue posible determinar el saldo a favor de la corrección de agua.');
+        }
+        if (!msp2TableExists($conn, 'msp_movimientos_saldo_favor_tienda')) {
+            throw new RuntimeException('Falta el libro de saldo a favor requerido para completar la corrección de agua.');
+        }
+        $observacion = 'Excedente por corrección de agua #' . $idCorreccion
+            . ' sobre documento #' . $idDocumento;
+        $insert = $conn->prepare(
+            'DECLARE @out TABLE(id_movimiento_saldo_favor INT);
+             INSERT dbo.msp_movimientos_saldo_favor_tienda
+                (id_tienda,fecha_movimiento,tipo_movimiento,monto_movimiento,
+                 id_documento_cobro,observaciones)
+             OUTPUT INSERTED.id_movimiento_saldo_favor INTO @out(id_movimiento_saldo_favor)
+             VALUES(:tienda,CONVERT(date,SYSDATETIME()),5,:monto,:documento,:observacion);
+             SELECT TOP(1) id_movimiento_saldo_favor FROM @out;'
+        );
+        $insert->execute([
+            ':tienda'=>$idTienda,
+            ':monto'=>$monto,
+            ':documento'=>$idDocumento,
+            ':observacion'=>$observacion,
+        ]);
+        $idMovimiento = self::primerEscalar($insert);
+        if ($idMovimiento <= 0) {
+            throw new RuntimeException('No fue posible identificar el saldo a favor creado por la corrección de agua.');
+        }
+        if (msp2TableExists($conn, 'msp_saldo_favor_periodo_items')) {
+            $item = $conn->prepare(
+                'INSERT dbo.msp_saldo_favor_periodo_items
+                    (periodo_facturacion,id_tienda,fecha_movimiento,monto_original,
+                     id_movimiento_saldo_favor,observaciones)
+                 VALUES(:periodo,:tienda,CONVERT(date,SYSDATETIME()),:monto,:movimiento,:observacion)'
+            );
+            $item->execute([
+                ':periodo'=>$periodo,
+                ':tienda'=>$idTienda,
+                ':monto'=>$monto,
+                ':movimiento'=>$idMovimiento,
+                ':observacion'=>$observacion,
+            ]);
+        }
+        self::impacto(
+            $conn,
+            $idCorreccion,
+            'SALDO_FAVOR',
+            $idMovimiento,
+            'CREACION_EXCEDENTE',
+            null,
+            ['monto'=>$monto,'id_tienda'=>$idTienda,'id_documento'=>$idDocumento],
+            true
+        );
+        return $idMovimiento;
+    }
+
+    private static function primerEscalar(PDOStatement $statement): int
+    {
+        do {
+            if ($statement->columnCount() > 0) {
+                $value = $statement->fetchColumn();
+                if ($value !== false) {
+                    return (int) $value;
+                }
+            }
+        } while ($statement->nextRowset());
+        return 0;
     }
 
     private static function versionarDocumento(PDO $conn, int $idDocumento, int $idCorreccion, int $usuario, string $motivo): void
