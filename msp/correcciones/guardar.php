@@ -108,6 +108,7 @@ try {
                     : [];
             $servicioControlado = strtoupper((string) ($registroControlado['servicio'] ?? ''));
             $esElectricidadControlada = $tipoControlado === 'LECTURA' && $servicioControlado === 'LUZ';
+            $esGasControlado = $tipoControlado === 'LECTURA' && $servicioControlado === 'GAS';
             $esArriendoControlado = $tipoControlado === 'ARRIENDO_PERIODO'
                 && strtoupper((string) ($registroControlado['unidad_correccion'] ?? '')) === 'UF_BASE';
             if ($tipoControlado === 'LECTURA' && !in_array($servicioControlado, ['LUZ','GAS','AGUA'], true)) {
@@ -119,12 +120,13 @@ try {
             $nivelControlado = strtoupper((string) ($correccionControlada['nivel_correcion'] ?? ''));
             if ($nivelControlado === 'AJUSTE_FINANCIERO'
                 && !$esArriendoControlado
-                && !$esElectricidadControlada) {
-                throw new RuntimeException('El ajuste financiero automático está habilitado solamente para UF Base y electricidad.');
+                && !$esElectricidadControlada
+                && !$esGasControlado) {
+                throw new RuntimeException('El ajuste financiero automático está habilitado solamente para UF Base, electricidad y gas.');
             }
             $nombreControlado = $esArriendoControlado
                 ? 'arriendo'
-                : ($esElectricidadControlada ? 'electricidad' : $servicioControlado);
+                : ($esElectricidadControlada ? 'electricidad' : ($esGasControlado ? 'gas' : $servicioControlado));
 
             if (in_array($nivelControlado, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)
                 && !msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
