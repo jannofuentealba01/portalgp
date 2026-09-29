@@ -95,6 +95,7 @@ PRINT '==== Garantias y tesoreria ====';
 :r $(MSP_DB_DIR)\patch_garantias_resumen_recepcion_real.sql
 :r $(MSP_DB_DIR)\patch_garantias_archivos_respaldo.sql
 :r $(MSP_DB_DIR)\patch_garantias_reporte_control.sql
+:r $(MSP_DB_DIR)\patch_garantia_por_tienda_bloque1.sql
 :r $(MSP_DB_DIR)\patch_tesoreria_conciliacion_cierre.sql
 :r $(MSP_DB_DIR)\patch_tesoreria_depositos.sql
 :r $(MSP_DB_DIR)\patch_tesoreria_reapertura_caja.sql
@@ -143,3 +144,9 @@ PRINT '==== Integridad financiera ====';
 PRINT '==== MSP produccion: migracion completada ====';
 PRINT 'No se ejecutaron resets, datos demo ni ampliaciones globales de permisos.';
 GO
+
+PRINT '==== Garantia por tienda: bloque operativo ====';
+:r $(MSP_DB_DIR)\patch_garantia_por_tienda_bloque2.sql
+
+PRINT '==== Garantia por tienda: cierre de migracion ====';
+:r $(MSP_DB_DIR)\patch_garantia_por_tienda_bloque3.sql

@@ -201,6 +201,7 @@ PRINT '==== MSP install: garantias operativas, archivos, reportes y devoluciones
 :r $(MSP_DB_DIR)\patch_garantias_resumen_recepcion_real.sql
 :r $(MSP_DB_DIR)\patch_garantias_archivos_respaldo.sql
 :r $(MSP_DB_DIR)\patch_garantias_reporte_control.sql
+:r $(MSP_DB_DIR)\patch_garantia_por_tienda_bloque1.sql
 :r $(MSP_DB_DIR)\patch_garantias_etapa2_contabilidad.sql
 
 PRINT '==== MSP install: configuracion de correo ====';
@@ -230,6 +231,12 @@ PRINT 'SQL Agent Job de envio lotes NO se instala automaticamente.';
 PRINT 'Si necesitas ejecucion automatica, ejecutar manualmente patch_sql_agent_envio_lotes_job.sql con rutas/permiso sysadmin.';
 
 PRINT '==== MSP install completado ====';
+
+PRINT '==== Garantia por tienda: bloque operativo ====';
+:r $(MSP_DB_DIR)\patch_garantia_por_tienda_bloque2.sql
+
+PRINT '==== Garantia por tienda: cierre de migracion ====';
+:r $(MSP_DB_DIR)\patch_garantia_por_tienda_bloque3.sql
 
 
 

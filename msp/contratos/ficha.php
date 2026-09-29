@@ -746,7 +746,7 @@ try {
         }
     }
 
-    if (msp2TableExists($conn, 'msp_garantias') && msp2TableExists($conn, 'msp_vw_garantias_control_integral')) {
+    if (msp2TableExists($conn, 'msp_garantias_tienda') && msp2TableExists($conn, 'msp_vw_garantias_tienda_control_integral')) {
         $stmtGarantia = $conn->prepare(
             'SELECT
                 COUNT(*) AS registros,
@@ -757,7 +757,7 @@ try {
                 ROUND(ISNULL(SUM(monto_reservado), 0), 2) AS monto_reservado,
                 ROUND(ISNULL(SUM(monto_aplicado), 0), 2) AS monto_aplicado,
                 ROUND(ISNULL(SUM(monto_devuelto), 0), 2) AS monto_devuelto
-             FROM dbo.msp_vw_garantias_control_integral
+             FROM dbo.msp_vw_garantias_tienda_control_integral
              WHERE id_contrato_arriendo = :id_contrato'
         );
         $stmtGarantia->bindValue(':id_contrato', $idContratoArriendo, PDO::PARAM_INT);

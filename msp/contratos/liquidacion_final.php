@@ -108,15 +108,13 @@ try {
         $lecturasFinales = $stmtLecturasFinales->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    if (msp2TableExists($conn, 'msp_garantias') && msp2TableExists($conn, 'msp_vw_garantias_control_integral')) {
+    if (msp2TableExists($conn, 'msp_garantias_tienda') && msp2TableExists($conn, 'msp_vw_garantias_tienda_resumen')) {
         $stmtGarantias = $conn->prepare(
-            'SELECT g.id_garantia, l.cdo_local, gr.monto_pactado, gr.monto_recibido, gr.monto_aplicado, gr.monto_devuelto, gr.monto_disponible, gr.monto_reservado
-             FROM dbo.msp_garantias g
-             INNER JOIN dbo.msp_vw_garantias_control_integral gr ON gr.id_garantia = g.id_garantia
-             INNER JOIN dbo.msp_locales l ON l.id_local = g.id_local
-             WHERE g.id_contrato_arriendo = :id_contrato
-               AND g.estado_garantia <> 6
-             ORDER BY l.cdo_local ASC'
+            'SELECT gr.id_garantia_tienda,gr.locales,gr.monto_pactado,gr.monto_recibido,
+                    gr.monto_aplicado,gr.total_devuelto AS monto_devuelto,gr.monto_disponible,gr.monto_reservado
+             FROM dbo.msp_vw_garantias_tienda_resumen gr
+             WHERE gr.id_contrato_arriendo = :id_contrato
+               AND gr.estado_garantia <> 6'
         );
         $stmtGarantias->bindValue(':id_contrato', $idContratoArriendo, PDO::PARAM_INT);
         $stmtGarantias->execute();
@@ -163,13 +161,12 @@ try {
         $cargosPendientes = (int) $stmtCargos->fetchColumn();
     }
 
-    if (msp2TableExists($conn, 'msp_vw_garantias_control_integral')) {
+    if (msp2TableExists($conn, 'msp_vw_garantias_tienda_resumen')) {
         $stmtReservas = $conn->prepare(
             'SELECT COUNT(*)
-              FROM dbo.msp_garantias g
-             INNER JOIN dbo.msp_vw_garantias_control_integral gr ON gr.id_garantia = g.id_garantia
-             WHERE g.id_contrato_arriendo = :id_contrato
-               AND g.estado_garantia <> 6
+             FROM dbo.msp_vw_garantias_tienda_resumen gr
+             WHERE gr.id_contrato_arriendo = :id_contrato
+               AND gr.estado_garantia <> 6
                AND gr.monto_reservado > 0'
         );
         $stmtReservas->bindValue(':id_contrato', $idContratoArriendo, PDO::PARAM_INT);
@@ -328,8 +325,8 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
                         <?php foreach ($garantias as $garantia): ?>
                             <div class="border-bottom py-2 d-flex justify-content-between gap-2">
                                 <div>
-                                    <div class="fw-semibold">Local <?php echo msp2Escape((string) ($garantia['cdo_local'] ?? '-')); ?></div>
-                                    <div class="small text-muted">Garantía #<?php echo (int) ($garantia['id_garantia'] ?? 0); ?></div>
+                                    <div class="fw-semibold">Tienda · Locales <?php echo msp2Escape((string) ($garantia['locales'] ?? '-')); ?></div>
+                                    <div class="small text-muted">Garantía tienda #<?php echo (int) ($garantia['id_garantia_tienda'] ?? 0); ?></div>
                                 </div>
                                 <div class="text-end">
                                     <div class="fw-semibold">Disponible: <?php echo msp2Escape(msp2LiquidacionMonto((float) ($garantia['monto_disponible'] ?? 0))); ?></div>

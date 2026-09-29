@@ -36,24 +36,8 @@ function corrNivelDocumento(PDO $conn, int $idDocumento): string
         }
     }
 
-    $dependencias = [
-        'msp_pagos' => 'id_documento_cobro',
-        'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
-        'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
-        'msp_movimientos_garantia' => 'id_documento_cobro',
-        'msp_envio_lote_documentos' => 'id_documento_cobro',
-        'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
-        'msp_pago_contrato_archivos' => 'id_documento_cobro',
-    ];
-    foreach ($dependencias as $tabla => $columna) {
-        if (!msp2TableExists($conn, $tabla) || !msp2ColumnExists($conn, $tabla, $columna)) {
-            continue;
-        }
-        $qDependencia = $conn->prepare('SELECT TOP(1) 1 FROM dbo.' . $tabla . ' WHERE ' . $columna . '=:d');
-        $qDependencia->execute([':d' => $idDocumento]);
-        if ($qDependencia->fetchColumn() !== false) {
-            return 'AJUSTE_FINANCIERO';
-        }
+    if (DocumentoProteccionService::listar($conn, $idDocumento) !== []) {
+        return 'AJUSTE_FINANCIERO';
     }
 
     if (msp2TableExists($conn, 'msp_acc_asientos')) {

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/DocumentoProteccionService.php';
 
 $requestStart = microtime(true);
 msp2RequireAccess();
@@ -306,24 +307,7 @@ try {
     $canLoadDocStatus = msp2TableExists($conn, 'msp_documentos_cobro');
     $canLoadDocTotals = msp2TableExists($conn, 'msp_documentos_cobro');
 
-    $protectedDocumentSources = [];
-    foreach ([
-        'msp_pagos' => 'id_documento_cobro',
-        'msp_saldo_favor_periodo_aplicaciones' => 'id_documento_cobro',
-        'msp_garantia_documento_aplicaciones' => 'id_documento_cobro',
-        'msp_movimientos_garantia' => 'id_documento_cobro',
-        'msp_envio_lote_documentos' => 'id_documento_cobro',
-        'msp_pago_contrato_operacion_detalle' => 'id_documento_cobro',
-        'msp_pago_contrato_archivos' => 'id_documento_cobro',
-    ] as $dependencyTable => $dependencyColumn) {
-        if (!msp2TableExists($conn, $dependencyTable)
-            || !msp2ColumnExists($conn, $dependencyTable, $dependencyColumn)) {
-            continue;
-        }
-        $protectedDocumentSources[] = 'SELECT ' . $dependencyColumn
-            . ' AS id_documento_cobro FROM dbo.' . $dependencyTable
-            . ' WHERE ' . $dependencyColumn . ' IS NOT NULL';
-    }
+    $protectedDocumentSources = DocumentoProteccionService::fuentesSql($conn);
     $protectedDocumentJoinSql = '';
     $protectedDocumentSelectSql = 'CAST(0 AS BIT)';
     if ($protectedDocumentSources !== []) {
@@ -794,9 +778,30 @@ try {
     }
     $perfMark('carga_lecturas_agua_corregibles');
 
+    $yearStart = $dataPeriodStart;
+    $yearEnd = (new DateTimeImmutable($dataPeriodEndExclusive))->modify('-1 day')->format('Y-m-d');
+    $controlHasGuaranteeSources = msp2TableExists($conn, 'msp_movimientos_garantia')
+        && msp2TableExists($conn, 'msp_tipos_movimiento_garantia')
+        && msp2TableExists($conn, 'msp_documentos_cobro')
+        && msp2TableExists($conn, 'msp_pagos');
+    $controlHasSnapshotSources = msp2TableExists($conn, 'msp_arriendo_local_snapshot_periodo');
+    $controlCanLoadRentSnapshots = $controlHasSnapshotSources && $canCorrectRent
+        && msp2TableExists($conn, 'msp_contrato_locales')
+        && msp2TableExists($conn, 'msp_locales')
+        && msp2TableExists($conn, 'msp_contratos_arriendo')
+        && msp2TableExists($conn, 'msp_tipo_modalidad_arriendo')
+        && msp2TableExists($conn, 'msp_documentos_cobro')
+        && msp2TableExists($conn, 'msp_cierre_mensual');
+    $controlHasRentRules = msp2TableExists($conn, 'msp_contrato_local_arriendo_regla')
+        && msp2TableExists($conn, 'msp_tipo_modalidad_arriendo');
+    $controlHasUfRules = $controlHasRentRules
+        && msp2TableExists($conn, 'msp_contrato_locales')
+        && msp2TableExists($conn, 'msp_contratos_arriendo');
+    $controlHasUfPeriods = msp2TableExists($conn, 'msp_contrato_local_arriendo_periodo');
+    $controlMainBatchQueries = [];
     if ($canLoadReservaCargos) {
-        $serviciosDocStmt = $conn->prepare(
-            "SELECT
+        $controlMainBatchQueries['serviciosDoc'] = [
+            'sql' => "SELECT
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
                 ROUND(SUM(CASE WHEN tid.codigo_item = N'SERVICIO_LUZ' THEN dcd.subtotal ELSE 0 END), 2) AS monto_luz,
@@ -813,29 +818,16 @@ try {
                AND tid.codigo_item IN (N'SERVICIO_LUZ', N'SERVICIO_GAS', N'SERVICIO_AGUA')
              GROUP BY
                 dc.id_tienda,
-                CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
-        );
-        $serviciosDocStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $serviciosDocStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $serviciosDocStmt->execute();
-        while (($serviciosDocRow = $serviciosDocStmt->fetch()) !== false) {
-            $idTiendaServicioDoc = (int) ($serviciosDocRow['id_tienda'] ?? 0);
-            $periodoServicioDoc = trim((string) ($serviciosDocRow['periodo_ym'] ?? ''));
-            if ($idTiendaServicioDoc <= 0 || $periodoServicioDoc === '' || !isset($months[$periodoServicioDoc])) {
-                continue;
-            }
-            if (!isset($serviceTotalsByTiendaMonth[$idTiendaServicioDoc])) {
-                $serviceTotalsByTiendaMonth[$idTiendaServicioDoc] = [];
-            }
-            $serviceTotalsByTiendaMonth[$idTiendaServicioDoc][$periodoServicioDoc] = [
-                'electricidad' => round((float) ($serviciosDocRow['monto_luz'] ?? 0), 2),
-                'gas' => round((float) ($serviciosDocRow['monto_gas'] ?? 0), 2),
-                'agua' => round((float) ($serviciosDocRow['monto_agua'] ?? 0), 2),
-            ];
-        }
-
-        $reservaCargosStmt = $conn->prepare(
-            "SELECT
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126)",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if ($canLoadReservaCargos) {
+        $controlMainBatchQueries['reservaCargos'] = [
+            'sql' => "SELECT
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
                 ROUND(SUM(CASE WHEN tid.codigo_item IN (N'MULTA', N'DANO', N'DANOS') THEN dcd.subtotal ELSE 0 END), 2) AS monto_danos_multas,
@@ -856,53 +848,16 @@ try {
                AND dc.estado_documento <> 5
              GROUP BY
                 dc.id_tienda,
-                CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
-        );
-        $reservaCargosStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $reservaCargosStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $reservaCargosStmt->execute();
-        while (($reservaRow = $reservaCargosStmt->fetch()) !== false) {
-            $idTiendaReserva = (int) ($reservaRow['id_tienda'] ?? 0);
-            $periodoReserva = trim((string) ($reservaRow['periodo_ym'] ?? ''));
-            $montoDanosMultas = round((float) ($reservaRow['monto_danos_multas'] ?? 0), 2);
-            $montoOtrosCargos = round((float) ($reservaRow['monto_otros_cargos'] ?? 0), 2);
-            $montoReserva = round($montoDanosMultas + $montoOtrosCargos, 2);
-            if ($idTiendaReserva <= 0 || $periodoReserva === '' || !isset($months[$periodoReserva])) {
-                continue;
-            }
-            if (!isset($reservaByTiendaMonth[$idTiendaReserva])) {
-                $reservaByTiendaMonth[$idTiendaReserva] = [];
-            }
-            $reservaByTiendaMonth[$idTiendaReserva][$periodoReserva] = round(
-                (float) ($reservaByTiendaMonth[$idTiendaReserva][$periodoReserva] ?? 0) + $montoReserva,
-                2
-            );
-
-            if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva])) {
-                $reservaBreakdownByTiendaMonth[$idTiendaReserva] = [];
-            }
-            if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva])) {
-                $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva] = [
-                    'danos_multas' => 0.0,
-                    'otros_cargos' => 0.0,
-                    'saldo_favor_aplicado' => 0.0,
-                ];
-            }
-            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['danos_multas'] = round(
-                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['danos_multas'] ?? 0) + $montoDanosMultas,
-                2
-            );
-            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['otros_cargos'] = round(
-                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['otros_cargos'] ?? 0) + $montoOtrosCargos,
-                2
-            );
-        }
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126)",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
     }
-    $perfMark('carga_reserva_cargos');
-
     if ($canLoadReservaSaldoFavor) {
-        $reservaSaldoStmt = $conn->prepare(
-            "SELECT
+        $controlMainBatchQueries['reservaSaldo'] = [
+            'sql' => "SELECT
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
                 ROUND(SUM(-p.monto_pagado), 2) AS monto_saldo_favor
@@ -916,47 +871,16 @@ try {
                AND ISNULL(p.aplica_desde_saldo_favor, 0) = 1
              GROUP BY
                 dc.id_tienda,
-                CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
-        );
-        $reservaSaldoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $reservaSaldoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $reservaSaldoStmt->execute();
-        while (($saldoRow = $reservaSaldoStmt->fetch()) !== false) {
-            $idTiendaReserva = (int) ($saldoRow['id_tienda'] ?? 0);
-            $periodoReserva = trim((string) ($saldoRow['periodo_ym'] ?? ''));
-            $montoSaldoFavor = round((float) ($saldoRow['monto_saldo_favor'] ?? 0), 2);
-            if ($idTiendaReserva <= 0 || $periodoReserva === '' || !isset($months[$periodoReserva])) {
-                continue;
-            }
-            if (!isset($reservaByTiendaMonth[$idTiendaReserva])) {
-                $reservaByTiendaMonth[$idTiendaReserva] = [];
-            }
-            $reservaByTiendaMonth[$idTiendaReserva][$periodoReserva] = round(
-                (float) ($reservaByTiendaMonth[$idTiendaReserva][$periodoReserva] ?? 0) + $montoSaldoFavor,
-                2
-            );
-
-            if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva])) {
-                $reservaBreakdownByTiendaMonth[$idTiendaReserva] = [];
-            }
-            if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva])) {
-                $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva] = [
-                    'danos_multas' => 0.0,
-                    'otros_cargos' => 0.0,
-                    'saldo_favor_aplicado' => 0.0,
-                ];
-            }
-            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['saldo_favor_aplicado'] = round(
-                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['saldo_favor_aplicado'] ?? 0) + $montoSaldoFavor,
-                2
-            );
-        }
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126)",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
     }
-    $perfMark('carga_reserva_saldo_favor');
-
     if ($canLoadDocStatus) {
-        $docStatusStmt = $conn->prepare(
-            "SELECT
+        $controlMainBatchQueries['docStatus'] = [
+            'sql' => "SELECT
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
                 CASE
@@ -974,33 +898,16 @@ try {
                AND dc.estado_documento <> 5
              GROUP BY
                 dc.id_tienda,
-                CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
-        );
-        $docStatusStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $docStatusStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $docStatusStmt->execute();
-        while (($docStatusRow = $docStatusStmt->fetch()) !== false) {
-            $idTiendaStatus = (int) ($docStatusRow['id_tienda'] ?? 0);
-            $periodoStatus = trim((string) ($docStatusRow['periodo_ym'] ?? ''));
-            $estadoControl = strtoupper(trim((string) ($docStatusRow['estado_control'] ?? 'PENDIENTE')));
-            if ($idTiendaStatus <= 0 || $periodoStatus === '' || !isset($months[$periodoStatus])) {
-                continue;
-            }
-            if (!isset($docStatusByTiendaMonth[$idTiendaStatus])) {
-                $docStatusByTiendaMonth[$idTiendaStatus] = [];
-            }
-            $docStatusByTiendaMonth[$idTiendaStatus][$periodoStatus] = match ($estadoControl) {
-                'OK' => 'OK',
-                'ATRASADO' => 'ATRASADO',
-                default => 'PENDIENTE',
-            };
-        }
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126)",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
     }
-    $perfMark('carga_estado_documentos');
-
     if ($canLoadDocTotals) {
-        $docTotalStmt = $conn->prepare(
-            "SELECT
+        $controlMainBatchQueries['docTotal'] = [
+            'sql' => "SELECT
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
                 ROUND(SUM(dc.monto_total), 2) AS monto_total_documento
@@ -1010,29 +917,16 @@ try {
                AND dc.estado_documento <> 5
              GROUP BY
                 dc.id_tienda,
-                CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
-        );
-        $docTotalStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $docTotalStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $docTotalStmt->execute();
-        while (($docTotalRow = $docTotalStmt->fetch()) !== false) {
-            $idTiendaDoc = (int) ($docTotalRow['id_tienda'] ?? 0);
-            $periodoDoc = trim((string) ($docTotalRow['periodo_ym'] ?? ''));
-            $montoTotalDoc = round((float) ($docTotalRow['monto_total_documento'] ?? 0), 2);
-            if ($idTiendaDoc <= 0 || $periodoDoc === '' || !isset($months[$periodoDoc])) {
-                continue;
-            }
-            if (!isset($docTotalByTiendaMonth[$idTiendaDoc])) {
-                $docTotalByTiendaMonth[$idTiendaDoc] = [];
-            }
-            $docTotalByTiendaMonth[$idTiendaDoc][$periodoDoc] = $montoTotalDoc;
-        }
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126)",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
     }
-    $perfMark('carga_totales_documentos');
-
     if ($canLoadDocTotals) {
-        $docLinkStmt = $conn->prepare(
-            "WITH documentos_periodo AS (
+        $controlMainBatchQueries['docLink'] = [
+            'sql' => "WITH documentos_periodo AS (
                 SELECT
                     dc.id_tienda,
                     CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
@@ -1053,37 +947,16 @@ try {
                 id_documento_cobro,
                 numero_documento
             FROM documentos_periodo
-            WHERE rn = 1"
-        );
-        $docLinkStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $docLinkStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $docLinkStmt->execute();
-        while (($docLinkRow = $docLinkStmt->fetch()) !== false) {
-            $idTiendaDocLink = (int) ($docLinkRow['id_tienda'] ?? 0);
-            $periodoDocLink = trim((string) ($docLinkRow['periodo_ym'] ?? ''));
-            if ($idTiendaDocLink <= 0 || $periodoDocLink === '' || !isset($months[$periodoDocLink])) {
-                continue;
-            }
-            if (!isset($docIdByTiendaMonth[$idTiendaDocLink])) {
-                $docIdByTiendaMonth[$idTiendaDocLink] = [];
-            }
-            if (!isset($docNumberByTiendaMonth[$idTiendaDocLink])) {
-                $docNumberByTiendaMonth[$idTiendaDocLink] = [];
-            }
-            $docIdByTiendaMonth[$idTiendaDocLink][$periodoDocLink] = (int) ($docLinkRow['id_documento_cobro'] ?? 0);
-            $docNumberByTiendaMonth[$idTiendaDocLink][$periodoDocLink] = trim((string) ($docLinkRow['numero_documento'] ?? ''));
-        }
+            WHERE rn = 1",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
     }
-    $perfMark('carga_links_documentos');
-
-    if (
-        msp2TableExists($conn, 'msp_movimientos_garantia')
-        && msp2TableExists($conn, 'msp_tipos_movimiento_garantia')
-        && msp2TableExists($conn, 'msp_documentos_cobro')
-        && msp2TableExists($conn, 'msp_pagos')
-    ) {
-        $garantiaAplicadaStmt = $conn->prepare(
-            "SELECT
+    if ($controlHasGuaranteeSources) {
+        $controlMainBatchQueries['garantiaAplicada'] = [
+            'sql' => "SELECT
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
                 ROUND(SUM(mg.monto_movimiento), 2) AS monto_garantia_aplicada
@@ -1119,34 +992,18 @@ try {
                AND mg.id_documento_cobro IS NULL
              GROUP BY
                 dc.id_tienda,
-                CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
-        );
-        $garantiaAplicadaStmt->bindValue(':period_start_document', $dataPeriodStart, PDO::PARAM_STR);
-        $garantiaAplicadaStmt->bindValue(':period_end_document', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $garantiaAplicadaStmt->bindValue(':period_start_payment', $dataPeriodStart, PDO::PARAM_STR);
-        $garantiaAplicadaStmt->bindValue(':period_end_payment', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $garantiaAplicadaStmt->execute();
-        while (($garantiaAplicadaRow = $garantiaAplicadaStmt->fetch()) !== false) {
-            $idTiendaGarantia = (int) ($garantiaAplicadaRow['id_tienda'] ?? 0);
-            $periodoGarantia = trim((string) ($garantiaAplicadaRow['periodo_ym'] ?? ''));
-            if ($idTiendaGarantia <= 0 || $periodoGarantia === '' || !isset($months[$periodoGarantia])) {
-                continue;
-            }
-            if (!isset($garantiaAplicadaByTiendaMonth[$idTiendaGarantia])) {
-                $garantiaAplicadaByTiendaMonth[$idTiendaGarantia] = [];
-            }
-            $garantiaAplicadaByTiendaMonth[$idTiendaGarantia][$periodoGarantia] = round(
-                (float) ($garantiaAplicadaByTiendaMonth[$idTiendaGarantia][$periodoGarantia] ?? 0)
-                - (float) ($garantiaAplicadaRow['monto_garantia_aplicada'] ?? 0),
-                2
-            );
-        }
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126)",
+            'params' => [
+                ':period_start_document' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end_document' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+                ':period_start_payment' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end_payment' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
     }
-    $perfMark('carga_garantia_aplicada');
-
     if ($canLoadReservaCargos) {
-        $docArriendoStmt = $conn->prepare(
-            "SELECT
+        $controlMainBatchQueries['docArriendo'] = [
+            'sql' => "SELECT
                 COALESCE(dc.id_tienda, ca.id_tienda) AS id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
                 ROUND(SUM(dcd.subtotal), 2) AS arriendo_neto_clp
@@ -1163,28 +1020,16 @@ try {
                AND tid.codigo_item = N'ARRIENDO'
              GROUP BY
                 COALESCE(dc.id_tienda, ca.id_tienda),
-                CONVERT(CHAR(7), dc.periodo_facturacion, 126)"
-        );
-        $docArriendoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $docArriendoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $docArriendoStmt->execute();
-        while (($docArriendoRow = $docArriendoStmt->fetch()) !== false) {
-            $idTiendaArriendo = (int) ($docArriendoRow['id_tienda'] ?? 0);
-            $periodoArriendo = trim((string) ($docArriendoRow['periodo_ym'] ?? ''));
-            if ($idTiendaArriendo <= 0 || $periodoArriendo === '' || !isset($months[$periodoArriendo])) {
-                continue;
-            }
-            if (!isset($arriendoNetoByTiendaMonth[$idTiendaArriendo])) {
-                $arriendoNetoByTiendaMonth[$idTiendaArriendo] = [];
-            }
-            $arriendoNetoByTiendaMonth[$idTiendaArriendo][$periodoArriendo] = round((float) ($docArriendoRow['arriendo_neto_clp'] ?? 0), 2);
-        }
+                CONVERT(CHAR(7), dc.periodo_facturacion, 126)",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
     }
-    $perfMark('carga_arriendo_neto_documento');
-
-    if (msp2TableExists($conn, 'msp_arriendo_local_snapshot_periodo')) {
-        $snapshotArriendoStmt = $conn->prepare(
-            "SELECT
+    if ($controlHasSnapshotSources) {
+        $controlMainBatchQueries['snapshotArriendo'] = [
+            'sql' => "SELECT
                 COALESCE(s.id_tienda, ca.id_tienda) AS id_tienda,
                 CONVERT(CHAR(7), s.periodo_facturacion, 126) AS periodo_ym,
                 ROUND(SUM(s.monto_neto_clp), 2) AS arriendo_neto_clp
@@ -1196,25 +1041,16 @@ try {
                AND s.estado_snapshot IN (1,2,3)
              GROUP BY
                 COALESCE(s.id_tienda, ca.id_tienda),
-                CONVERT(CHAR(7), s.periodo_facturacion, 126)"
-        );
-        $snapshotArriendoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $snapshotArriendoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $snapshotArriendoStmt->execute();
-        while (($snapshotArriendoRow = $snapshotArriendoStmt->fetch()) !== false) {
-            $idTiendaArriendo = (int) ($snapshotArriendoRow['id_tienda'] ?? 0);
-            $periodoArriendo = trim((string) ($snapshotArriendoRow['periodo_ym'] ?? ''));
-            if ($idTiendaArriendo <= 0 || $periodoArriendo === '' || !isset($months[$periodoArriendo])) {
-                continue;
-            }
-            if (!isset($arriendoNetoByTiendaMonth[$idTiendaArriendo])) {
-                $arriendoNetoByTiendaMonth[$idTiendaArriendo] = [];
-            }
-            $arriendoNetoByTiendaMonth[$idTiendaArriendo][$periodoArriendo] = round((float) ($snapshotArriendoRow['arriendo_neto_clp'] ?? 0), 2);
-        }
-
-        $snapshotClpFijoStmt = $conn->prepare(
-            "SELECT DISTINCT
+                CONVERT(CHAR(7), s.periodo_facturacion, 126)",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if ($controlHasSnapshotSources) {
+        $controlMainBatchQueries['snapshotClpFijo'] = [
+            'sql' => "SELECT DISTINCT
                 COALESCE(s.id_tienda, ca.id_tienda) AS id_tienda
              FROM dbo.msp_arriendo_local_snapshot_periodo s
              LEFT JOIN dbo.msp_contratos_arriendo ca
@@ -1222,27 +1058,16 @@ try {
              WHERE s.periodo_facturacion >= :period_start
                AND s.periodo_facturacion < :period_end
                AND s.estado_snapshot IN (1,2,3)
-               AND UPPER(LTRIM(RTRIM(ISNULL(s.codigo_grupo_modalidad, N'')))) = N'CLP_FIJO_CONTRATO'"
-        );
-        $snapshotClpFijoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $snapshotClpFijoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $snapshotClpFijoStmt->execute();
-        while (($snapshotClpFijoRow = $snapshotClpFijoStmt->fetch()) !== false) {
-            $idTiendaClp = (int) ($snapshotClpFijoRow['id_tienda'] ?? 0);
-            if ($idTiendaClp > 0) {
-                $clpFijoContratoByTienda[$idTiendaClp] = true;
-            }
-        }
-
-        if ($canCorrectRent
-            && msp2TableExists($conn, 'msp_contrato_locales')
-            && msp2TableExists($conn, 'msp_locales')
-            && msp2TableExists($conn, 'msp_contratos_arriendo')
-            && msp2TableExists($conn, 'msp_tipo_modalidad_arriendo')
-            && msp2TableExists($conn, 'msp_documentos_cobro')
-            && msp2TableExists($conn, 'msp_cierre_mensual')) {
-            $rentSnapshotStmt = $conn->prepare(
-                "SELECT
+               AND UPPER(LTRIM(RTRIM(ISNULL(s.codigo_grupo_modalidad, N'')))) = N'CLP_FIJO_CONTRATO'",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if ($controlCanLoadRentSnapshots) {
+        $controlMainBatchQueries['rentSnapshot'] = [
+            'sql' => "SELECT
                     s.id_snapshot_arriendo,
                     s.id_tienda,
                     s.id_contrato_arriendo,
@@ -1295,11 +1120,351 @@ try {
                    AND s.periodo_facturacion < :period_end
                    AND s.estado_snapshot IN (1,2,3)
                    AND tm.codigo_modalidad IN (N'UF_ESTATICO', N'DINAMICO_MENSUAL')
-                 ORDER BY s.periodo_facturacion, " . msp2LocalCodeNaturalOrderSql('l.cdo_local') . ", s.id_snapshot_arriendo"
+                 ORDER BY s.periodo_facturacion, " . msp2LocalCodeNaturalOrderSql('l.cdo_local') . ", s.id_snapshot_arriendo",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if ($controlHasRentRules) {
+        $controlMainBatchQueries['reglaClpFijo'] = [
+            'sql' => "SELECT DISTINCT
+                c.id_tienda
+             FROM dbo.msp_contratos_arriendo c
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_arriendo = c.id_contrato_arriendo
+               AND cl.estado_relacion IN (1,2)
+             INNER JOIN dbo.msp_contrato_local_arriendo_regla rr
+                ON rr.id_contrato_local = cl.id_contrato_local
+               AND rr.estado_regla = 1
+               AND rr.fecha_inicio <= :year_end_clp
+               AND (rr.fecha_termino IS NULL OR rr.fecha_termino >= :year_start_clp)
+             INNER JOIN dbo.msp_tipo_modalidad_arriendo tm
+                ON tm.id_modalidad_arriendo = rr.id_modalidad_arriendo
+             WHERE c.estado_contrato IN (1,2,3,4)
+               AND c.fecha_inicio <= :year_end_ca_clp
+               AND (c.fecha_termino_efectiva IS NULL OR DATEADD(MONTH, 2, c.fecha_termino_efectiva) >= :year_start_ca_clp)
+               AND UPPER(LTRIM(RTRIM(ISNULL(tm.codigo_modalidad, N'')))) = N'CLP_FIJO'",
+            'params' => [
+                ':year_end_clp' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start_clp' => [$yearStart, PDO::PARAM_STR],
+                ':year_end_ca_clp' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start_ca_clp' => [$yearStart, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if ($controlHasRentRules) {
+        $controlMainBatchQueries['reglaClpFijoMonto'] = [
+            'sql' => "SELECT
+                c.id_tienda,
+                c.id_contrato_arriendo,
+                cl.id_contrato_local,
+                cl.fecha_inicio AS fecha_inicio_local,
+                cl.fecha_termino AS fecha_termino_local,
+                rr.fecha_inicio AS fecha_inicio_regla,
+                rr.fecha_termino AS fecha_termino_regla,
+                ISNULL(rr.codigo_grupo_modalidad, N'') AS codigo_grupo_modalidad,
+                ROUND(ISNULL(rr.valor_base_clp, 0), 2) AS valor_base_clp,
+                ROUND(ISNULL(rr.descuento_mensual_clp, 0), 2) AS descuento_mensual_clp
+             FROM dbo.msp_contratos_arriendo c
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_arriendo = c.id_contrato_arriendo
+               AND cl.estado_relacion IN (1,2)
+             INNER JOIN dbo.msp_contrato_local_arriendo_regla rr
+                ON rr.id_contrato_local = cl.id_contrato_local
+               AND rr.estado_regla = 1
+             INNER JOIN dbo.msp_tipo_modalidad_arriendo tm
+                ON tm.id_modalidad_arriendo = rr.id_modalidad_arriendo
+             WHERE c.estado_contrato IN (1,2,3,4)
+               AND c.fecha_inicio <= :year_end_clp_monto
+               AND (c.fecha_termino_efectiva IS NULL OR DATEADD(MONTH, 2, c.fecha_termino_efectiva) >= :year_start_clp_monto)
+               AND rr.fecha_inicio <= :year_end_regla_clp_monto
+               AND (rr.fecha_termino IS NULL OR rr.fecha_termino >= :year_start_regla_clp_monto)
+               AND UPPER(LTRIM(RTRIM(ISNULL(tm.codigo_modalidad, N'')))) = N'CLP_FIJO'",
+            'params' => [
+                ':year_end_clp_monto' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start_clp_monto' => [$yearStart, PDO::PARAM_STR],
+                ':year_end_regla_clp_monto' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start_regla_clp_monto' => [$yearStart, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if ($controlHasUfRules && $controlHasUfPeriods) {
+        $controlMainBatchQueries['periodoUf'] = [
+            'sql' => "SELECT
+                    ap.id_contrato_local,
+                    CONVERT(CHAR(7), ap.periodo_facturacion, 126) AS periodo_ym,
+                    ROUND(ISNULL(ap.valor_periodo_uf, 0), 6) AS valor_periodo_uf
+                 FROM dbo.msp_contrato_local_arriendo_periodo ap
+                 WHERE ap.periodo_facturacion >= :period_start
+                   AND ap.periodo_facturacion < :period_end
+                   AND ap.estado_periodo = 1",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if ($controlHasUfRules) {
+        $controlMainBatchQueries['reglaUf'] = [
+            'sql' => "SELECT
+                c.id_tienda,
+                cl.id_contrato_local,
+                cl.fecha_inicio AS fecha_inicio_local,
+                cl.fecha_termino AS fecha_termino_local,
+                rr.fecha_inicio AS fecha_inicio_regla,
+                rr.fecha_termino AS fecha_termino_regla,
+                UPPER(LTRIM(RTRIM(ISNULL(tm.codigo_modalidad, N'UF_ESTATICO')))) AS codigo_modalidad,
+                ROUND(ISNULL(rr.valor_base_uf, 0), 6) AS valor_base_uf
+             FROM dbo.msp_contratos_arriendo c
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_arriendo = c.id_contrato_arriendo
+               AND cl.estado_relacion IN (1,2)
+             INNER JOIN dbo.msp_contrato_local_arriendo_regla rr
+                ON rr.id_contrato_local = cl.id_contrato_local
+               AND rr.estado_regla = 1
+             INNER JOIN dbo.msp_tipo_modalidad_arriendo tm
+                ON tm.id_modalidad_arriendo = rr.id_modalidad_arriendo
+             WHERE c.estado_contrato IN (1,2,3,4)
+               AND c.fecha_inicio <= :year_end_uf_fallback
+               AND (c.fecha_termino_efectiva IS NULL OR DATEADD(MONTH, 2, c.fecha_termino_efectiva) >= :year_start_uf_fallback)
+               AND rr.fecha_inicio <= :year_end_regla_uf_fallback
+               AND (rr.fecha_termino IS NULL OR rr.fecha_termino >= :year_start_regla_uf_fallback)
+               AND UPPER(LTRIM(RTRIM(ISNULL(tm.codigo_modalidad, N'')))) IN (N'UF_ESTATICO', N'DINAMICO_MENSUAL')",
+            'params' => [
+                ':year_end_uf_fallback' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start_uf_fallback' => [$yearStart, PDO::PARAM_STR],
+                ':year_end_regla_uf_fallback' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start_regla_uf_fallback' => [$yearStart, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    $controlMainBatch = msp2FetchReadBatch($conn, $controlMainBatchQueries);
+    $perfMark('carga_datos_control_agrupada');
+
+    if ($canLoadReservaCargos) {
+        $serviciosDocStmt = new Msp2BufferedReadRows($controlMainBatch['serviciosDoc'] ?? []);
+        while (($serviciosDocRow = $serviciosDocStmt->fetch()) !== false) {
+            $idTiendaServicioDoc = (int) ($serviciosDocRow['id_tienda'] ?? 0);
+            $periodoServicioDoc = trim((string) ($serviciosDocRow['periodo_ym'] ?? ''));
+            if ($idTiendaServicioDoc <= 0 || $periodoServicioDoc === '' || !isset($months[$periodoServicioDoc])) {
+                continue;
+            }
+            if (!isset($serviceTotalsByTiendaMonth[$idTiendaServicioDoc])) {
+                $serviceTotalsByTiendaMonth[$idTiendaServicioDoc] = [];
+            }
+            $serviceTotalsByTiendaMonth[$idTiendaServicioDoc][$periodoServicioDoc] = [
+                'electricidad' => round((float) ($serviciosDocRow['monto_luz'] ?? 0), 2),
+                'gas' => round((float) ($serviciosDocRow['monto_gas'] ?? 0), 2),
+                'agua' => round((float) ($serviciosDocRow['monto_agua'] ?? 0), 2),
+            ];
+        }
+
+        $reservaCargosStmt = new Msp2BufferedReadRows($controlMainBatch['reservaCargos'] ?? []);
+        while (($reservaRow = $reservaCargosStmt->fetch()) !== false) {
+            $idTiendaReserva = (int) ($reservaRow['id_tienda'] ?? 0);
+            $periodoReserva = trim((string) ($reservaRow['periodo_ym'] ?? ''));
+            $montoDanosMultas = round((float) ($reservaRow['monto_danos_multas'] ?? 0), 2);
+            $montoOtrosCargos = round((float) ($reservaRow['monto_otros_cargos'] ?? 0), 2);
+            $montoReserva = round($montoDanosMultas + $montoOtrosCargos, 2);
+            if ($idTiendaReserva <= 0 || $periodoReserva === '' || !isset($months[$periodoReserva])) {
+                continue;
+            }
+            if (!isset($reservaByTiendaMonth[$idTiendaReserva])) {
+                $reservaByTiendaMonth[$idTiendaReserva] = [];
+            }
+            $reservaByTiendaMonth[$idTiendaReserva][$periodoReserva] = round(
+                (float) ($reservaByTiendaMonth[$idTiendaReserva][$periodoReserva] ?? 0) + $montoReserva,
+                2
             );
-            $rentSnapshotStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-            $rentSnapshotStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-            $rentSnapshotStmt->execute();
+
+            if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva])) {
+                $reservaBreakdownByTiendaMonth[$idTiendaReserva] = [];
+            }
+            if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva])) {
+                $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva] = [
+                    'danos_multas' => 0.0,
+                    'otros_cargos' => 0.0,
+                    'saldo_favor_aplicado' => 0.0,
+                ];
+            }
+            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['danos_multas'] = round(
+                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['danos_multas'] ?? 0) + $montoDanosMultas,
+                2
+            );
+            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['otros_cargos'] = round(
+                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['otros_cargos'] ?? 0) + $montoOtrosCargos,
+                2
+            );
+        }
+    }
+    $perfMark('carga_reserva_cargos');
+
+    if ($canLoadReservaSaldoFavor) {
+        $reservaSaldoStmt = new Msp2BufferedReadRows($controlMainBatch['reservaSaldo'] ?? []);
+        while (($saldoRow = $reservaSaldoStmt->fetch()) !== false) {
+            $idTiendaReserva = (int) ($saldoRow['id_tienda'] ?? 0);
+            $periodoReserva = trim((string) ($saldoRow['periodo_ym'] ?? ''));
+            $montoSaldoFavor = round((float) ($saldoRow['monto_saldo_favor'] ?? 0), 2);
+            if ($idTiendaReserva <= 0 || $periodoReserva === '' || !isset($months[$periodoReserva])) {
+                continue;
+            }
+            if (!isset($reservaByTiendaMonth[$idTiendaReserva])) {
+                $reservaByTiendaMonth[$idTiendaReserva] = [];
+            }
+            $reservaByTiendaMonth[$idTiendaReserva][$periodoReserva] = round(
+                (float) ($reservaByTiendaMonth[$idTiendaReserva][$periodoReserva] ?? 0) + $montoSaldoFavor,
+                2
+            );
+
+            if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva])) {
+                $reservaBreakdownByTiendaMonth[$idTiendaReserva] = [];
+            }
+            if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva])) {
+                $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva] = [
+                    'danos_multas' => 0.0,
+                    'otros_cargos' => 0.0,
+                    'saldo_favor_aplicado' => 0.0,
+                ];
+            }
+            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['saldo_favor_aplicado'] = round(
+                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['saldo_favor_aplicado'] ?? 0) + $montoSaldoFavor,
+                2
+            );
+        }
+    }
+    $perfMark('carga_reserva_saldo_favor');
+
+    if ($canLoadDocStatus) {
+        $docStatusStmt = new Msp2BufferedReadRows($controlMainBatch['docStatus'] ?? []);
+        while (($docStatusRow = $docStatusStmt->fetch()) !== false) {
+            $idTiendaStatus = (int) ($docStatusRow['id_tienda'] ?? 0);
+            $periodoStatus = trim((string) ($docStatusRow['periodo_ym'] ?? ''));
+            $estadoControl = strtoupper(trim((string) ($docStatusRow['estado_control'] ?? 'PENDIENTE')));
+            if ($idTiendaStatus <= 0 || $periodoStatus === '' || !isset($months[$periodoStatus])) {
+                continue;
+            }
+            if (!isset($docStatusByTiendaMonth[$idTiendaStatus])) {
+                $docStatusByTiendaMonth[$idTiendaStatus] = [];
+            }
+            $docStatusByTiendaMonth[$idTiendaStatus][$periodoStatus] = match ($estadoControl) {
+                'OK' => 'OK',
+                'ATRASADO' => 'ATRASADO',
+                default => 'PENDIENTE',
+            };
+        }
+    }
+    $perfMark('carga_estado_documentos');
+
+    if ($canLoadDocTotals) {
+        $docTotalStmt = new Msp2BufferedReadRows($controlMainBatch['docTotal'] ?? []);
+        while (($docTotalRow = $docTotalStmt->fetch()) !== false) {
+            $idTiendaDoc = (int) ($docTotalRow['id_tienda'] ?? 0);
+            $periodoDoc = trim((string) ($docTotalRow['periodo_ym'] ?? ''));
+            $montoTotalDoc = round((float) ($docTotalRow['monto_total_documento'] ?? 0), 2);
+            if ($idTiendaDoc <= 0 || $periodoDoc === '' || !isset($months[$periodoDoc])) {
+                continue;
+            }
+            if (!isset($docTotalByTiendaMonth[$idTiendaDoc])) {
+                $docTotalByTiendaMonth[$idTiendaDoc] = [];
+            }
+            $docTotalByTiendaMonth[$idTiendaDoc][$periodoDoc] = $montoTotalDoc;
+        }
+    }
+    $perfMark('carga_totales_documentos');
+
+    if ($canLoadDocTotals) {
+        $docLinkStmt = new Msp2BufferedReadRows($controlMainBatch['docLink'] ?? []);
+        while (($docLinkRow = $docLinkStmt->fetch()) !== false) {
+            $idTiendaDocLink = (int) ($docLinkRow['id_tienda'] ?? 0);
+            $periodoDocLink = trim((string) ($docLinkRow['periodo_ym'] ?? ''));
+            if ($idTiendaDocLink <= 0 || $periodoDocLink === '' || !isset($months[$periodoDocLink])) {
+                continue;
+            }
+            if (!isset($docIdByTiendaMonth[$idTiendaDocLink])) {
+                $docIdByTiendaMonth[$idTiendaDocLink] = [];
+            }
+            if (!isset($docNumberByTiendaMonth[$idTiendaDocLink])) {
+                $docNumberByTiendaMonth[$idTiendaDocLink] = [];
+            }
+            $docIdByTiendaMonth[$idTiendaDocLink][$periodoDocLink] = (int) ($docLinkRow['id_documento_cobro'] ?? 0);
+            $docNumberByTiendaMonth[$idTiendaDocLink][$periodoDocLink] = trim((string) ($docLinkRow['numero_documento'] ?? ''));
+        }
+    }
+    $perfMark('carga_links_documentos');
+
+    if (
+        msp2TableExists($conn, 'msp_movimientos_garantia')
+        && msp2TableExists($conn, 'msp_tipos_movimiento_garantia')
+        && msp2TableExists($conn, 'msp_documentos_cobro')
+        && msp2TableExists($conn, 'msp_pagos')
+    ) {
+        $garantiaAplicadaStmt = new Msp2BufferedReadRows($controlMainBatch['garantiaAplicada'] ?? []);
+        while (($garantiaAplicadaRow = $garantiaAplicadaStmt->fetch()) !== false) {
+            $idTiendaGarantia = (int) ($garantiaAplicadaRow['id_tienda'] ?? 0);
+            $periodoGarantia = trim((string) ($garantiaAplicadaRow['periodo_ym'] ?? ''));
+            if ($idTiendaGarantia <= 0 || $periodoGarantia === '' || !isset($months[$periodoGarantia])) {
+                continue;
+            }
+            if (!isset($garantiaAplicadaByTiendaMonth[$idTiendaGarantia])) {
+                $garantiaAplicadaByTiendaMonth[$idTiendaGarantia] = [];
+            }
+            $garantiaAplicadaByTiendaMonth[$idTiendaGarantia][$periodoGarantia] = round(
+                (float) ($garantiaAplicadaByTiendaMonth[$idTiendaGarantia][$periodoGarantia] ?? 0)
+                - (float) ($garantiaAplicadaRow['monto_garantia_aplicada'] ?? 0),
+                2
+            );
+        }
+    }
+    $perfMark('carga_garantia_aplicada');
+
+    if ($canLoadReservaCargos) {
+        $docArriendoStmt = new Msp2BufferedReadRows($controlMainBatch['docArriendo'] ?? []);
+        while (($docArriendoRow = $docArriendoStmt->fetch()) !== false) {
+            $idTiendaArriendo = (int) ($docArriendoRow['id_tienda'] ?? 0);
+            $periodoArriendo = trim((string) ($docArriendoRow['periodo_ym'] ?? ''));
+            if ($idTiendaArriendo <= 0 || $periodoArriendo === '' || !isset($months[$periodoArriendo])) {
+                continue;
+            }
+            if (!isset($arriendoNetoByTiendaMonth[$idTiendaArriendo])) {
+                $arriendoNetoByTiendaMonth[$idTiendaArriendo] = [];
+            }
+            $arriendoNetoByTiendaMonth[$idTiendaArriendo][$periodoArriendo] = round((float) ($docArriendoRow['arriendo_neto_clp'] ?? 0), 2);
+        }
+    }
+    $perfMark('carga_arriendo_neto_documento');
+
+    if (msp2TableExists($conn, 'msp_arriendo_local_snapshot_periodo')) {
+        $snapshotArriendoStmt = new Msp2BufferedReadRows($controlMainBatch['snapshotArriendo'] ?? []);
+        while (($snapshotArriendoRow = $snapshotArriendoStmt->fetch()) !== false) {
+            $idTiendaArriendo = (int) ($snapshotArriendoRow['id_tienda'] ?? 0);
+            $periodoArriendo = trim((string) ($snapshotArriendoRow['periodo_ym'] ?? ''));
+            if ($idTiendaArriendo <= 0 || $periodoArriendo === '' || !isset($months[$periodoArriendo])) {
+                continue;
+            }
+            if (!isset($arriendoNetoByTiendaMonth[$idTiendaArriendo])) {
+                $arriendoNetoByTiendaMonth[$idTiendaArriendo] = [];
+            }
+            $arriendoNetoByTiendaMonth[$idTiendaArriendo][$periodoArriendo] = round((float) ($snapshotArriendoRow['arriendo_neto_clp'] ?? 0), 2);
+        }
+
+        $snapshotClpFijoStmt = new Msp2BufferedReadRows($controlMainBatch['snapshotClpFijo'] ?? []);
+        while (($snapshotClpFijoRow = $snapshotClpFijoStmt->fetch()) !== false) {
+            $idTiendaClp = (int) ($snapshotClpFijoRow['id_tienda'] ?? 0);
+            if ($idTiendaClp > 0) {
+                $clpFijoContratoByTienda[$idTiendaClp] = true;
+            }
+        }
+
+        if ($canCorrectRent
+            && msp2TableExists($conn, 'msp_contrato_locales')
+            && msp2TableExists($conn, 'msp_locales')
+            && msp2TableExists($conn, 'msp_contratos_arriendo')
+            && msp2TableExists($conn, 'msp_tipo_modalidad_arriendo')
+            && msp2TableExists($conn, 'msp_documentos_cobro')
+            && msp2TableExists($conn, 'msp_cierre_mensual')) {
+            $rentSnapshotStmt = new Msp2BufferedReadRows($controlMainBatch['rentSnapshot'] ?? []);
             while (($rentSnapshotRow = $rentSnapshotStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
                 $idTiendaRent = (int) ($rentSnapshotRow['id_tienda'] ?? 0);
                 $periodoRent = trim((string) ($rentSnapshotRow['periodo_ym'] ?? ''));
@@ -1368,30 +1533,7 @@ try {
         msp2TableExists($conn, 'msp_contrato_local_arriendo_regla')
         && msp2TableExists($conn, 'msp_tipo_modalidad_arriendo')
     ) {
-        $reglaClpFijoStmt = $conn->prepare(
-            "SELECT DISTINCT
-                c.id_tienda
-             FROM dbo.msp_contratos_arriendo c
-             INNER JOIN dbo.msp_contrato_locales cl
-                ON cl.id_contrato_arriendo = c.id_contrato_arriendo
-               AND cl.estado_relacion IN (1,2)
-             INNER JOIN dbo.msp_contrato_local_arriendo_regla rr
-                ON rr.id_contrato_local = cl.id_contrato_local
-               AND rr.estado_regla = 1
-               AND rr.fecha_inicio <= :year_end_clp
-               AND (rr.fecha_termino IS NULL OR rr.fecha_termino >= :year_start_clp)
-             INNER JOIN dbo.msp_tipo_modalidad_arriendo tm
-                ON tm.id_modalidad_arriendo = rr.id_modalidad_arriendo
-             WHERE c.estado_contrato IN (1,2,3,4)
-               AND c.fecha_inicio <= :year_end_ca_clp
-               AND (c.fecha_termino_efectiva IS NULL OR DATEADD(MONTH, 2, c.fecha_termino_efectiva) >= :year_start_ca_clp)
-               AND UPPER(LTRIM(RTRIM(ISNULL(tm.codigo_modalidad, N'')))) = N'CLP_FIJO'"
-        );
-        $reglaClpFijoStmt->bindValue(':year_end_clp', $yearEnd, PDO::PARAM_STR);
-        $reglaClpFijoStmt->bindValue(':year_start_clp', $yearStart, PDO::PARAM_STR);
-        $reglaClpFijoStmt->bindValue(':year_end_ca_clp', $yearEnd, PDO::PARAM_STR);
-        $reglaClpFijoStmt->bindValue(':year_start_ca_clp', $yearStart, PDO::PARAM_STR);
-        $reglaClpFijoStmt->execute();
+        $reglaClpFijoStmt = new Msp2BufferedReadRows($controlMainBatch['reglaClpFijo'] ?? []);
         while (($reglaClpFijoRow = $reglaClpFijoStmt->fetch()) !== false) {
             $idTiendaClp = (int) ($reglaClpFijoRow['id_tienda'] ?? 0);
             if ($idTiendaClp > 0) {
@@ -1399,39 +1541,7 @@ try {
             }
         }
 
-        $reglaClpFijoMontoStmt = $conn->prepare(
-            "SELECT
-                c.id_tienda,
-                c.id_contrato_arriendo,
-                cl.id_contrato_local,
-                cl.fecha_inicio AS fecha_inicio_local,
-                cl.fecha_termino AS fecha_termino_local,
-                rr.fecha_inicio AS fecha_inicio_regla,
-                rr.fecha_termino AS fecha_termino_regla,
-                ISNULL(rr.codigo_grupo_modalidad, N'') AS codigo_grupo_modalidad,
-                ROUND(ISNULL(rr.valor_base_clp, 0), 2) AS valor_base_clp,
-                ROUND(ISNULL(rr.descuento_mensual_clp, 0), 2) AS descuento_mensual_clp
-             FROM dbo.msp_contratos_arriendo c
-             INNER JOIN dbo.msp_contrato_locales cl
-                ON cl.id_contrato_arriendo = c.id_contrato_arriendo
-               AND cl.estado_relacion IN (1,2)
-             INNER JOIN dbo.msp_contrato_local_arriendo_regla rr
-                ON rr.id_contrato_local = cl.id_contrato_local
-               AND rr.estado_regla = 1
-             INNER JOIN dbo.msp_tipo_modalidad_arriendo tm
-                ON tm.id_modalidad_arriendo = rr.id_modalidad_arriendo
-             WHERE c.estado_contrato IN (1,2,3,4)
-               AND c.fecha_inicio <= :year_end_clp_monto
-               AND (c.fecha_termino_efectiva IS NULL OR DATEADD(MONTH, 2, c.fecha_termino_efectiva) >= :year_start_clp_monto)
-               AND rr.fecha_inicio <= :year_end_regla_clp_monto
-               AND (rr.fecha_termino IS NULL OR rr.fecha_termino >= :year_start_regla_clp_monto)
-               AND UPPER(LTRIM(RTRIM(ISNULL(tm.codigo_modalidad, N'')))) = N'CLP_FIJO'"
-        );
-        $reglaClpFijoMontoStmt->bindValue(':year_end_clp_monto', $yearEnd, PDO::PARAM_STR);
-        $reglaClpFijoMontoStmt->bindValue(':year_start_clp_monto', $yearStart, PDO::PARAM_STR);
-        $reglaClpFijoMontoStmt->bindValue(':year_end_regla_clp_monto', $yearEnd, PDO::PARAM_STR);
-        $reglaClpFijoMontoStmt->bindValue(':year_start_regla_clp_monto', $yearStart, PDO::PARAM_STR);
-        $reglaClpFijoMontoStmt->execute();
+        $reglaClpFijoMontoStmt = new Msp2BufferedReadRows($controlMainBatch['reglaClpFijoMonto'] ?? []);
         while (($reglaMontoRow = $reglaClpFijoMontoStmt->fetch()) !== false) {
             $idTiendaMonto = (int) ($reglaMontoRow['id_tienda'] ?? 0);
             $idContratoMonto = (int) ($reglaMontoRow['id_contrato_arriendo'] ?? 0);
@@ -1502,19 +1612,7 @@ try {
     ) {
         $periodoUfByContratoLocalMonth = [];
         if (msp2TableExists($conn, 'msp_contrato_local_arriendo_periodo')) {
-            $periodoUfStmt = $conn->prepare(
-                "SELECT
-                    ap.id_contrato_local,
-                    CONVERT(CHAR(7), ap.periodo_facturacion, 126) AS periodo_ym,
-                    ROUND(ISNULL(ap.valor_periodo_uf, 0), 6) AS valor_periodo_uf
-                 FROM dbo.msp_contrato_local_arriendo_periodo ap
-                 WHERE ap.periodo_facturacion >= :period_start
-                   AND ap.periodo_facturacion < :period_end
-                   AND ap.estado_periodo = 1"
-            );
-            $periodoUfStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-            $periodoUfStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-            $periodoUfStmt->execute();
+            $periodoUfStmt = new Msp2BufferedReadRows($controlMainBatch['periodoUf'] ?? []);
             while (($periodoUfRow = $periodoUfStmt->fetch()) !== false) {
                 $idContratoLocalPeriodo = (int) ($periodoUfRow['id_contrato_local'] ?? 0);
                 $periodoYm = trim((string) ($periodoUfRow['periodo_ym'] ?? ''));
@@ -1531,37 +1629,7 @@ try {
             }
         }
 
-        $reglaUfStmt = $conn->prepare(
-            "SELECT
-                c.id_tienda,
-                cl.id_contrato_local,
-                cl.fecha_inicio AS fecha_inicio_local,
-                cl.fecha_termino AS fecha_termino_local,
-                rr.fecha_inicio AS fecha_inicio_regla,
-                rr.fecha_termino AS fecha_termino_regla,
-                UPPER(LTRIM(RTRIM(ISNULL(tm.codigo_modalidad, N'UF_ESTATICO')))) AS codigo_modalidad,
-                ROUND(ISNULL(rr.valor_base_uf, 0), 6) AS valor_base_uf
-             FROM dbo.msp_contratos_arriendo c
-             INNER JOIN dbo.msp_contrato_locales cl
-                ON cl.id_contrato_arriendo = c.id_contrato_arriendo
-               AND cl.estado_relacion IN (1,2)
-             INNER JOIN dbo.msp_contrato_local_arriendo_regla rr
-                ON rr.id_contrato_local = cl.id_contrato_local
-               AND rr.estado_regla = 1
-             INNER JOIN dbo.msp_tipo_modalidad_arriendo tm
-                ON tm.id_modalidad_arriendo = rr.id_modalidad_arriendo
-             WHERE c.estado_contrato IN (1,2,3,4)
-               AND c.fecha_inicio <= :year_end_uf_fallback
-               AND (c.fecha_termino_efectiva IS NULL OR DATEADD(MONTH, 2, c.fecha_termino_efectiva) >= :year_start_uf_fallback)
-               AND rr.fecha_inicio <= :year_end_regla_uf_fallback
-               AND (rr.fecha_termino IS NULL OR rr.fecha_termino >= :year_start_regla_uf_fallback)
-               AND UPPER(LTRIM(RTRIM(ISNULL(tm.codigo_modalidad, N'')))) IN (N'UF_ESTATICO', N'DINAMICO_MENSUAL')"
-        );
-        $reglaUfStmt->bindValue(':year_end_uf_fallback', $yearEnd, PDO::PARAM_STR);
-        $reglaUfStmt->bindValue(':year_start_uf_fallback', $yearStart, PDO::PARAM_STR);
-        $reglaUfStmt->bindValue(':year_end_regla_uf_fallback', $yearEnd, PDO::PARAM_STR);
-        $reglaUfStmt->bindValue(':year_start_regla_uf_fallback', $yearStart, PDO::PARAM_STR);
-        $reglaUfStmt->execute();
+        $reglaUfStmt = new Msp2BufferedReadRows($controlMainBatch['reglaUf'] ?? []);
         while (($reglaUfRow = $reglaUfStmt->fetch()) !== false) {
             $idTiendaUf = (int) ($reglaUfRow['id_tienda'] ?? 0);
             $idContratoLocalUf = (int) ($reglaUfRow['id_contrato_local'] ?? 0);
@@ -1783,8 +1851,10 @@ try {
 
     $tiendaRows = [];
     $contratoVisibleSql = $buildContratoVisibleSql('c', ':year_start');
-    $tiendasStmt = $conn->prepare(
-        "SELECT DISTINCT
+    $controlIdentityBatchQueries = [];
+    if (true) {
+        $controlIdentityBatchQueries['tiendas'] = [
+            'sql' => "SELECT DISTINCT
             t.id_tienda,
             COALESCE(NULLIF(t.nombre_comercial, ''), CONCAT(N'Tienda #', t.id_tienda)) AS nombre_tienda,
             COALESCE(NULLIF(a.nombre_locatario, ''), NULLIF(a.nombre_representante, ''), N'Sin arrendatario') AS nombre_arrendatario,
@@ -1797,11 +1867,71 @@ try {
            AND c.estado_contrato IN (1,2,3,4)
            AND c.fecha_inicio <= :year_end
            AND {$contratoVisibleSql}
-         ORDER BY nombre_tienda ASC, t.id_tienda ASC"
-    );
-    $tiendasStmt->bindValue(':year_end', $yearEnd, PDO::PARAM_STR);
-    $tiendasStmt->bindValue(':year_start', $yearStart, PDO::PARAM_STR);
-    $tiendasStmt->execute();
+         ORDER BY nombre_tienda ASC, t.id_tienda ASC",
+            'params' => [
+                ':year_end' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start' => [$yearStart, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if (msp2TableExists($conn, 'msp_vw_control_diario_base')) {
+        $controlIdentityBatchQueries['estadoOperativo'] = [
+            'sql' => "SELECT
+                id_tienda,
+                id_contrato_arriendo,
+                id_arrendatario,
+                CONVERT(char(7), periodo_facturacion, 126) AS periodo_ym,
+                arrendatario,
+                rut,
+                vigente_arriendo,
+                en_liquidacion,
+                cerrado_financiero,
+                tiene_pendientes,
+                marca_termino
+             FROM dbo.msp_vw_control_diario_base
+             WHERE periodo_facturacion >= :period_start
+               AND periodo_facturacion < :period_end
+             ORDER BY
+                id_tienda,
+                periodo_facturacion,
+                CASE WHEN vigente_arriendo = 1 THEN 0 WHEN en_liquidacion = 1 THEN 1 ELSE 2 END,
+                id_contrato_arriendo DESC",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    if (msp2TableExists($conn, 'msp_liquidacion_servicios') && msp2TableExists($conn, 'msp_liquidacion_servicio_consumos')) {
+        $controlIdentityBatchQueries['estadoTardio'] = [
+            'sql' => "SELECT DISTINCT
+                ca.id_tienda,
+                ca.id_contrato_arriendo,
+                ca.id_arrendatario,
+                CONVERT(char(7), c.periodo_emision, 126) AS periodo_ym,
+                COALESCE(NULLIF(a.nombre_locatario, N''), NULLIF(a.nombre_representante, N''), N'Sin arrendatario') AS arrendatario,
+                a.rut
+             FROM dbo.msp_liquidacion_servicio_consumos c
+             INNER JOIN dbo.msp_liquidacion_servicios ls
+                ON ls.id_liquidacion_servicio = c.id_liquidacion_servicio
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_local = ls.id_contrato_local
+             INNER JOIN dbo.msp_contratos_arriendo ca
+                ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
+             INNER JOIN dbo.msp_arrendatarios a
+                ON a.id_arrendatario = ca.id_arrendatario
+             WHERE c.periodo_emision >= :period_start
+               AND c.periodo_emision < :period_end
+               AND c.estado_consumo IN (1,2)",
+            'params' => [
+                ':period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
+    }
+    $controlIdentityBatch = msp2FetchReadBatch($conn, $controlIdentityBatchQueries);
+
+    $tiendasStmt = new Msp2BufferedReadRows($controlIdentityBatch['tiendas'] ?? []);
     while (($row = $tiendasStmt->fetch()) !== false) {
         $idTienda = (int) ($row['id_tienda'] ?? 0);
         if ($idTienda <= 0) {
@@ -1831,31 +1961,7 @@ try {
     $perfMark('carga_tiendas_base');
 
     if (msp2TableExists($conn, 'msp_vw_control_diario_base')) {
-        $estadoOperativoStmt = $conn->prepare(
-            "SELECT
-                id_tienda,
-                id_contrato_arriendo,
-                id_arrendatario,
-                CONVERT(char(7), periodo_facturacion, 126) AS periodo_ym,
-                arrendatario,
-                rut,
-                vigente_arriendo,
-                en_liquidacion,
-                cerrado_financiero,
-                tiene_pendientes,
-                marca_termino
-             FROM dbo.msp_vw_control_diario_base
-             WHERE periodo_facturacion >= :period_start
-               AND periodo_facturacion < :period_end
-             ORDER BY
-                id_tienda,
-                periodo_facturacion,
-                CASE WHEN vigente_arriendo = 1 THEN 0 WHEN en_liquidacion = 1 THEN 1 ELSE 2 END,
-                id_contrato_arriendo DESC"
-        );
-        $estadoOperativoStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $estadoOperativoStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $estadoOperativoStmt->execute();
+        $estadoOperativoStmt = new Msp2BufferedReadRows($controlIdentityBatch['estadoOperativo'] ?? []);
         while (($estadoOperativoRow = $estadoOperativoStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $idTiendaEstado = (int) ($estadoOperativoRow['id_tienda'] ?? 0);
             $periodoEstado = trim((string) ($estadoOperativoRow['periodo_ym'] ?? ''));
@@ -1869,30 +1975,7 @@ try {
 
     if (msp2TableExists($conn, 'msp_liquidacion_servicios')
         && msp2TableExists($conn, 'msp_liquidacion_servicio_consumos')) {
-        $estadoTardioStmt = $conn->prepare(
-            "SELECT DISTINCT
-                ca.id_tienda,
-                ca.id_contrato_arriendo,
-                ca.id_arrendatario,
-                CONVERT(char(7), c.periodo_emision, 126) AS periodo_ym,
-                COALESCE(NULLIF(a.nombre_locatario, N''), NULLIF(a.nombre_representante, N''), N'Sin arrendatario') AS arrendatario,
-                a.rut
-             FROM dbo.msp_liquidacion_servicio_consumos c
-             INNER JOIN dbo.msp_liquidacion_servicios ls
-                ON ls.id_liquidacion_servicio = c.id_liquidacion_servicio
-             INNER JOIN dbo.msp_contrato_locales cl
-                ON cl.id_contrato_local = ls.id_contrato_local
-             INNER JOIN dbo.msp_contratos_arriendo ca
-                ON ca.id_contrato_arriendo = cl.id_contrato_arriendo
-             INNER JOIN dbo.msp_arrendatarios a
-                ON a.id_arrendatario = ca.id_arrendatario
-             WHERE c.periodo_emision >= :period_start
-               AND c.periodo_emision < :period_end
-               AND c.estado_consumo IN (1,2)"
-        );
-        $estadoTardioStmt->bindValue(':period_start', $dataPeriodStart, PDO::PARAM_STR);
-        $estadoTardioStmt->bindValue(':period_end', $dataPeriodEndExclusive, PDO::PARAM_STR);
-        $estadoTardioStmt->execute();
+        $estadoTardioStmt = new Msp2BufferedReadRows($controlIdentityBatch['estadoTardio'] ?? []);
         while (($estadoTardioRow = $estadoTardioStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $idTiendaTardio = (int) ($estadoTardioRow['id_tienda'] ?? 0);
             $periodoTardio = trim((string) ($estadoTardioRow['periodo_ym'] ?? ''));
@@ -1923,8 +2006,9 @@ try {
             $placeholders[] = ':tid_' . $index;
         }
 
-        $contratosStmt = $conn->prepare(
-            'SELECT
+        $controlContractBatchQueries = [];
+        $controlContractBatchQueries['contratos'] = [
+            'sql' => 'SELECT
                 c.id_tienda,
                 c.id_contrato_arriendo,
                 c.id_arrendatario,
@@ -1943,28 +2027,14 @@ try {
              ORDER BY
                 c.id_tienda ASC,
                 c.fecha_inicio DESC,
-                c.id_contrato_arriendo DESC'
-        );
-        foreach ($tiendaIds as $index => $tiendaId) {
-            $contratosStmt->bindValue(':tid_' . $index, (int) $tiendaId, PDO::PARAM_INT);
-        }
-        $contratosStmt->bindValue(':year_end', $yearEnd, PDO::PARAM_STR);
-        $contratosStmt->bindValue(':year_start', $yearStart, PDO::PARAM_STR);
-        $contratosStmt->execute();
-        $contratosByTienda = [];
-        while (($contratoRow = $contratosStmt->fetch()) !== false) {
-            $idTiendaContrato = (int) ($contratoRow['id_tienda'] ?? 0);
-            if ($idTiendaContrato <= 0 || !isset($tiendaRows[$idTiendaContrato])) {
-                continue;
-            }
-            if (!isset($contratosByTienda[$idTiendaContrato])) {
-                $contratosByTienda[$idTiendaContrato] = [];
-            }
-            $contratosByTienda[$idTiendaContrato][] = $contratoRow;
-        }
-
-        $localesStmt = $conn->prepare(
-            'SELECT
+                c.id_contrato_arriendo DESC',
+            'params' => [
+                ':year_end' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start' => [$yearStart, PDO::PARAM_STR],
+            ],
+        ];
+        $controlContractBatchQueries['locales'] = [
+            'sql' => 'SELECT
                 c.id_tienda,
                 cl.id_contrato_local,
                 cl.id_local,
@@ -1986,16 +2056,35 @@ try {
                AND c.estado_contrato IN (1,2,3,4)
                AND c.fecha_inicio <= :year_end_loc_ca
                AND ' . $buildContratoVisibleSql('c', ':year_start_loc_ca') . '
-             ORDER BY c.id_tienda ASC, ' . msp2LocalCodeNaturalOrderSql('l.cdo_local')
-        );
+             ORDER BY c.id_tienda ASC, ' . msp2LocalCodeNaturalOrderSql('l.cdo_local'),
+            'params' => [
+                ':year_end_loc_cl' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start_loc_cl' => [$yearStart, PDO::PARAM_STR],
+                ':year_end_loc_ca' => [$yearEnd, PDO::PARAM_STR],
+                ':year_start_loc_ca' => [$yearStart, PDO::PARAM_STR],
+            ],
+        ];
         foreach ($tiendaIds as $index => $tiendaId) {
-            $localesStmt->bindValue(':tid_' . $index, (int) $tiendaId, PDO::PARAM_INT);
+            $parameterName = ':tid_' . $index;
+            $controlContractBatchQueries['contratos']['params'][$parameterName] = [(int) $tiendaId, PDO::PARAM_INT];
+            $controlContractBatchQueries['locales']['params'][$parameterName] = [(int) $tiendaId, PDO::PARAM_INT];
         }
-        $localesStmt->bindValue(':year_end_loc_cl', $yearEnd, PDO::PARAM_STR);
-        $localesStmt->bindValue(':year_start_loc_cl', $yearStart, PDO::PARAM_STR);
-        $localesStmt->bindValue(':year_end_loc_ca', $yearEnd, PDO::PARAM_STR);
-        $localesStmt->bindValue(':year_start_loc_ca', $yearStart, PDO::PARAM_STR);
-        $localesStmt->execute();
+        $controlContractBatch = msp2FetchReadBatch($conn, $controlContractBatchQueries);
+
+        $contratosStmt = new Msp2BufferedReadRows($controlContractBatch['contratos'] ?? []);
+        $contratosByTienda = [];
+        while (($contratoRow = $contratosStmt->fetch()) !== false) {
+            $idTiendaContrato = (int) ($contratoRow['id_tienda'] ?? 0);
+            if ($idTiendaContrato <= 0 || !isset($tiendaRows[$idTiendaContrato])) {
+                continue;
+            }
+            if (!isset($contratosByTienda[$idTiendaContrato])) {
+                $contratosByTienda[$idTiendaContrato] = [];
+            }
+            $contratosByTienda[$idTiendaContrato][] = $contratoRow;
+        }
+
+        $localesStmt = new Msp2BufferedReadRows($controlContractBatch['locales'] ?? []);
 
         $seenLocalByTienda = [];
         while (($localRow = $localesStmt->fetch()) !== false) {

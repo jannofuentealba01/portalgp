@@ -9,7 +9,8 @@ $error = null;
 $garantias = [];
 $cuentas = [];
 $historial = [];
-$idGarantiaSeleccionada = filter_input(INPUT_GET, 'id_garantia', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+$idGarantiaSeleccionada = filter_input(INPUT_GET, 'id_garantia_tienda', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+$idContratoSeleccionado = filter_input(INPUT_GET, 'id_contrato_arriendo', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
 
 function gdMonto(mixed $value): string
 {
@@ -18,11 +19,11 @@ function gdMonto(mixed $value): string
 
 try {
     $garantias = $conn->query(
-        "SELECT g.id_garantia,g.id_contrato_arriendo,g.nombre_locatario,g.rut,g.nombre_comercial,g.cdo_local,
-                g.monto_pactado,g.monto_recibido,g.monto_reservado,g.monto_aplicado,g.monto_devuelto,g.monto_disponible
-         FROM dbo.msp_vw_garantias_control_integral g
+        "SELECT g.id_garantia_tienda,g.id_contrato_arriendo,g.nombre_locatario,g.rut,g.nombre_comercial,g.locales,
+                g.monto_pactado,g.monto_recibido,g.monto_reservado,g.monto_aplicado,g.total_devuelto AS monto_devuelto,g.monto_disponible
+         FROM dbo.msp_vw_garantias_tienda_resumen g
          WHERE g.estado_garantia<>6 AND g.monto_disponible>0 AND g.monto_reservado=0
-         ORDER BY g.nombre_locatario,g.nombre_comercial,g.cdo_local"
+         ORDER BY g.nombre_locatario,g.nombre_comercial,g.locales"
     )->fetchAll() ?: [];
     $cuentas = $conn->query(
         "SELECT * FROM dbo.msp_vw_tesoreria_saldos
@@ -30,17 +31,21 @@ try {
          ORDER BY tipo_cuenta DESC,banco,nombre_cuenta"
     )->fetchAll() ?: [];
     $historial = $conn->query(
-        "SELECT TOP(100) d.*,a.nombre_locatario,a.rut,t.nombre_comercial,l.cdo_local,
+        "SELECT TOP(100) d.*,r.nombre_locatario,r.rut,r.nombre_comercial,r.locales,
                 tc.nombre_cuenta,tc.banco banco_origen
          FROM dbo.msp_garantia_devoluciones d
-         JOIN dbo.msp_garantias g ON g.id_garantia=d.id_garantia
-         JOIN dbo.msp_contratos_arriendo c ON c.id_contrato_arriendo=g.id_contrato_arriendo
-         JOIN dbo.msp_arrendatarios a ON a.id_arrendatario=c.id_arrendatario
-         JOIN dbo.msp_tiendas t ON t.id_tienda=c.id_tienda
-         JOIN dbo.msp_locales l ON l.id_local=g.id_local
+         JOIN dbo.msp_vw_garantias_tienda_resumen r ON r.id_garantia_tienda=d.id_garantia_tienda
          JOIN dbo.msp_tesoreria_cuentas tc ON tc.id_cuenta_tesoreria=d.id_cuenta_tesoreria
          ORDER BY d.fecha_devolucion DESC,d.id_devolucion_garantia DESC"
     )->fetchAll() ?: [];
+    if ($idGarantiaSeleccionada <= 0 && $idContratoSeleccionado > 0) {
+        foreach ($garantias as $garantia) {
+            if ((int) $garantia['id_contrato_arriendo'] === $idContratoSeleccionado) {
+                $idGarantiaSeleccionada = (int) $garantia['id_garantia_tienda'];
+                break;
+            }
+        }
+    }
 } catch (Throwable $exception) {
     $error = pgpPublicOrBusinessException($exception, 'msp.garantias.devoluciones', 'No fue posible cargar las devoluciones.');
 }
@@ -73,7 +78,7 @@ try {
         <div class="card-body">
             <form method="post" action="<?php echo msp2Escape(msp2Url('garantias/registrar_devolucion.php')); ?>" class="row g-2" id="formDevolucion">
                 <?php msp2CsrfField(); ?>
-                <div class="col-12 col-lg-6"><label class="form-label">Garantía</label><select name="id_garantia" id="gd_garantia" class="form-select" required><option value="">Seleccionar arrendatario y local</option><?php foreach ($garantias as $garantia): ?><option value="<?php echo (int) $garantia['id_garantia']; ?>" data-max="<?php echo msp2Escape((string) $garantia['monto_disponible']); ?>" data-pactado="<?php echo msp2Escape((string) $garantia['monto_pactado']); ?>" data-recibido="<?php echo msp2Escape((string) $garantia['monto_recibido']); ?>" data-aplicado="<?php echo msp2Escape((string) $garantia['monto_aplicado']); ?>" data-devuelto="<?php echo msp2Escape((string) $garantia['monto_devuelto']); ?>" data-beneficiario="<?php echo msp2Escape((string) $garantia['nombre_locatario']); ?>" data-rut="<?php echo msp2Escape((string) $garantia['rut']); ?>" <?php echo $idGarantiaSeleccionada === (int) $garantia['id_garantia'] ? 'selected' : ''; ?>><?php echo msp2Escape($garantia['nombre_locatario'] . ' · ' . $garantia['nombre_comercial'] . ' · Contrato #' . $garantia['id_contrato_arriendo'] . ' · Local ' . $garantia['cdo_local'] . ' · Disponible ' . gdMonto($garantia['monto_disponible'])); ?></option><?php endforeach; ?></select></div>
+                <div class="col-12 col-lg-6"><label class="form-label">Garantía</label><select name="id_garantia_tienda" id="gd_garantia" class="form-select" required><option value="">Seleccionar arrendatario y tienda</option><?php foreach ($garantias as $garantia): ?><option value="<?php echo (int) $garantia['id_garantia_tienda']; ?>" data-max="<?php echo msp2Escape((string) $garantia['monto_disponible']); ?>" data-pactado="<?php echo msp2Escape((string) $garantia['monto_pactado']); ?>" data-recibido="<?php echo msp2Escape((string) $garantia['monto_recibido']); ?>" data-aplicado="<?php echo msp2Escape((string) $garantia['monto_aplicado']); ?>" data-devuelto="<?php echo msp2Escape((string) $garantia['monto_devuelto']); ?>" data-beneficiario="<?php echo msp2Escape((string) $garantia['nombre_locatario']); ?>" data-rut="<?php echo msp2Escape((string) $garantia['rut']); ?>" <?php echo $idGarantiaSeleccionada === (int) $garantia['id_garantia_tienda'] ? 'selected' : ''; ?>><?php echo msp2Escape($garantia['nombre_locatario'] . ' · ' . $garantia['nombre_comercial'] . ' · Contrato #' . $garantia['id_contrato_arriendo'] . ' · Locales ' . $garantia['locales'] . ' · Disponible ' . gdMonto($garantia['monto_disponible'])); ?></option><?php endforeach; ?></select></div>
                 <div id="gd_resumen" class="col-12 d-none gp-operation-summary"><div class="row text-center g-2"><?php foreach (['pactado' => 'Pactada', 'recibido' => 'Recibida', 'aplicado' => 'Aplicada a deudas', 'devuelto' => 'Devuelta antes', 'disponible' => 'Disponible', 'posterior' => 'Saldo posterior'] as $id => $label): ?><div class="col-6 col-md"><small><?php echo $label; ?></small><strong class="d-block" id="gd_<?php echo $id; ?>"></strong></div><?php endforeach; ?></div></div>
 
                 <div class="col-6 col-lg-3"><label class="form-label">Fecha</label><input type="date" name="fecha_devolucion" class="form-control" value="<?php echo date('Y-m-d'); ?>" required></div>
@@ -103,7 +108,7 @@ try {
                 <?php foreach ($historial as $devolucion): ?>
                     <tr>
                         <td data-gp-label="Fecha"><?php echo msp2Escape(substr((string) $devolucion['fecha_devolucion'], 0, 10)); ?></td>
-                        <td data-gp-label="Arrendatario / local"><div class="fw-semibold"><?php echo msp2Escape((string) $devolucion['nombre_locatario']); ?></div><div class="small text-muted"><?php echo msp2Escape((string) $devolucion['rut']); ?></div><div class="small text-muted"><?php echo msp2Escape((string) $devolucion['nombre_comercial']); ?> · Local <?php echo msp2Escape((string) $devolucion['cdo_local']); ?></div></td>
+                        <td data-gp-label="Arrendatario / tienda"><div class="fw-semibold"><?php echo msp2Escape((string) $devolucion['nombre_locatario']); ?></div><div class="small text-muted"><?php echo msp2Escape((string) $devolucion['rut']); ?></div><div class="small text-muted"><?php echo msp2Escape((string) $devolucion['nombre_comercial']); ?> · Locales <?php echo msp2Escape((string) $devolucion['locales']); ?></div></td>
                         <td data-gp-label="Medio / origen"><div class="fw-semibold"><?php echo msp2Escape((string) $devolucion['medio_devolucion']); ?></div><div class="small text-muted"><?php echo msp2Escape(trim((string) ($devolucion['banco_origen'] ?? '') . ' · ' . $devolucion['nombre_cuenta'], ' ·')); ?></div></td>
                         <td data-gp-label="Referencia / motivo"><div><?php echo msp2Escape((string) ($devolucion['referencia_transferencia'] ?? '-')); ?></div><div class="small text-muted"><?php echo msp2Escape((string) ($devolucion['motivo_autorizacion'] ?? $devolucion['observaciones'] ?? '-')); ?></div></td>
                         <td data-gp-label="Monto / estado"><div class="fw-semibold garantia-importe-principal"><?php echo gdMonto($devolucion['monto_devolucion']); ?></div><span class="badge text-bg-secondary"><?php echo msp2Escape((string) $devolucion['estado_devolucion']); ?></span></td>

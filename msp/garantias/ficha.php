@@ -4,7 +4,13 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 msp2RequireAccess();
 
-$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$id = filter_input(INPUT_GET, 'id_garantia_tienda', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$idLegacy = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if (!$id && $idLegacy) {
+    $resolve = $conn->prepare('SELECT id_garantia_tienda FROM dbo.msp_garantias WHERE id_garantia=:id');
+    $resolve->execute([':id'=>(int)$idLegacy]);
+    $id = (int)($resolve->fetchColumn() ?: 0);
+}
 if (!$id) {
     msp2Redirect('garantias/index.php');
 }
@@ -14,7 +20,7 @@ $movimientos = [];
 $error = null;
 
 try {
-    $statement = $conn->prepare('SELECT * FROM dbo.msp_vw_garantias_control_integral WHERE id_garantia=:id');
+    $statement = $conn->prepare('SELECT *,total_devuelto AS monto_devuelto FROM dbo.msp_vw_garantias_tienda_resumen WHERE id_garantia_tienda=:id');
     $statement->execute([':id' => (int) $id]);
     $resumen = $statement->fetch();
     if (!$resumen) {
@@ -22,7 +28,7 @@ try {
     }
 
     $historyStatement = $conn->prepare(
-        'SELECT * FROM dbo.msp_vw_garantia_historial_integral WHERE id_garantia=:id ORDER BY fecha,id_origen'
+        'SELECT * FROM dbo.msp_vw_garantia_tienda_historial_integral WHERE id_garantia_tienda=:id ORDER BY fecha,id_origen'
     );
     $historyStatement->execute([':id' => (int) $id]);
     $movimientos = $historyStatement->fetchAll() ?: [];
@@ -52,7 +58,7 @@ function gfMonto(mixed $value): string
             <p class="text-muted mb-1">MSP / Garantías</p>
             <h1 class="h3 mb-1">Ficha integral de garantía #<?php echo (int) $id; ?></h1>
             <?php if ($resumen): ?>
-                <p class="text-muted mb-0"><?php echo msp2Escape((string) $resumen['nombre_locatario']); ?> · Contrato #<?php echo (int) $resumen['id_contrato_arriendo']; ?> · Local <?php echo msp2Escape((string) $resumen['cdo_local']); ?></p>
+                <p class="text-muted mb-0"><?php echo msp2Escape((string) $resumen['nombre_locatario']); ?> · Contrato #<?php echo (int) $resumen['id_contrato_arriendo']; ?> · Locales <?php echo msp2Escape((string) $resumen['locales']); ?></p>
             <?php endif; ?>
         </div>
         <a class="btn btn-outline-secondary btn-sm" href="<?php echo msp2Escape(msp2Url('garantias/index.php')); ?>">Volver a Garantías</a>

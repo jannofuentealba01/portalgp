@@ -125,17 +125,16 @@ try {
             $bloqueos[] = $cantidad . ' cargo(s) de salida vigente(s)';
         }
     }
-    if (msp2TableExists($conn, 'msp_garantias') && msp2TableExists($conn, 'msp_vw_garantias_control_integral')) {
+    if (msp2TableExists($conn, 'msp_garantias_tienda') && msp2TableExists($conn, 'msp_vw_garantias_tienda_resumen')) {
         $cantidad = $countByContract($conn,
             'SELECT COUNT(*)
-             FROM dbo.msp_garantias g
-             INNER JOIN dbo.msp_vw_garantias_control_integral gr ON gr.id_garantia = g.id_garantia
-             WHERE g.id_contrato_arriendo = :id_contrato_arriendo
+             FROM dbo.msp_vw_garantias_tienda_resumen gr
+             WHERE gr.id_contrato_arriendo = :id_contrato_arriendo
                AND (gr.monto_disponible > 0 OR gr.monto_reservado > 0)',
             (int) $idContrato
         );
         if ($cantidad > 0) {
-            $bloqueos[] = $cantidad . ' garantía(s) con saldo disponible o reservado';
+            $bloqueos[] = $cantidad . ' garantía(s) de tienda con saldo disponible o reservado';
         }
     }
     if (msp2TableExists($conn, 'msp_pool_documentos_periodo')) {

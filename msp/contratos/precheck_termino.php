@@ -109,13 +109,12 @@ try {
     }
 
     $garantiasReservadas = 0;
-    if (msp2TableExists($conn, 'msp_garantias') && msp2TableExists($conn, 'msp_vw_garantias_control_integral')) {
+    if (msp2TableExists($conn, 'msp_garantias_tienda') && msp2TableExists($conn, 'msp_vw_garantias_tienda_resumen')) {
         $stmtGarantiasRes = $conn->prepare(
             'SELECT COUNT(*)
-             FROM dbo.msp_vw_garantias_control_integral gr
-             INNER JOIN dbo.msp_garantias g ON g.id_garantia = gr.id_garantia
-             WHERE g.id_contrato_arriendo = :id_contrato_arriendo
-               AND g.estado_garantia <> 6
+             FROM dbo.msp_vw_garantias_tienda_resumen gr
+             WHERE gr.id_contrato_arriendo = :id_contrato_arriendo
+               AND gr.estado_garantia <> 6
                AND gr.monto_reservado > 0'
         );
         $stmtGarantiasRes->bindValue(':id_contrato_arriendo', $idContratoArriendo, PDO::PARAM_INT);

@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/DocumentoProteccionService.php';
+
 final class CorreccionesService
 {
     public static function listar(PDO $conn, array $filtros = []): array

@@ -10,7 +10,8 @@ $garantias = [];
 $recepciones = [];
 $archivosByRecepcion = [];
 $totales = ['pactado'=>0.0,'recibido'=>0.0,'pendiente'=>0.0];
-$idGarantiaPreseleccionada = filter_input(INPUT_GET, 'id_garantia', FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: 0;
+$idGarantiaLegacy = filter_input(INPUT_GET, 'id_garantia', FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: 0;
+$idGarantiaPreseleccionada = filter_input(INPUT_GET, 'id_garantia_tienda', FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: 0;
 $idContratoPreseleccionado = filter_input(INPUT_GET, 'id_contrato_arriendo', FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: 0;
 $returnTo = trim((string) ($_GET['return_to'] ?? ''));
 if ($returnTo === '' || preg_match('#^pendientes/index\.php(?:\?[A-Za-z0-9_\-\.\[\]%=&]*)?$#', $returnTo) !== 1) {
@@ -26,31 +27,27 @@ function msp2GarFmtFecha(mixed $value): string {
 }
 
 try {
-    foreach (['msp_garantia_recepciones','msp_tesoreria_cuentas','msp_tesoreria_movimientos','msp_vw_garantias_control_recepcion'] as $required) {
+    foreach (['msp_garantia_recepciones','msp_tesoreria_cuentas','msp_tesoreria_movimientos','msp_vw_garantias_tienda_resumen'] as $required) {
         if (!msp2TableExists($conn, $required)) {
             throw new RuntimeException('Falta el prerrequisito de garantías/tesorería. Ejecuta msp/db/patch_garantias_tesoreria_base.sql.');
         }
     }
 
-    // Cada fila representa la garantía concreta de un contrato/local. Esto permite
-    // abrirla desde Pendientes y operar exclusivamente sobre el caso seleccionado.
+    if ($idGarantiaPreseleccionada <= 0 && $idGarantiaLegacy > 0) {
+        $stmtCanonical = $conn->prepare('SELECT id_garantia_tienda FROM dbo.msp_garantias WHERE id_garantia=:id');
+        $stmtCanonical->execute([':id'=>$idGarantiaLegacy]);
+        $idGarantiaPreseleccionada = (int) ($stmtCanonical->fetchColumn() ?: 0);
+    }
+
+    // Una fila por contrato-tienda; los locales se muestran como alcance, no como fondos separados.
     $garantias = $conn->query(
-        'SELECT g.id_garantia,g.id_contrato_arriendo,g.id_local,
-                g.monto_inicial AS monto_pactado,
-                ISNULL(recibido.monto_recibido,0) AS monto_recibido,
-                CASE WHEN g.monto_inicial-ISNULL(recibido.monto_recibido,0)>0
-                     THEN g.monto_inicial-ISNULL(recibido.monto_recibido,0) ELSE 0 END AS monto_por_recibir,
-                a.nombre_locatario,a.rut,t.nombre_comercial,l.cdo_local
-         FROM dbo.msp_garantias g
-         INNER JOIN dbo.msp_contratos_arriendo c ON c.id_contrato_arriendo=g.id_contrato_arriendo
-         INNER JOIN dbo.msp_arrendatarios a ON a.id_arrendatario=c.id_arrendatario
-         INNER JOIN dbo.msp_tiendas t ON t.id_tienda=c.id_tienda
-         INNER JOIN dbo.msp_locales l ON l.id_local=g.id_local
-         OUTER APPLY (SELECT SUM(r.monto_recibido) AS monto_recibido
-                      FROM dbo.msp_garantia_recepciones r
-                      WHERE r.id_garantia=g.id_garantia AND r.estado_recepcion=N\'CONFIRMADA\') recibido
-         WHERE g.estado_garantia<>6 AND c.estado_contrato<>5
-         ORDER BY a.nombre_locatario,t.nombre_comercial,l.cdo_local,g.id_garantia'
+        'SELECT r.id_garantia_tienda,r.id_contrato_arriendo,r.monto_pactado,r.monto_recibido,
+                r.monto_pendiente_recepcion AS monto_por_recibir,r.nombre_locatario,r.rut,
+                r.nombre_comercial,r.locales
+         FROM dbo.msp_vw_garantias_tienda_resumen r
+         INNER JOIN dbo.msp_contratos_arriendo c ON c.id_contrato_arriendo=r.id_contrato_arriendo
+         WHERE r.estado_garantia<>6 AND c.estado_contrato<>5
+         ORDER BY r.nombre_locatario,r.nombre_comercial,r.id_garantia_tienda'
     )->fetchAll() ?: [];
 
     if ($idGarantiaPreseleccionada <= 0 && $idContratoPreseleccionado > 0) {
@@ -59,7 +56,7 @@ try {
             $requiereGestion = (float) ($garantiaDisponible['monto_pactado'] ?? 0) <= 0
                 || (float) ($garantiaDisponible['monto_por_recibir'] ?? 0) > 0;
             if ($perteneceContrato && $requiereGestion) {
-                $idGarantiaPreseleccionada = (int) $garantiaDisponible['id_garantia'];
+                $idGarantiaPreseleccionada = (int) $garantiaDisponible['id_garantia_tienda'];
                 break;
             }
         }
@@ -67,13 +64,9 @@ try {
 
     $recepciones = $conn->query(
         'SELECT TOP (100) r.id_recepcion_garantia,r.fecha_recepcion,r.monto_recibido,r.medio_recepcion,r.referencia,r.banco_emisor,r.numero_cheque,r.estado_recepcion,
-                g.id_garantia,c.id_contrato_arriendo,a.nombre_locatario,a.rut,t.nombre_comercial,l.cdo_local,tc.nombre_cuenta
+                r.id_garantia_tienda,gr.id_contrato_arriendo,gr.nombre_locatario,gr.rut,gr.nombre_comercial,gr.locales,tc.nombre_cuenta
          FROM dbo.msp_garantia_recepciones r
-         INNER JOIN dbo.msp_garantias g ON g.id_garantia=r.id_garantia
-         INNER JOIN dbo.msp_contratos_arriendo c ON c.id_contrato_arriendo=g.id_contrato_arriendo
-         INNER JOIN dbo.msp_arrendatarios a ON a.id_arrendatario=c.id_arrendatario
-         INNER JOIN dbo.msp_tiendas t ON t.id_tienda=c.id_tienda
-         INNER JOIN dbo.msp_locales l ON l.id_local=g.id_local
+         INNER JOIN dbo.msp_vw_garantias_tienda_resumen gr ON gr.id_garantia_tienda=r.id_garantia_tienda
          LEFT JOIN dbo.msp_tesoreria_movimientos tm ON tm.id_recepcion_garantia=r.id_recepcion_garantia AND tm.estado_movimiento=N\'VIGENTE\'
          LEFT JOIN dbo.msp_tesoreria_cuentas tc ON tc.id_cuenta_tesoreria=tm.id_cuenta_tesoreria
          ORDER BY r.fecha_recepcion DESC,r.id_recepcion_garantia DESC'
@@ -83,7 +76,7 @@ try {
         $archivosByRecepcion[(int)$archivo['id_recepcion_garantia']][]=$archivo;
     }
 
-    $rowTotales = $conn->query('SELECT SUM(monto_pactado) pactado,SUM(monto_recibido) recibido,SUM(CASE WHEN monto_por_recibir>0 THEN monto_por_recibir ELSE 0 END) pendiente FROM dbo.msp_vw_garantias_control_recepcion')->fetch() ?: [];
+    $rowTotales = $conn->query('SELECT SUM(monto_pactado) pactado,SUM(monto_recibido) recibido,SUM(CASE WHEN monto_pendiente_recepcion>0 THEN monto_pendiente_recepcion ELSE 0 END) pendiente FROM dbo.msp_vw_garantias_tienda_resumen')->fetch() ?: [];
     $totales = ['pactado'=>(float)($rowTotales['pactado']??0),'recibido'=>(float)($rowTotales['recibido']??0),'pendiente'=>(float)($rowTotales['pendiente']??0)];
 } catch (Throwable $exception) {
     $error = pgpPublicOrBusinessException($exception, 'msp.garantias.recepciones', 'No fue posible cargar el módulo de recepción de garantías.');
@@ -127,7 +120,7 @@ try {
                 <form method="post" action="<?php echo msp2Escape(msp2Url('garantias/registrar_recepcion.php')); ?>" class="row g-3" id="formRecepcion">
                     <?php msp2CsrfField(); ?>
                     <div class="col-12 col-lg-6"><label class="form-label" for="buscar_garantia">Buscar tienda, arrendatario, RUT o contrato</label><div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input type="search" id="buscar_garantia" class="form-control" placeholder="Ejemplo: ivo" autocomplete="off"></div><div id="resultadosBusquedaGarantia" class="list-group mt-2 d-none"></div></div>
-                    <div class="col-12 col-lg-6"><label class="form-label" for="id_garantia">Garantía / contrato / local</label><select name="id_garantia" id="id_garantia" class="form-select" required><option value=""></option><?php foreach ($garantias as $g): $completa=(float)$g['monto_pactado']>0 && (float)$g['monto_por_recibir']<=0; ?><option value="<?php echo (int)$g['id_garantia']; ?>" data-id-contrato="<?php echo (int)$g['id_contrato_arriendo']; ?>" data-pactado="<?php echo msp2Escape((string)$g['monto_pactado']); ?>" data-recibido="<?php echo msp2Escape((string)$g['monto_recibido']); ?>" data-pendiente="<?php echo msp2Escape((string)$g['monto_por_recibir']); ?>" data-search="<?php echo msp2Escape(($g['nombre_comercial']??'').' '.($g['nombre_locatario']??'').' '.($g['rut']??'').' contrato '.$g['id_contrato_arriendo'].' local '.($g['cdo_local']??'')); ?>" <?php echo $completa?'disabled':''; ?> <?php echo !$completa && (int)$g['id_garantia']===$idGarantiaPreseleccionada?'selected':''; ?>><?php echo msp2Escape(($g['nombre_locatario']??$g['nombre_comercial']??'Arrendatario').' · Contrato '.$g['id_contrato_arriendo'].' · Local '.($g['cdo_local']??'-').' · '.($completa?'Garantía completa':((float)$g['monto_pactado']>0?'Pendiente '.msp2GarFmtMonto($g['monto_por_recibir']):'Monto pactado por definir'))); ?></option><?php endforeach; ?></select><div id="ayudaPendiente" class="form-text"><?php echo $garantias===[]?'No existen garantías registradas.':''; ?></div><div id="sinCoincidencias" class="alert alert-warning py-2 mt-2 d-none mb-0">No se encontraron garantías que coincidan con la búsqueda.</div></div>
+                    <div class="col-12 col-lg-6"><label class="form-label" for="id_garantia">Garantía / tienda / contrato</label><select name="id_garantia_tienda" id="id_garantia" class="form-select" required><option value=""></option><?php foreach ($garantias as $g): $completa=(float)$g['monto_pactado']>0 && (float)$g['monto_por_recibir']<=0; ?><option value="<?php echo (int)$g['id_garantia_tienda']; ?>" data-id-contrato="<?php echo (int)$g['id_contrato_arriendo']; ?>" data-pactado="<?php echo msp2Escape((string)$g['monto_pactado']); ?>" data-recibido="<?php echo msp2Escape((string)$g['monto_recibido']); ?>" data-pendiente="<?php echo msp2Escape((string)$g['monto_por_recibir']); ?>" data-search="<?php echo msp2Escape(($g['nombre_comercial']??'').' '.($g['nombre_locatario']??'').' '.($g['rut']??'').' contrato '.$g['id_contrato_arriendo'].' locales '.($g['locales']??'')); ?>" <?php echo $completa?'disabled':''; ?> <?php echo !$completa && (int)$g['id_garantia_tienda']===$idGarantiaPreseleccionada?'selected':''; ?>><?php echo msp2Escape(($g['nombre_locatario']??$g['nombre_comercial']??'Arrendatario').' · Contrato '.$g['id_contrato_arriendo'].' · Locales '.($g['locales']??'-').' · '.($completa?'Garantía completa':((float)$g['monto_pactado']>0?'Pendiente '.msp2GarFmtMonto($g['monto_por_recibir']):'Monto pactado por definir'))); ?></option><?php endforeach; ?></select><div id="ayudaPendiente" class="form-text"><?php echo $garantias===[]?'No existen garantías registradas.':''; ?></div><div id="sinCoincidencias" class="alert alert-warning py-2 mt-2 d-none mb-0">No se encontraron garantías que coincidan con la búsqueda.</div></div>
                     <div class="col-12 d-none gp-operation-summary" id="resumenGarantiaSeleccionada"><div class="row g-2 text-center"><div class="col-md-4"><div class="small text-muted">Garantía pactada</div><div class="h5 mb-0" id="resumenPactado">$ 0</div></div><div class="col-md-4"><div class="small text-muted">Recibido anteriormente</div><div class="h5 mb-0" id="resumenRecibido">$ 0</div></div><div class="col-md-4"><div class="small text-muted">Máximo pendiente por recibir</div><div class="h5 mb-0 text-primary" id="resumenPendiente">$ 0</div></div></div></div>
                     <div class="col-md-4 d-none" id="campoMontoPactado"><label class="form-label">Monto pactado de la garantía</label><input type="number" name="monto_pactado" id="monto_pactado" min="0.01" step="0.01" class="form-control"><div class="form-text">Este contrato tiene la garantía creada en $0. Define aquí el total acordado.</div></div>
                     <div class="col-md-3"><label class="form-label">Forma de recepción</label><select name="modalidad_recepcion" id="modalidad_recepcion" class="form-select" required><option value="ABONO">Abono parcial</option><option value="TOTAL">Pagar total pendiente</option></select></div>
@@ -154,7 +147,7 @@ try {
                 <?php foreach($recepciones as $r): $archivosRec=$archivosByRecepcion[(int)$r['id_recepcion_garantia']]??[]; ?>
                     <tr>
                         <td data-gp-label="Fecha"><?php echo msp2Escape(msp2GarFmtFecha($r['fecha_recepcion'])); ?></td>
-                        <td data-gp-label="Arrendatario / tienda"><div class="fw-semibold"><?php echo msp2Escape((string)$r['nombre_locatario']); ?></div><div class="small text-muted"><?php echo msp2Escape((string)$r['rut']); ?> · Contrato #<?php echo (int)$r['id_contrato_arriendo']; ?></div><div class="small text-muted"><?php echo msp2Escape((string)$r['nombre_comercial']); ?> · Local <?php echo msp2Escape((string)$r['cdo_local']); ?></div></td>
+                        <td data-gp-label="Arrendatario / tienda"><div class="fw-semibold"><?php echo msp2Escape((string)$r['nombre_locatario']); ?></div><div class="small text-muted"><?php echo msp2Escape((string)$r['rut']); ?> · Contrato #<?php echo (int)$r['id_contrato_arriendo']; ?></div><div class="small text-muted"><?php echo msp2Escape((string)$r['nombre_comercial']); ?> · Locales <?php echo msp2Escape((string)$r['locales']); ?></div></td>
                         <td data-gp-label="Medio / destino"><div class="fw-semibold"><?php echo msp2Escape((string)$r['medio_recepcion']); ?></div><div class="small text-muted"><?php echo msp2Escape((string)($r['nombre_cuenta']??'Sin cuenta asociada')); ?></div></td>
                         <td data-gp-label="Referencia"><?php echo msp2Escape((string)($r['referencia']??$r['numero_cheque']??'-')); ?></td>
                         <td data-gp-label="Monto / estado"><div class="fw-semibold garantia-importe-principal"><?php echo msp2Escape(msp2GarFmtMonto($r['monto_recibido'])); ?></div><span class="badge text-bg-<?php echo ($r['estado_recepcion']??'')==='CONFIRMADA'?'success':'secondary'; ?>"><?php echo msp2Escape((string)$r['estado_recepcion']); ?></span></td>

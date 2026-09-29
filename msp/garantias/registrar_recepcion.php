@@ -71,6 +71,7 @@ function msp2CuentaBancoRecepcionGarantia(PDO $conn): int
 
 $idContrato = filter_input(INPUT_POST, 'id_contrato_arriendo', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $idGarantia = filter_input(INPUT_POST, 'id_garantia', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$idGarantiaTienda = filter_input(INPUT_POST, 'id_garantia_tienda', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $fecha = trim((string) ($_POST['fecha_recepcion'] ?? ''));
 $medio = strtoupper(trim((string) ($_POST['medio_recepcion'] ?? '')));
 $modalidad = strtoupper(trim((string) ($_POST['modalidad_recepcion'] ?? 'ABONO')));
@@ -84,7 +85,7 @@ $observaciones = msp2NormalizeText((string) ($_POST['observaciones'] ?? ''));
 if (!in_array($modalidad, ['ABONO','TOTAL'], true)) {
     msp2RecepcionGarantiaFail('Selecciona si registrarás un abono o el pago total pendiente.');
 }
-if ((!$idContrato && !$idGarantia) || ($modalidad==='ABONO' && (!$montoOk || $monto === null || (float) $monto <= 0))) {
+if ((!$idContrato && !$idGarantia && !$idGarantiaTienda) || ($modalidad==='ABONO' && (!$montoOk || $monto === null || (float) $monto <= 0))) {
     msp2RecepcionGarantiaFail('La garantía o el monto recibido no son válidos.');
 }
 $fechaObj = DateTimeImmutable::createFromFormat('!Y-m-d', $fecha);
@@ -112,27 +113,28 @@ if ($medio === 'CHEQUE') {
 try {
     $conn->beginTransaction();
 
-    $filtroGarantia = $idGarantia
-        ? 'g.id_garantia=:garantia'
-        : 'g.id_contrato_arriendo=:contrato';
-    $stmtGarantias = $conn->prepare(
-        'SELECT g.id_garantia,g.id_contrato_arriendo,g.monto_inicial,
-                ISNULL((SELECT SUM(r.monto_recibido) FROM dbo.msp_garantia_recepciones r WITH (UPDLOCK, HOLDLOCK)
-                        WHERE r.id_garantia=g.id_garantia AND r.estado_recepcion=N\'CONFIRMADA\'),0) AS recibido
-         FROM dbo.msp_garantias g WITH (UPDLOCK, HOLDLOCK)
-         WHERE ' . $filtroGarantia . ' AND g.estado_garantia<>6
-         ORDER BY g.id_garantia'
+    $filtroGarantia = $idGarantiaTienda
+        ? 'gt.id_garantia_tienda=:garantia_tienda'
+        : ($idGarantia ? 'EXISTS(SELECT 1 FROM dbo.msp_garantias gx WHERE gx.id_garantia=:garantia AND gx.id_garantia_tienda=gt.id_garantia_tienda)' : 'gt.id_contrato_arriendo=:contrato');
+    $stmtGarantia = $conn->prepare(
+        'SELECT gt.id_garantia_tienda,gt.id_garantia_operativa,gt.id_contrato_arriendo,
+                r.monto_pactado,r.monto_recibido
+         FROM dbo.msp_garantias_tienda gt WITH (UPDLOCK, HOLDLOCK)
+         INNER JOIN dbo.msp_vw_garantias_tienda_resumen r ON r.id_garantia_tienda=gt.id_garantia_tienda
+         WHERE ' . $filtroGarantia . ' AND gt.estado_garantia<>6'
     );
-    $stmtGarantias->execute($idGarantia
-        ? [':garantia'=>(int)$idGarantia]
-        : [':contrato'=>(int)$idContrato]);
-    $garantiasContrato = $stmtGarantias->fetchAll() ?: [];
-    if ($garantiasContrato === []) {
-        throw new RuntimeException('No se encontró una garantía activa para registrar la recepción.');
+    $stmtGarantia->execute($idGarantiaTienda
+        ? [':garantia_tienda'=>(int)$idGarantiaTienda]
+        : ($idGarantia ? [':garantia'=>(int)$idGarantia] : [':contrato'=>(int)$idContrato]));
+    $garantiaTienda = $stmtGarantia->fetch() ?: [];
+    if ($garantiaTienda === []) {
+        throw new RuntimeException('No se encontró una garantía de tienda activa para registrar la recepción.');
     }
-    $idContrato = (int) ($garantiasContrato[0]['id_contrato_arriendo'] ?? 0);
-    $pactado = round(array_sum(array_map(static fn(array $g): float => (float)$g['monto_inicial'], $garantiasContrato)), 2);
-    $recibido = round(array_sum(array_map(static fn(array $g): float => (float)$g['recibido'], $garantiasContrato)), 2);
+    $idGarantiaTienda = (int) $garantiaTienda['id_garantia_tienda'];
+    $idGarantiaOperativa = (int) $garantiaTienda['id_garantia_operativa'];
+    $idContrato = (int) $garantiaTienda['id_contrato_arriendo'];
+    $pactado = round((float) $garantiaTienda['monto_pactado'], 2);
+    $recibido = round((float) $garantiaTienda['monto_recibido'], 2);
     if ($pactado <= 0) {
         if (!$montoPactadoOk || $montoPactado === null || (float) $montoPactado <= 0) {
             throw new RuntimeException('Indica un monto pactado mayor que cero para esta garantía.');
@@ -143,8 +145,7 @@ try {
         }
         $pactado = round((float)$montoPactado, 2);
         $stmtActualizarPactado = $conn->prepare('UPDATE dbo.msp_garantias SET monto_inicial=:monto WHERE id_garantia=:id');
-        $stmtActualizarPactado->execute([':monto'=>$pactado, ':id'=>(int)$garantiasContrato[0]['id_garantia']]);
-        $garantiasContrato[0]['monto_inicial'] = $pactado;
+        $stmtActualizarPactado->execute([':monto'=>$pactado, ':id'=>$idGarantiaOperativa]);
     }
     $pendienteGarantia = round($pactado-$recibido, 2);
     if ($modalidad === 'TOTAL') {
@@ -157,19 +158,6 @@ try {
     if (round($recibido + (float) $monto, 2) > $pactado + 0.009) {
         throw new RuntimeException('El ingreso supera el monto pendiente de la garantía.');
     }
-
-    // Con id_garantia la asignación queda limitada al contrato/local elegido. El
-    // reparto por contrato se conserva sólo para formularios antiguos compatibles.
-    $restante = round((float)$monto, 2);
-    $asignaciones = [];
-    foreach ($garantiasContrato as $g) {
-        $capacidad = max(0, round((float)$g['monto_inicial'] - (float)$g['recibido'], 2));
-        if ($capacidad <= 0 || $restante <= 0) continue;
-        $parte = min($capacidad, $restante);
-        $asignaciones[] = ['id_garantia'=>(int)$g['id_garantia'], 'monto'=>round($parte,2)];
-        $restante = round($restante - $parte, 2);
-    }
-    if ($restante > 0.009) throw new RuntimeException('No fue posible distribuir el monto recibido dentro del monto pactado.');
 
     if ($medio === 'TRANSFERENCIA') {
         $idCuenta = msp2CuentaBancoRecepcionGarantia($conn);
@@ -200,29 +188,28 @@ try {
         'SET NOCOUNT ON;
          DECLARE @recepcion_insertada TABLE (id_recepcion_garantia INT NOT NULL);
          INSERT INTO dbo.msp_garantia_recepciones
-            (id_garantia,fecha_recepcion,monto_recibido,medio_recepcion,referencia,banco_emisor,numero_cheque,fecha_cheque,estado_recepcion,observaciones,id_usuario)
+            (id_garantia,id_garantia_tienda,fecha_recepcion,monto_recibido,medio_recepcion,referencia,banco_emisor,numero_cheque,fecha_cheque,estado_recepcion,observaciones,id_usuario)
          OUTPUT INSERTED.id_recepcion_garantia INTO @recepcion_insertada (id_recepcion_garantia)
-         VALUES (:garantia,:fecha,:monto,:medio,:referencia,:banco,:cheque,:fecha_cheque,N\'CONFIRMADA\',:observaciones,:usuario);
+         VALUES (:garantia,:garantia_tienda,:fecha,:monto,:medio,:referencia,:banco,:cheque,:fecha_cheque,N\'CONFIRMADA\',:observaciones,:usuario);
          SELECT id_recepcion_garantia FROM @recepcion_insertada;'
     );
-    foreach ($asignaciones as $asignacion) {
-        $stmtRecepcion->execute([
-            ':garantia'=>$asignacion['id_garantia'], ':fecha'=>$fecha, ':monto'=>$asignacion['monto'], ':medio'=>$medio,
-            ':referencia'=>null, ':banco'=>$bancoEmisor!==''?$bancoEmisor:null,
-            ':cheque'=>$numeroCheque!==''?$numeroCheque:null, ':fecha_cheque'=>$fechaCheque!==''?$fechaCheque:null,
-            ':observaciones'=>$observaciones!==''?$observaciones:null, ':usuario'=>(int)$_SESSION['usuario']['id'],
-        ]);
-        $idRecepcion=(int)$stmtRecepcion->fetchColumn();
-        if ($idRecepcion <= 0) {
-            throw new RuntimeException('No fue posible identificar la recepción de garantía registrada.');
-        }
-        $stmtMovimiento->execute([
-            ':cuenta'=>$idCuenta, ':fecha'=>$fecha, ':monto'=>$asignacion['monto'], ':medio'=>$medio,
-            ':referencia'=>$numeroCheque!==''?$numeroCheque:null,
-            ':recepcion'=>$idRecepcion, ':observaciones'=>$observaciones!==''?$observaciones:null,
-            ':usuario'=>(int)$_SESSION['usuario']['id'],
-        ]);
+    $stmtRecepcion->execute([
+        ':garantia'=>$idGarantiaOperativa, ':garantia_tienda'=>$idGarantiaTienda,
+        ':fecha'=>$fecha, ':monto'=>$monto, ':medio'=>$medio,
+        ':referencia'=>null, ':banco'=>$bancoEmisor!==''?$bancoEmisor:null,
+        ':cheque'=>$numeroCheque!==''?$numeroCheque:null, ':fecha_cheque'=>$fechaCheque!==''?$fechaCheque:null,
+        ':observaciones'=>$observaciones!==''?$observaciones:null, ':usuario'=>(int)$_SESSION['usuario']['id'],
+    ]);
+    $idRecepcion=(int)$stmtRecepcion->fetchColumn();
+    if ($idRecepcion <= 0) {
+        throw new RuntimeException('No fue posible identificar la recepción de garantía registrada.');
     }
+    $stmtMovimiento->execute([
+        ':cuenta'=>$idCuenta, ':fecha'=>$fecha, ':monto'=>$monto, ':medio'=>$medio,
+        ':referencia'=>$numeroCheque!==''?$numeroCheque:null,
+        ':recepcion'=>$idRecepcion, ':observaciones'=>$observaciones!==''?$observaciones:null,
+        ':usuario'=>(int)$_SESSION['usuario']['id'],
+    ]);
 
     $conn->commit();
     msp2SetFlash('success', ($modalidad==='TOTAL'?'Pago total':'Abono').' de garantía registrado y reflejado en tesorería.');
