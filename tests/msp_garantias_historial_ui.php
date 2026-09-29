@@ -76,6 +76,15 @@ $check('Historial no muestra leyendas narrativas', static function () use ($root
         && !str_contains($source, 'Monto trasladado:');
 });
 
+$check('Historial muestra movimientos en una sola tabla continua', static function () use ($root): bool {
+    $source = file_get_contents($root . '/msp/garantias/historial.php');
+    return is_string($source)
+        && substr_count($source, '<thead class="table-light">') === 1
+        && !str_contains($source, 'movimiento(s)</span>')
+        && !str_contains($source, '<div class="card-header')
+        && !str_contains($source, 'El historial de este arrendatario continúa');
+});
+
 $check('Primera página respeta máximo y orden', static function () use ($conn): bool|string {
     $rows = $conn->query(
         'SELECT *

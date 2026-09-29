@@ -13,10 +13,6 @@
     overflow: hidden;
 }
 
-.msp-guarantee-ledger-group .card-header {
-    background: #fff;
-}
-
 .msp-guarantee-ledger-table {
     min-width: 1260px;
     table-layout: fixed;
