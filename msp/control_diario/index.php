@@ -476,7 +476,7 @@ try {
                 $nivelCorreccion = 'AUTORIZACION';
             }
             $puedeAplicar = in_array($nivelCorreccion, ['EDICION_SIMPLE','REGENERACION_CONTROLADA'], true)
-                || ($nivelCorreccion === 'AUTORIZACION'
+                || (in_array($nivelCorreccion, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)
                     && $canAuthorizeProtectedCorrections);
             $payloadLectura = [
                 'id_lectura' => (int) ($lecturaElectricidad['id_lectura'] ?? 0),
@@ -3454,8 +3454,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
 
 <div class="modal fade" id="electricityCorrectionModal" tabindex="-1" aria-labelledby="electricityCorrectionModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <form method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="electricity-correction-form">
+        <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="electricity-correction-form">
                 <?php msp2CsrfField(); ?>
                 <input type="hidden" name="accion" value="crear">
                 <input type="hidden" name="entidad_afectada" value="lectura">
@@ -3522,8 +3521,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                     <button type="submit" class="btn btn-primary" id="electricity-submit">Registrar corrección</button>
                 </div>
-            </form>
-        </div>
+        </form>
     </div>
 </div>
 
@@ -4755,17 +4753,22 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                 className = 'alert alert-warning mb-3';
                 message = 'El período está cerrado o posee un asiento contable. La aplicación requerirá autorización; si existe asiento, se revertirá y regenerará con trazabilidad.';
             } else if (level === 'AJUSTE_FINANCIERO') {
-                className = 'alert alert-danger mb-3';
-                message = 'El documento tiene pagos, aplicaciones, respaldos o envíos asociados. No puede sobrescribirse: debe resolverse mediante un ajuste financiero formal.';
-                allowed = false;
+                className = reading.puede_aplicar === true
+                    ? 'alert alert-warning mb-3'
+                    : 'alert alert-danger mb-3';
+                message = reading.puede_aplicar === true
+                    ? 'El documento tiene movimientos protegidos. Se conservarán pagos, garantía, saldo a favor y envíos; se versionará el documento y se aplicará solamente la diferencia eléctrica.'
+                    : 'El documento tiene movimientos financieros protegidos. Se requiere permiso de cierre mensual o configuración para autorizar el ajuste.';
             } else if (level === 'REVISION') {
                 className = 'alert alert-danger mb-3';
                 message = 'El documento está anulado o no se encuentra disponible. La lectura requiere revisión antes de cualquier cambio.';
                 allowed = false;
             }
-            if (reading.puede_aplicar !== true && level !== 'AJUSTE_FINANCIERO' && level !== 'REVISION') {
+            if (reading.puede_aplicar !== true && level !== 'REVISION') {
                 className = 'alert alert-danger mb-3';
-                message = 'Tu usuario no posee el permiso requerido para autorizar esta corrección.';
+                if (level !== 'AJUSTE_FINANCIERO') {
+                    message = 'Tu usuario no posee el permiso requerido para autorizar esta corrección.';
+                }
                 allowed = false;
             }
             levelAlert.className = className;
