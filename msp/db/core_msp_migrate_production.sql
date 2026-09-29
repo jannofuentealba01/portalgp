@@ -150,3 +150,6 @@ PRINT '==== Garantia por tienda: bloque operativo ====';
 
 PRINT '==== Garantia por tienda: cierre de migracion ====';
 :r $(MSP_DB_DIR)\patch_garantia_por_tienda_bloque3.sql
+
+PRINT '==== Historial general de garantias: base consolidada ====';
+:r $(MSP_DB_DIR)\patch_garantias_historial_arrendatario_bloque1.sql

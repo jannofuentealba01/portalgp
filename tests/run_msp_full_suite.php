@@ -54,6 +54,8 @@ foreach ([
     'Regresión MSP' => 'msp_regression_suite.php',
     'Rendimiento interno MSP punto 1' => 'msp_performance_point1.php',
     'Valores completos junto al lápiz de Control Diario' => 'msp_control_diario_editable_values.php',
+    'Historial integral de garantías por arrendatario' => 'msp_garantias_historial_arrendatario.php',
+    'Vista y paginación del historial de garantías' => 'msp_garantias_historial_ui.php',
     'Prioridad de pagos' => 'msp_prioridad_imputacion_pagos.php',
     'Saldo a favor de período futuro' => 'msp_saldo_favor_periodo_futuro.php',
     'Auditoría histórica de saldo a favor' => 'msp_saldo_favor_historico_audit.php',
