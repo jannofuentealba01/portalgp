@@ -259,10 +259,27 @@
             min-width: 86px;
         }
 
-        .control-grid.month-single-mode .js-servicio-electricidad,
-        .control-grid.month-single-mode .js-servicio-gas,
-        .control-grid.month-single-mode .js-servicio-agua {
+        .control-grid.month-single-mode .js-servicio-electricidad {
             min-width: 96px;
+        }
+
+        .control-grid.month-single-mode .gas-col,
+        .control-grid.month-single-mode .agua-col,
+        .control-grid.month-single-mode .js-servicio-gas,
+        .control-grid.month-single-mode .js-servicio-agua,
+        .control-grid.month-single-mode .js-total-gas,
+        .control-grid.month-single-mode .js-total-agua {
+            width: 84px;
+            min-width: 84px;
+            max-width: 84px;
+        }
+
+        .control-grid.month-single-mode .reserva-col,
+        .control-grid.month-single-mode .js-reserva,
+        .control-grid.month-single-mode .js-total-reserva {
+            width: 76px;
+            min-width: 76px;
+            max-width: 76px;
         }
 
         .control-grid.month-single-mode .js-total {
@@ -534,14 +551,18 @@
 
         .control-grid .sticky-col-local {
             left: 0;
+            width: var(--sticky-local-width);
             min-width: var(--sticky-local-width);
             max-width: var(--sticky-local-width);
+            box-shadow: none;
         }
 
         .control-grid .sticky-col-arr {
             left: var(--sticky-local-width);
+            width: var(--sticky-arr-width);
             min-width: var(--sticky-arr-width);
             max-width: var(--sticky-arr-width);
+            border-left: 1px solid var(--color-border);
         }
 
         .cell-num {
