@@ -143,6 +143,34 @@ try {
     );
     rentDocumentAssert((int) $duringDoc['asientos_activos'] === 1, 'La contabilidad no quedó con un único asiento activo.');
 
+    rentDocumentAssert(
+        msp2ProcedureExists($conn, 'msp_registrar_pago_documento'),
+        'La prueba protegida requiere el procedimiento de pago documental.'
+    );
+    $saldoFavorAntes = (float) ($conn->query(
+        'SELECT ISNULL(saldo_disponible,0) FROM dbo.msp_saldos_favor_tienda WHERE id_tienda=' . (int) $candidate['id_tienda']
+    )->fetchColumn() ?: 0);
+    $registrarPago = $conn->prepare(
+        'EXEC dbo.msp_registrar_pago_documento
+            @id_documento_cobro=:documento,@fecha_pago=:fecha,@monto_pagado=:monto,
+            @medio_pago=N\'PRUEBA\',@referencia_pago=N\'UF-AJUSTE-ROLLBACK\',
+            @observaciones=N\'Pago temporal para validar ajuste financiero protegido\''
+    );
+    $registrarPago->execute([
+        ':documento' => (int) $candidate['id_documento_cobro'],
+        ':fecha' => date('Y-m-d'),
+        ':monto' => (float) $duringDoc['monto_total'],
+    ]);
+    while ($registrarPago->nextRowset()) {
+        // Consumir todos los resultados del procedimiento antes de continuar.
+    }
+    $pagosProtegidos = $conn->prepare(
+        'SELECT COUNT(*) FROM dbo.msp_pagos
+         WHERE id_documento_cobro=:documento AND estado_pago=1'
+    );
+    $pagosProtegidos->execute([':documento' => (int) $candidate['id_documento_cobro']]);
+    rentDocumentAssert((int) $pagosProtegidos->fetchColumn() === 1, 'No se creó el pago protegido de prueba.');
+
     $qDetalle = $conn->prepare(
         'SELECT subtotal FROM dbo.msp_documentos_cobro_detalle WHERE id_detalle_documento=:detalle'
     );
@@ -163,7 +191,7 @@ try {
         'entidad_afectada' => 'arriendo',
         'id_registro_origen' => (int) $candidate['id_snapshot_arriendo'],
         'estado_correccion' => 'BORRADOR',
-        'nivel_correcion' => 'AUTORIZACION',
+        'nivel_correcion' => 'AJUSTE_FINANCIERO',
         'valor_anterior' => ['monto_neto_clp' => $netoNuevo, 'valor_base_uf' => $ufNueva],
         'valor_nuevo' => 0,
         'motivo' => 'Prueba reversible de arriendo cero con servicios',
@@ -176,11 +204,11 @@ try {
                 'id_documento_cobro' => (int) $candidate['id_documento_cobro'],
                 'cero_autorizado' => 1,
             ],
-            'clasificacion' => ['nivel' => 'AUTORIZACION'],
+            'clasificacion' => ['nivel' => 'AJUSTE_FINANCIERO'],
         ],
     ], $userId);
-    CorreccionesService::cambiarEstado($conn, $zeroCorrectionId, 'APROBADA', $userId, 'Prueba temporal de arriendo cero.');
-    CorreccionesService::ejecutar($conn, $zeroCorrectionId, $userId);
+    CorreccionesService::cambiarEstado($conn, $zeroCorrectionId, 'APROBADA', $userId, 'Prueba temporal de ajuste financiero protegido.');
+    $zeroResult = CorreccionesService::ejecutar($conn, $zeroCorrectionId, $userId);
     $qSnapshot->execute([':snapshot' => (int) $candidate['id_snapshot_arriendo']]);
     $zeroSnapshot = $qSnapshot->fetch(PDO::FETCH_ASSOC);
     rentDocumentAssert(abs((float) $zeroSnapshot['valor_base_uf']) < 0.000001, 'La UF Base cero no fue conservada.');
@@ -190,6 +218,24 @@ try {
     $qDoc->execute([':documento' => (int) $candidate['id_documento_cobro']]);
     $zeroDoc = $qDoc->fetch(PDO::FETCH_ASSOC);
     rentDocumentAssert((int) $zeroDoc['asientos_activos'] === 1, 'El documento de servicios no conservó un asiento activo.');
+    rentDocumentAssert(abs((float) $zeroDoc['saldo_pendiente']) < 0.01, 'El ajuste protegido no conservó el documento saldado.');
+    $pagosProtegidos->execute([':documento' => (int) $candidate['id_documento_cobro']]);
+    rentDocumentAssert((int) $pagosProtegidos->fetchColumn() === 1, 'El ajuste financiero alteró el pago existente.');
+    $saldoFavorGenerado = round((float) ($zeroResult['documento']['saldo_favor_generado'] ?? 0), 2);
+    rentDocumentAssert($saldoFavorGenerado > 0, 'La reducción protegida no generó el saldo a favor esperado.');
+    $saldoFavorDurante = (float) ($conn->query(
+        'SELECT ISNULL(saldo_disponible,0) FROM dbo.msp_saldos_favor_tienda WHERE id_tienda=' . (int) $candidate['id_tienda']
+    )->fetchColumn() ?: 0);
+    rentDocumentAssert(
+        abs($saldoFavorDurante - ($saldoFavorAntes + $saldoFavorGenerado)) < 0.01,
+        'El saldo a favor de la tienda no refleja el excedente de la corrección.'
+    );
+    $qEstrategia = $conn->prepare('SELECT estrategia_ejecucion FROM dbo.msp_correcciones WHERE id_correccion=:correccion');
+    $qEstrategia->execute([':correccion' => $zeroCorrectionId]);
+    rentDocumentAssert(
+        (string) $qEstrategia->fetchColumn() === 'ARRIENDO_UF_AJUSTE_FINANCIERO',
+        'La corrección protegida no quedó identificada como ajuste financiero.'
+    );
 
     $conn->rollBack();
     $qSnapshot->execute([':snapshot' => (int) $candidate['id_snapshot_arriendo']]);
@@ -200,7 +246,7 @@ try {
     rentDocumentAssert(abs((float) $afterDoc['monto_total'] - (float) $candidate['monto_documento']) < 0.01, 'El rollback no restauró el documento.');
     rentDocumentAssert((int) $afterDoc['asientos_activos'] === (int) $candidate['asientos_activos'], 'El rollback no restauró la contabilidad.');
 
-    echo "OK: UF Base, arriendo cero, documento de servicios, PDF, trazabilidad, contabilidad y rollback validados.\n";
+    echo "OK: UF Base, ajuste financiero protegido, pagos, saldo a favor, PDF, trazabilidad, contabilidad y rollback validados.\n";
 } catch (Throwable $e) {
     if ($conn->inTransaction()) {
         $conn->rollBack();
