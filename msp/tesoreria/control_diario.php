@@ -10,6 +10,7 @@ $cuentas = [];
 $cajas = [];
 $bancos = [];
 $movimientos = [];
+$administrativos = [];
 $depositos = [];
 $fecha = trim((string) ($_GET['fecha'] ?? date('Y-m-d')));
 $date = DateTimeImmutable::createFromFormat('!Y-m-d', $fecha);
@@ -51,6 +52,19 @@ try {
     );
     $statement->execute([':fecha' => $fecha]);
     $movimientos = $statement->fetchAll() ?: [];
+    if (msp2TableExists($conn, 'msp_vw_garantia_devolucion_caja_admin')) {
+        $statement = $conn->prepare(
+            "SELECT a.*,c.nombre_cuenta,c.tipo_cuenta,c.banco,
+                    b.nombre_cuenta AS banco_origen,tm.fecha_registro AS fecha_evento
+             FROM dbo.msp_vw_garantia_devolucion_caja_admin a
+             JOIN dbo.msp_tesoreria_cuentas c ON c.id_cuenta_tesoreria=a.id_cuenta_tesoreria
+             JOIN dbo.msp_tesoreria_cuentas b ON b.id_cuenta_tesoreria=a.id_cuenta_banco_origen
+             JOIN dbo.msp_tesoreria_movimientos tm ON tm.id_movimiento_tesoreria=a.id_movimiento_tesoreria_origen
+             WHERE a.fecha_movimiento=:fecha"
+        );
+        $statement->execute([':fecha' => $fecha]);
+        $administrativos = $statement->fetchAll() ?: [];
+    }
 
     $statement = $conn->prepare(
         "SELECT d.*,cc.nombre_cuenta caja,cb.nombre_cuenta cuenta_banco,cb.banco
@@ -78,6 +92,17 @@ foreach ($movimientos as $movimiento) {
         $salidaDia += (float) $movimiento['monto'];
     }
 }
+// Solo se combinan para mostrarlos. Los indicadores y saldos usan dinero real.
+$registros = array_merge($movimientos, $administrativos);
+usort($registros, static function (array $a, array $b): int {
+    $byDate = strcmp((string) ($b['fecha_evento'] ?? $b['fecha_registro']), (string) ($a['fecha_evento'] ?? $a['fecha_registro']));
+    if ($byDate !== 0) {
+        return $byDate;
+    }
+    $byOrigin = (int) ($b['id_movimiento_tesoreria_origen'] ?? $b['id_movimiento_tesoreria'])
+        <=> (int) ($a['id_movimiento_tesoreria_origen'] ?? $a['id_movimiento_tesoreria']);
+    return $byOrigin !== 0 ? $byOrigin : (int) ($a['orden_movimiento'] ?? 0) <=> (int) ($b['orden_movimiento'] ?? 0);
+});
 ?>
 <!doctype html>
 <html lang="es">
@@ -107,8 +132,8 @@ foreach ($movimientos as $movimiento) {
         <div class="td-control-summary-inner">
             <form method="get" class="td-date-form"><div class="td-date-field"><label class="form-label">Fecha de control</label><input type="date" name="fecha" class="form-control" value="<?php echo msp2Escape($fecha); ?>"></div><button class="btn btn-primary">Consultar</button></form>
             <div class="td-day-metrics">
-                <div class="td-day-metric td-day-metric--in"><small>Entradas del día</small><strong class="text-success"><?php echo msp2Escape(tdMonto($entradaDia)); ?></strong></div>
-                <div class="td-day-metric td-day-metric--out"><small>Salidas del día</small><strong class="text-danger"><?php echo msp2Escape(tdMonto($salidaDia)); ?></strong></div>
+                <div class="td-day-metric td-day-metric--in"><small>Entradas reales del día</small><strong class="text-success"><?php echo msp2Escape(tdMonto($entradaDia)); ?></strong></div>
+                <div class="td-day-metric td-day-metric--out"><small>Salidas reales del día</small><strong class="text-danger"><?php echo msp2Escape(tdMonto($salidaDia)); ?></strong></div>
                 <div class="td-day-metric td-day-metric--net"><small>Flujo neto del día</small><strong><?php echo msp2Escape(tdMonto($entradaDia - $salidaDia)); ?></strong></div>
             </div>
         </div>
@@ -133,17 +158,19 @@ foreach ($movimientos as $movimiento) {
         <div class="col-xl-7">
             <div class="card shadow-sm">
                 <div class="card-header fw-semibold">Movimientos del <?php echo msp2Escape((new DateTimeImmutable($fecha))->format('d-m-Y')); ?></div>
+                <?php if ($administrativos !== []): ?><p class="small text-muted px-3 pt-2 mb-2">Los registros administrativos dejan trazabilidad en caja, pero no forman parte de los saldos ni de las entradas y salidas reales.</p><?php endif; ?>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0 gp-table-compact gp-table-mobile-cards td-movements-table">
                         <thead class="table-light"><tr><th>Cuenta</th><th>Operación / medio</th><th>Referencia</th><th class="text-end">Movimiento</th><th>Estado</th></tr></thead>
                         <tbody>
-                        <?php if ($movimientos === []): ?><tr><td colspan="5" class="text-center text-muted py-4">Sin movimientos para esta fecha.</td></tr><?php endif; ?>
-                        <?php foreach ($movimientos as $movimiento): ?>
-                            <tr>
+                        <?php if ($registros === []): ?><tr><td colspan="5" class="text-center text-muted py-4">Sin movimientos para esta fecha.</td></tr><?php endif; ?>
+                        <?php foreach ($registros as $movimiento): ?>
+                            <?php $esAdministrativo = (bool) ($movimiento['es_administrativo'] ?? false); ?>
+                            <tr class="<?php echo $esAdministrativo ? 'td-movement-admin' : ''; ?>">
                                 <td><div class="fw-semibold"><?php echo msp2Escape((string) $movimiento['nombre_cuenta']); ?></div><div class="small text-muted"><?php echo msp2Escape((string) ($movimiento['tipo_cuenta'] ?? '')); ?></div></td>
-                                <td><div><?php echo msp2Escape(str_replace('_', ' ', (string) $movimiento['tipo_movimiento'])); ?></div><div class="small text-muted"><?php echo msp2Escape((string) $movimiento['medio_pago']); ?></div></td>
-                                <td><?php echo msp2Escape((string) ($movimiento['referencia'] ?? '-')); ?></td>
-                                <td class="text-end fw-semibold <?php echo $movimiento['naturaleza'] === 'E' ? 'text-success' : 'text-danger'; ?>"><?php echo $movimiento['naturaleza'] === 'E' ? '+' : '-'; ?> <?php echo msp2Escape(tdMonto($movimiento['monto'])); ?></td>
+                                <td><div><?php echo $esAdministrativo ? ($movimiento['naturaleza'] === 'E' ? 'Entrada administrativa' : 'Salida administrativa') : msp2Escape(str_replace('_', ' ', (string) $movimiento['tipo_movimiento'])); ?></div><div class="small text-muted"><?php echo msp2Escape((string) $movimiento['medio_pago']); ?></div><?php if ($esAdministrativo): ?><span class="badge text-bg-info">Sin movimiento de efectivo</span><div class="small text-muted">Origen: <?php echo msp2Escape((string) $movimiento['banco_origen']); ?></div><?php else: ?><span class="badge text-bg-light">Movimiento real</span><?php endif; ?></td>
+                                <td><?php echo msp2Escape((string) ($movimiento['referencia'] ?? '-')); ?><?php if (!empty($movimiento['id_devolucion_garantia'])): ?><div class="small text-muted">Devolución #<?php echo (int) $movimiento['id_devolucion_garantia']; ?></div><?php endif; ?></td>
+                                <td class="text-end fw-semibold text-nowrap <?php echo $esAdministrativo ? 'text-muted' : ($movimiento['naturaleza'] === 'E' ? 'text-success' : 'text-danger'); ?>"><?php echo $movimiento['naturaleza'] === 'E' ? '+' : '-'; ?> <?php echo msp2Escape(tdMonto($movimiento['monto'])); ?><?php if ($esAdministrativo): ?><div class="small fw-normal">Efecto en efectivo: $ 0,00</div><?php endif; ?></td>
                                 <td><span class="badge text-bg-secondary"><?php echo msp2Escape((string) $movimiento['estado_movimiento']); ?></span></td>
                             </tr>
                         <?php endforeach; ?>
