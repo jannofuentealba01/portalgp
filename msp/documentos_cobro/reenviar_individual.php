@@ -63,6 +63,7 @@ try {
             $periodoReenvio,
             null,
             'web-doc-individual',
+            false,
             true
         );
         $msg = 'Reenvío del PDF ejecutado para documento #' . (int) $idDocumentoReenvio

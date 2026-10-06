@@ -323,7 +323,7 @@ final class EnvioDemoService
             if ($docId <= 0) {
                 continue;
             }
-            [$valeFilename, $valePdf] = msp2BuildDocumentoCobroValeResumenPdf($conn, $docId);
+            [$valeFilename, $valePdf] = msp2BuildDocumentoCobroValePdf($conn, $docId);
             $mail->addStringAttachment($valePdf, $valeFilename, 'base64', 'application/pdf');
         }
 
