@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/cobranza/mail_templates/vale_pago_pdf.php';
 require_once dirname(__DIR__) . '/cobranza/mail_templates/comprobante_gastos_pdf.php';
-require_once dirname(__DIR__) . '/cobros/mail_templates/vale_cobro_email.php';
 require_once dirname(__DIR__) . '/documentos_cobro/vale_lib.php';
 require_once dirname(__DIR__, 2) . '/security.php';
 
@@ -196,126 +195,6 @@ function msp2ArchivosPdfNormalizeItem(PDO $conn, array $item): array
     return $item;
 }
 
-function msp2ArchivosPdfFetchValeCobroMailContext(PDO $conn, int $idDocumentoCobro): array
-{
-    if ($idDocumentoCobro <= 0) {
-        throw new RuntimeException('Documento inválido para vale de cobro.');
-    }
-
-    $hasArrCorreos = msp2TableExists($conn, 'msp_arrendatarios_correos');
-    $correoJoin = $hasArrCorreos
-        ? 'LEFT JOIN dbo.msp_arrendatarios_correos ac
-                ON ac.id_arrendatario = a.id_arrendatario'
-        : '';
-    $correoSelect = $hasArrCorreos
-        ? 'MAX(CASE WHEN ac.es_principal = 1 THEN ac.correo END) AS correo_principal'
-        : "'' AS correo_principal";
-
-    $stmt = $conn->prepare(
-        "SELECT
-            dc.id_documento_cobro,
-            COALESCE(NULLIF(dc.numero_documento, ''), CONCAT(N'DOC-', dc.id_documento_cobro)) AS numero_documento,
-            dc.monto_total,
-            dc.saldo_pendiente,
-            CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
-            a.id_arrendatario,
-            COALESCE(
-                NULLIF(LTRIM(RTRIM(dc.nombre_arrendatario_snapshot)), ''),
-                NULLIF(LTRIM(RTRIM(a.nombre_locatario)), ''),
-                NULLIF(LTRIM(RTRIM(a.nombre_representante)), ''),
-                NULLIF(LTRIM(RTRIM(a.rut)), ''),
-                CONCAT(N'Arrendatario #', a.id_arrendatario)
-            ) AS nombre_arrendatario,
-            COALESCE(NULLIF(LTRIM(RTRIM(dc.rut_arrendatario_snapshot)), ''), LTRIM(RTRIM(a.rut)), '') AS rut,
-            $correoSelect
-         FROM dbo.msp_documentos_cobro dc
-         INNER JOIN dbo.msp_tiendas t
-            ON t.id_tienda = dc.id_tienda
-         INNER JOIN dbo.msp_arrendatarios a
-            ON a.id_arrendatario = t.id_arrendatario
-         $correoJoin
-         WHERE dc.id_documento_cobro = :id_documento
-         GROUP BY
-            dc.id_documento_cobro,
-            dc.numero_documento,
-            dc.monto_total,
-            dc.saldo_pendiente,
-            dc.periodo_facturacion,
-            dc.nombre_arrendatario_snapshot,
-            dc.rut_arrendatario_snapshot,
-            a.id_arrendatario,
-            a.nombre_locatario,
-            a.nombre_representante,
-            a.rut"
-    );
-    $stmt->bindValue(':id_documento', $idDocumentoCobro, PDO::PARAM_INT);
-    $stmt->execute();
-    $row = $stmt->fetch();
-    if (!is_array($row)) {
-        throw new RuntimeException('No fue posible cargar contexto de vale de cobro.');
-    }
-
-    return [
-        'arr_row' => [
-            'id_arrendatario' => (int) ($row['id_arrendatario'] ?? 0),
-            'nombre_arrendatario' => (string) ($row['nombre_arrendatario'] ?? ''),
-            'rut' => (string) ($row['rut'] ?? ''),
-            'correo_principal' => trim((string) ($row['correo_principal'] ?? '')),
-        ],
-        'doc_row' => [
-            'id_documento_cobro' => (int) ($row['id_documento_cobro'] ?? 0),
-            'numero_documento' => (string) ($row['numero_documento'] ?? ''),
-            'monto_total' => (float) ($row['monto_total'] ?? 0),
-            'saldo_pendiente' => (float) ($row['saldo_pendiente'] ?? 0),
-        ],
-        'periodo_ym' => (string) ($row['periodo_ym'] ?? ''),
-    ];
-}
-
-function msp2ArchivosPdfCompactValeCobroHtml(string $html): string
-{
-    $search = [
-        'max-width:720px',
-        'font-size:28px',
-        'font-size:38px',
-        'font-size:46px',
-        'font-size:13px;',
-        'font-size:12px',
-        'padding:12px',
-        'padding:8px',
-        'padding:6px 8px',
-        'height:18px',
-        'height:8px',
-        'border:4px solid #000',
-        'border:3px solid #000',
-        'margin:0 auto 20px auto',
-    ];
-    $replace = [
-        'max-width:660px',
-        'font-size:18px',
-        'font-size:23px',
-        'font-size:30px',
-        'font-size:10px;',
-        'font-size:9px',
-        'padding:8px',
-        'padding:5px',
-        'padding:4px 5px',
-        'height:8px',
-        'height:4px',
-        'border:2px solid #000',
-        'border:1px solid #000',
-        'margin:0 auto 10px auto',
-    ];
-
-    $compacted = str_replace($search, $replace, $html);
-
-    return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><style>'
-        . '@page{margin:18px 22px;}'
-        . 'body{font-family:Arial,DejaVu Sans,sans-serif;color:#111;margin:0;padding:0;}'
-        . 'table{page-break-inside:avoid;}'
-        . '</style></head><body>' . $compacted . '</body></html>';
-}
-
 function msp2ArchivosPdfBuildPdf(PDO $conn, string $type, array $item): array
 {
     $pagoData = is_array($item['pago_data'] ?? null) ? $item['pago_data'] : [];
@@ -350,28 +229,11 @@ function msp2ArchivosPdfBuildPdf(PDO $conn, string $type, array $item): array
         if ($sourceId <= 0) {
             throw new RuntimeException('Vale de cobro sin documento válido.');
         }
-        $context = msp2ArchivosPdfFetchValeCobroMailContext($conn, $sourceId);
-        [$filename] = msp2BuildDocumentoCobroValePdf($conn, $sourceId);
-        [, $html] = omBuildCobroEmailContent(
-            $conn,
-            (array) ($context['arr_row'] ?? []),
-            [(array) ($context['doc_row'] ?? [])],
-            (string) ($context['periodo_ym'] ?? '')
-        );
-        $html = msp2ArchivosPdfCompactValeCobroHtml($html);
-        msp2ArchivosPdfRequireDompdf();
-        $options = new \Dompdf\Options();
-        $options->set('isRemoteEnabled', true);
-        $options->set('isHtml5ParserEnabled', true);
-        $options->set('defaultFont', 'DejaVu Sans');
-        $pdf = new \Dompdf\Dompdf($options);
-        $pdf->setPaper('A4', 'portrait');
-        $pdf->loadHtml($html, 'UTF-8');
-        $pdf->render();
+        [$filename, $bytes] = msp2BuildDocumentoCobroValePdf($conn, $sourceId);
 
         return [
             'filename' => $filename,
-            'bytes' => $pdf->output(),
+            'bytes' => $bytes,
             'mime_type' => 'application/pdf',
         ];
     }

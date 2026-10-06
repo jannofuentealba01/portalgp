@@ -1062,7 +1062,8 @@ final class EnvioLotesProgramadosService
         string $periodoFacturacion,
         ?int $forceBatchSize = null,
         string $workerId = 'manual-force',
-        bool $enviarPdfDetallado = false
+        bool $enviarPdfDetallado = false,
+        bool $permitirDocumentosYaEnviados = false
     ): array {
         if ($idLote <= 0) {
             throw new RuntimeException('Lote inválido para ejecutar.');
@@ -1102,7 +1103,13 @@ final class EnvioLotesProgramadosService
             throw new RuntimeException('El lote no está disponible para forzar envío en su estado actual.');
         }
 
-        return self::processSingleLote($conn, $idLote, $forceBatchSize, $enviarPdfDetallado);
+        return self::processSingleLote(
+            $conn,
+            $idLote,
+            $forceBatchSize,
+            $enviarPdfDetallado,
+            $permitirDocumentosYaEnviados
+        );
     }
 
     public static function cancelActiveLotesByPeriodo(PDO $conn, string $periodoFacturacion): int
@@ -1572,7 +1579,13 @@ final class EnvioLotesProgramadosService
         }
     }
 
-    private static function processSingleLote(PDO $conn, int $idLote, ?int $forceBatchSize = null, bool $enviarPdfDetallado = false): array
+    private static function processSingleLote(
+        PDO $conn,
+        int $idLote,
+        ?int $forceBatchSize = null,
+        bool $enviarPdfDetallado = false,
+        bool $permitirDocumentosYaEnviados = false
+    ): array
     {
         $loteStmt = $conn->prepare(
             'SELECT
@@ -1661,7 +1674,7 @@ final class EnvioLotesProgramadosService
                 $omitidosBatch++;
                 continue;
             }
-            if (!$enviarPdfDetallado) {
+            if (!$permitirDocumentosYaEnviados) {
                 $docs = self::filterDocsAlreadySentInOtherLotes(
                     $conn,
                     $docs,
@@ -1956,7 +1969,7 @@ final class EnvioLotesProgramadosService
                 require_once dirname(__DIR__, 2) . '/documentos_cobro/pdf.php';
                 [$filename, $pdf] = msp2BuildDocumentoCobroDetailedPdf($conn, $docId);
             } else {
-                [$filename, $pdf] = msp2BuildDocumentoCobroValeResumenPdf($conn, $docId);
+                [$filename, $pdf] = msp2BuildDocumentoCobroValePdf($conn, $docId);
             }
             $mail->addStringAttachment($pdf, $filename, 'base64', 'application/pdf');
         }
