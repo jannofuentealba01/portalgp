@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once __DIR__ . '/caja_admin_historial.php';
 msp2RequireAccess();
 
 $id = filter_input(INPUT_GET, 'id_garantia_tienda', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
@@ -28,10 +29,19 @@ try {
     }
 
     $historyStatement = $conn->prepare(
-        'SELECT * FROM dbo.msp_vw_garantia_tienda_historial_integral WHERE id_garantia_tienda=:id ORDER BY fecha,id_origen'
+        'SELECT id_evento AS id_origen,fecha_evento AS fecha,codigo_evento AS tipo,concepto,
+                monto_operacion AS monto,COALESCE(signo,N\'—\') AS signo,estado_evento AS estado,
+                id_documento_cobro AS id_documento,COALESCE(id_cargo_contrato_local,id_cargo_salida) AS id_cargo,
+                medio,cuenta,referencia,observaciones
+         FROM dbo.msp_vw_garantias_historial_arrendatario WHERE id_garantia_tienda=:id
+         ORDER BY fecha_evento,prioridad_evento,fecha_registro,origen_evento,id_evento'
     );
     $historyStatement->execute([':id' => (int) $id]);
     $movimientos = $historyStatement->fetchAll() ?: [];
+    $historyStatement->closeCursor();
+    $cajaAdministrativa = msp2GarantiasCajaAdminHistorial($conn, array_column(
+        array_filter($movimientos, static fn(array $row): bool => $row['tipo'] === 'DEVOLUCION'), 'id_origen'
+    ));
 } catch (Throwable $exception) {
     $error = pgpPublicOrBusinessException($exception, 'msp.garantias.ficha', 'No fue posible cargar la ficha.');
 }
@@ -111,6 +121,9 @@ function gfMonto(mixed $value): string
                             <td>
                                 <div><?php echo msp2Escape((string) ($movimiento['medio'] ?? '-')); ?></div>
                                 <div class="small text-muted"><?php echo msp2Escape((string) ($movimiento['cuenta'] ?? '')); ?></div>
+                                <?php if ($movimiento['tipo'] === 'DEVOLUCION'): ?>
+                                    <?php echo msp2GarantiasCajaAdminDetalle($cajaAdministrativa[(int) $movimiento['id_origen']] ?? []); ?>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <div><?php echo msp2Escape($origen); ?></div>

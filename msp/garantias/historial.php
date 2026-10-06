@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once __DIR__ . '/caja_admin_historial.php';
 
 msp2RequireAccess('MSP Reportes');
 
@@ -261,6 +262,10 @@ try {
     $dataStatement->bindValue(':limite', MSP2_GARANTIAS_HISTORIAL_POR_PAGINA, PDO::PARAM_INT);
     $dataStatement->execute();
     $movimientos = $dataStatement->fetchAll() ?: [];
+    $dataStatement->closeCursor();
+    $cajaAdministrativa = msp2GarantiasCajaAdminHistorial($conn, array_column(
+        array_filter($movimientos, static fn(array $row): bool => $row['codigo_evento'] === 'DEVOLUCION'), 'id_evento'
+    ));
 } catch (Throwable $exception) {
     $error = pgpPublicOrBusinessException(
         $exception,
@@ -424,6 +429,9 @@ $paginationItems = msp2GarantiasHistorialPaginas($pagina, $totalPaginas);
                                 <td data-gp-label="Movimiento">
                                     <span class="msp-guarantee-ledger-movement"><?php echo msp2Escape($nombreMovimiento); ?></span>
                                     <div class="small text-muted mt-1"><?php echo msp2Escape((string) $movimiento['estado_evento']); ?></div>
+                                    <?php if ($codigoEvento === 'DEVOLUCION'): ?>
+                                        <?php echo msp2GarantiasCajaAdminDetalle($cajaAdministrativa[(int) $movimiento['id_evento']] ?? []); ?>
+                                    <?php endif; ?>
                                 </td>
                                 <td data-gp-label="Recepción" class="text-end fw-semibold text-success text-nowrap msp-guarantee-ledger-amount">
                                     <?php echo (float) $movimiento['monto_entrada'] > 0 ? msp2Escape(msp2GarantiasHistorialMonto($movimiento['monto_entrada'])) : '—'; ?>
