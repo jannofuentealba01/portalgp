@@ -82,6 +82,7 @@ $serviceTotalsByTiendaMonth = [];
 $electricityReadingsByTiendaMonth = [];
 $gasReadingsByTiendaMonth = [];
 $waterReadingsByTiendaMonth = [];
+$fineItemsByTiendaMonth = [];
 $reservaByTiendaMonth = [];
 $reservaBreakdownByTiendaMonth = [];
 $docStatusByTiendaMonth = [];
@@ -103,6 +104,7 @@ $canCorrectElectricity = msp2CurrentUserHasPermission('MSP Operacion', 'escritur
 $canCorrectGas = $canCorrectElectricity;
 $canCorrectWater = $canCorrectElectricity;
 $canCorrectRent = $canCorrectElectricity;
+$canCorrectFines = $canCorrectElectricity;
 
 function msp2ControlDiarioLocalSortWeight(string $code): array
 {
@@ -830,7 +832,8 @@ try {
             'sql' => "SELECT
                 dc.id_tienda,
                 CONVERT(CHAR(7), dc.periodo_facturacion, 126) AS periodo_ym,
-                ROUND(SUM(CASE WHEN tid.codigo_item IN (N'MULTA', N'DANO', N'DANOS') THEN dcd.subtotal ELSE 0 END), 2) AS monto_danos_multas,
+                ROUND(SUM(CASE WHEN tid.codigo_item = N'MULTA' THEN dcd.subtotal ELSE 0 END), 2) AS monto_multas,
+                ROUND(SUM(CASE WHEN tid.codigo_item IN (N'DANO', N'DANOS') THEN dcd.subtotal ELSE 0 END), 2) AS monto_danos,
                 ROUND(SUM(
                     CASE
                         WHEN tid.codigo_item IN (N'AJUSTE', N'CARGO_EXTRA', N'EXTRA')
@@ -1240,6 +1243,64 @@ try {
             ],
         ];
     }
+    if (
+        $canCorrectFines
+        && msp2TableExists($conn, 'msp_cargos_contrato_local')
+        && msp2TableExists($conn, 'msp_tipos_cargo_salida')
+        && msp2TableExists($conn, 'msp_contrato_locales')
+        && msp2TableExists($conn, 'msp_contratos_arriendo')
+        && msp2TableExists($conn, 'msp_locales')
+        && msp2TableExists($conn, 'msp_documentos_cobro')
+        && msp2TableExists($conn, 'msp_cierre_mensual')
+    ) {
+        $controlMainBatchQueries['fineItems'] = [
+            'sql' => "SELECT
+                ca.id_tienda,
+                ca.id_contrato_arriendo,
+                cl.id_local,
+                l.cdo_local,
+                ccl.id_cargo_contrato_local,
+                ccl.id_cargo_salida_legacy,
+                ccl.descripcion_cargo,
+                ccl.monto_cargo,
+                ccl.estado_cargo,
+                ccl.id_documento_cobro,
+                ccl.monto_aplicado_garantia,
+                ccl.monto_pagado_directo,
+                CONVERT(char(7),COALESCE(ccl.periodo_referencia,ccl.fecha_cargo),126) AS periodo_ym,
+                doc.numero_documento,
+                doc.monto_total AS monto_documento,
+                doc.saldo_pendiente AS saldo_documento,
+                doc.estado_documento,
+                ISNULL(cm.estado_cierre,0) AS estado_cierre,
+                $protectedDocumentSelectSql AS tiene_dependencias_protegidas,
+                $activeAccountingEntrySelectSql AS tiene_asiento_activo
+             FROM dbo.msp_cargos_contrato_local ccl
+             INNER JOIN dbo.msp_tipos_cargo_salida tc
+                ON tc.id_tipo_cargo_salida=ccl.id_tipo_cargo_salida
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_local=ccl.id_contrato_local
+             INNER JOIN dbo.msp_contratos_arriendo ca
+                ON ca.id_contrato_arriendo=cl.id_contrato_arriendo
+             INNER JOIN dbo.msp_locales l
+                ON l.id_local=cl.id_local
+             LEFT JOIN dbo.msp_documentos_cobro doc
+                ON doc.id_documento_cobro=ccl.id_documento_cobro
+             LEFT JOIN dbo.msp_cierre_mensual cm
+                ON cm.periodo_facturacion=COALESCE(ccl.periodo_referencia,DATEFROMPARTS(YEAR(ccl.fecha_cargo),MONTH(ccl.fecha_cargo),1))
+             $protectedDocumentJoinSql
+             $activeAccountingEntryJoinSql
+             WHERE UPPER(LTRIM(RTRIM(tc.codigo_tipo_cargo)))=N'MULTA'
+               AND ccl.estado_cargo<>5
+               AND COALESCE(ccl.periodo_referencia,ccl.fecha_cargo)>=:fine_period_start
+               AND COALESCE(ccl.periodo_referencia,ccl.fecha_cargo)<:fine_period_end
+             ORDER BY COALESCE(ccl.periodo_referencia,ccl.fecha_cargo),l.cdo_local,ccl.id_cargo_contrato_local",
+            'params' => [
+                ':fine_period_start' => [$dataPeriodStart, PDO::PARAM_STR],
+                ':fine_period_end' => [$dataPeriodEndExclusive, PDO::PARAM_STR],
+            ],
+        ];
+    }
     $controlMainBatch = msp2FetchReadBatch($conn, $controlMainBatchQueries);
     $perfMark('carga_datos_control_agrupada');
 
@@ -1265,9 +1326,10 @@ try {
         while (($reservaRow = $reservaCargosStmt->fetch()) !== false) {
             $idTiendaReserva = (int) ($reservaRow['id_tienda'] ?? 0);
             $periodoReserva = trim((string) ($reservaRow['periodo_ym'] ?? ''));
-            $montoDanosMultas = round((float) ($reservaRow['monto_danos_multas'] ?? 0), 2);
+            $montoMultas = round((float) ($reservaRow['monto_multas'] ?? 0), 2);
+            $montoDanos = round((float) ($reservaRow['monto_danos'] ?? 0), 2);
             $montoOtrosCargos = round((float) ($reservaRow['monto_otros_cargos'] ?? 0), 2);
-            $montoReserva = round($montoDanosMultas + $montoOtrosCargos, 2);
+            $montoReserva = round($montoMultas + $montoDanos + $montoOtrosCargos, 2);
             if ($idTiendaReserva <= 0 || $periodoReserva === '' || !isset($months[$periodoReserva])) {
                 continue;
             }
@@ -1284,13 +1346,18 @@ try {
             }
             if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva])) {
                 $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva] = [
-                    'danos_multas' => 0.0,
+                    'multas' => 0.0,
+                    'danos' => 0.0,
                     'otros_cargos' => 0.0,
                     'saldo_favor_aplicado' => 0.0,
                 ];
             }
-            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['danos_multas'] = round(
-                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['danos_multas'] ?? 0) + $montoDanosMultas,
+            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['multas'] = round(
+                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['multas'] ?? 0) + $montoMultas,
+                2
+            );
+            $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['danos'] = round(
+                (float) ($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['danos'] ?? 0) + $montoDanos,
                 2
             );
             $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva]['otros_cargos'] = round(
@@ -1323,7 +1390,8 @@ try {
             }
             if (!isset($reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva])) {
                 $reservaBreakdownByTiendaMonth[$idTiendaReserva][$periodoReserva] = [
-                    'danos_multas' => 0.0,
+                    'multas' => 0.0,
+                    'danos' => 0.0,
                     'otros_cargos' => 0.0,
                     'saldo_favor_aplicado' => 0.0,
                 ];
@@ -1335,6 +1403,91 @@ try {
         }
     }
     $perfMark('carga_reserva_saldo_favor');
+
+    if (
+        $canCorrectFines
+        && msp2TableExists($conn, 'msp_cargos_contrato_local')
+        && msp2TableExists($conn, 'msp_tipos_cargo_salida')
+        && msp2TableExists($conn, 'msp_contrato_locales')
+        && msp2TableExists($conn, 'msp_contratos_arriendo')
+        && msp2TableExists($conn, 'msp_locales')
+        && msp2TableExists($conn, 'msp_documentos_cobro')
+        && msp2TableExists($conn, 'msp_cierre_mensual')
+    ) {
+        $fineItemsStmt = new Msp2BufferedReadRows($controlMainBatch['fineItems'] ?? []);
+        while (($fineRow = $fineItemsStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $idTiendaFine = (int) ($fineRow['id_tienda'] ?? 0);
+            $periodoFine = trim((string) ($fineRow['periodo_ym'] ?? ''));
+            if ($idTiendaFine <= 0 || $periodoFine === '' || !isset($months[$periodoFine])) {
+                continue;
+            }
+
+            $idDocumentoFine = (int) ($fineRow['id_documento_cobro'] ?? 0);
+            $estadoCargoFine = (int) ($fineRow['estado_cargo'] ?? 0);
+            $estadoCierreFine = (int) ($fineRow['estado_cierre'] ?? 0);
+            $nivelFine = 'EDICION_SIMPLE';
+            $puedeAplicarFine = $estadoCargoFine === 1;
+            $motivoBloqueoFine = '';
+
+            if (in_array($estadoCierreFine, [3,5], true)) {
+                $nivelFine = 'REVISION';
+                $puedeAplicarFine = false;
+                $motivoBloqueoFine = 'El período mensual está cerrado.';
+            } elseif ($estadoCargoFine === 5 || ($idDocumentoFine > 0 && (int) ($fineRow['estado_documento'] ?? 0) === 5)) {
+                $nivelFine = 'REVISION';
+                $puedeAplicarFine = false;
+                $motivoBloqueoFine = 'La multa o su documento se encuentran anulados.';
+            } elseif ($idDocumentoFine > 0 && (int) ($fineRow['id_cargo_salida_legacy'] ?? 0) <= 0) {
+                $nivelFine = 'REVISION';
+                $puedeAplicarFine = false;
+                $motivoBloqueoFine = 'La multa documentada no conserva una referencia segura al registro original.';
+            } elseif ($estadoCargoFine === 2) {
+                $nivelFine = 'REVISION';
+                $puedeAplicarFine = false;
+                $motivoBloqueoFine = 'La multa tiene una reserva de garantía activa.';
+            } elseif (
+                (float) ($fineRow['monto_aplicado_garantia'] ?? 0) > 0.005
+                || (float) ($fineRow['monto_pagado_directo'] ?? 0) > 0.005
+                || (int) ($fineRow['tiene_dependencias_protegidas'] ?? 0) === 1
+            ) {
+                $nivelFine = 'AJUSTE_FINANCIERO';
+                $puedeAplicarFine = false;
+                $motivoBloqueoFine = 'La multa ya tiene pagos, garantía, saldo a favor o envíos asociados.';
+            } elseif ((int) ($fineRow['tiene_asiento_activo'] ?? 0) === 1) {
+                $nivelFine = 'AUTORIZACION';
+                $puedeAplicarFine = false;
+                $motivoBloqueoFine = 'El documento posee un asiento contable activo.';
+            } elseif ($idDocumentoFine > 0 && $estadoCargoFine === 3) {
+                $nivelFine = 'REGENERACION_CONTROLADA';
+                $puedeAplicarFine = true;
+            } elseif ($estadoCargoFine !== 1) {
+                $nivelFine = 'REVISION';
+                $puedeAplicarFine = false;
+                $motivoBloqueoFine = 'El estado actual de la multa no permite editarla.';
+            }
+
+            $fineItemsByTiendaMonth[$idTiendaFine][$periodoFine][] = [
+                'id_cargo' => (int) ($fineRow['id_cargo_contrato_local'] ?? 0),
+                'id_cargo_legacy' => (int) ($fineRow['id_cargo_salida_legacy'] ?? 0),
+                'id_contrato_arriendo' => (int) ($fineRow['id_contrato_arriendo'] ?? 0),
+                'id_local' => (int) ($fineRow['id_local'] ?? 0),
+                'local' => trim((string) ($fineRow['cdo_local'] ?? '')),
+                'periodo' => $periodoFine,
+                'descripcion' => trim((string) ($fineRow['descripcion_cargo'] ?? '')),
+                'monto' => round((float) ($fineRow['monto_cargo'] ?? 0), 2),
+                'estado_cargo' => $estadoCargoFine,
+                'id_documento' => $idDocumentoFine,
+                'numero_documento' => trim((string) ($fineRow['numero_documento'] ?? '')),
+                'monto_documento' => round((float) ($fineRow['monto_documento'] ?? 0), 2),
+                'saldo_documento' => round((float) ($fineRow['saldo_documento'] ?? 0), 2),
+                'estado_cierre' => $estadoCierreFine,
+                'nivel' => $nivelFine,
+                'puede_aplicar' => $puedeAplicarFine,
+                'motivo_bloqueo' => $motivoBloqueoFine,
+            ];
+        }
+    }
+    $perfMark('carga_multas_corregibles');
 
     if ($canLoadDocStatus) {
         $docStatusStmt = new Msp2BufferedReadRows($controlMainBatch['docStatus'] ?? []);
@@ -1956,6 +2109,7 @@ try {
             'rut_display_by_month' => [],
             'termino_by_month' => [],
             'post_termino_by_month' => [],
+            'occupancy_records_by_month' => [],
         ];
     }
     $perfMark('carga_tiendas_base');
@@ -2036,6 +2190,12 @@ try {
         $controlContractBatchQueries['locales'] = [
             'sql' => 'SELECT
                 c.id_tienda,
+                c.id_contrato_arriendo,
+                c.id_arrendatario,
+                c.fecha_inicio AS fecha_inicio_contrato,
+                c.fecha_termino_efectiva,
+                COALESCE(NULLIF(a.nombre_locatario, \'\'), NULLIF(a.nombre_representante, \'\'), N\'Sin arrendatario\') AS nombre_arrendatario,
+                a.rut,
                 cl.id_contrato_local,
                 cl.id_local,
                 l.cdo_local,
@@ -2050,6 +2210,8 @@ try {
                     (cl.fecha_inicio <= :year_end_loc_cl AND (cl.fecha_termino IS NULL OR DATEADD(MONTH, 2, cl.fecha_termino) >= :year_start_loc_cl))
                     OR ' . $buildContratoLocalPendienteSql('c', 'cl') . '
                )
+             LEFT JOIN dbo.msp_arrendatarios a
+                ON a.id_arrendatario = c.id_arrendatario
              INNER JOIN dbo.msp_locales l
                 ON l.id_local = cl.id_local
              WHERE c.id_tienda IN (' . implode(', ', $placeholders) . ')
@@ -2094,6 +2256,62 @@ try {
             if (!isset($tiendaRows[$idTienda]) || $idLocal <= 0) {
                 continue;
             }
+
+            $localCode = msp2NormalizeLocalCode((string) ($localRow['cdo_local'] ?? ''));
+            if ($localCode === '') {
+                continue;
+            }
+
+            $fechaInicioContrato = substr(trim((string) ($localRow['fecha_inicio_contrato'] ?? '')), 0, 10);
+            $fechaInicioRelacion = substr(trim((string) ($localRow['fecha_inicio'] ?? '')), 0, 10);
+            $fechaTerminoContrato = substr(trim((string) ($localRow['fecha_termino_efectiva'] ?? '')), 0, 10);
+            $fechaTerminoRelacion = substr(trim((string) ($localRow['fecha_termino'] ?? '')), 0, 10);
+            $fechaInicioOcupacion = max($fechaInicioContrato, $fechaInicioRelacion);
+            $fechasTermino = array_values(array_filter(
+                [$fechaTerminoContrato, $fechaTerminoRelacion],
+                static fn (string $value): bool => $value !== ''
+            ));
+            $fechaTerminoOcupacion = $fechasTermino !== [] ? min($fechasTermino) : '';
+            $idContratoOcupacion = (int) ($localRow['id_contrato_arriendo'] ?? 0);
+            if ($idContratoOcupacion > 0 && $fechaInicioOcupacion !== '') {
+                foreach ($months as $monthKey => $monthData) {
+                    $monthStart = (string) ($monthPeriodMeta[$monthKey]['start'] ?? ($monthKey . '-01'));
+                    $monthEnd = (string) ($monthPeriodMeta[$monthKey]['end'] ?? ($monthKey . '-31'));
+                    if (!msp2ControlDiarioMonthOverlapsRange(
+                        $monthStart,
+                        $monthEnd,
+                        $fechaInicioOcupacion,
+                        $fechaTerminoOcupacion
+                    )) {
+                        continue;
+                    }
+
+                    $recordKey = (string) $idContratoOcupacion;
+                    if (!isset($tiendaRows[$idTienda]['occupancy_records_by_month'][$monthKey][$recordKey])) {
+                        $tiendaRows[$idTienda]['occupancy_records_by_month'][$monthKey][$recordKey] = [
+                            'id_contrato_arriendo' => $idContratoOcupacion,
+                            'id_arrendatario' => (int) ($localRow['id_arrendatario'] ?? 0),
+                            'locales' => [$localCode],
+                            'local' => $localCode,
+                            'arrendatario' => trim((string) ($localRow['nombre_arrendatario'] ?? '')),
+                            'rut' => msp2RutFormatDisplay((string) ($localRow['rut'] ?? '')),
+                            'fecha_inicio' => $fechaInicioOcupacion,
+                            'fecha_termino' => $fechaTerminoOcupacion,
+                        ];
+                    } else {
+                        $record = $tiendaRows[$idTienda]['occupancy_records_by_month'][$monthKey][$recordKey];
+                        $recordLocales = array_values(array_unique(array_merge(
+                            is_array($record['locales'] ?? null) ? $record['locales'] : [],
+                            [$localCode]
+                        )));
+                        usort($recordLocales, static fn (string $left, string $right): int => msp2ControlDiarioCompareLocalCode($left, $right));
+                        $record['locales'] = $recordLocales;
+                        $record['local'] = implode(' / ', $recordLocales);
+                        $tiendaRows[$idTienda]['occupancy_records_by_month'][$monthKey][$recordKey] = $record;
+                    }
+                }
+            }
+
             if (!isset($seenLocalByTienda[$idTienda])) {
                 $seenLocalByTienda[$idTienda] = [];
             }
@@ -2102,10 +2320,6 @@ try {
             }
             $seenLocalByTienda[$idTienda][$idLocal] = true;
 
-            $localCode = msp2NormalizeLocalCode((string) ($localRow['cdo_local'] ?? ''));
-            if ($localCode === '') {
-                continue;
-            }
             $tiendaRows[$idTienda]['local_ids'][] = $idLocal;
             $tiendaRows[$idTienda]['local_codes'][] = $localCode;
             if ($idContratoLocal > 0) {
@@ -2127,6 +2341,24 @@ try {
                 6
             );
         }
+
+        foreach ($tiendaRows as &$tiendaOccupancyData) {
+            $recordsByMonth = is_array($tiendaOccupancyData['occupancy_records_by_month'] ?? null)
+                ? $tiendaOccupancyData['occupancy_records_by_month']
+                : [];
+            foreach ($recordsByMonth as $monthKey => $records) {
+                $records = array_values(is_array($records) ? $records : []);
+                usort($records, static function (array $left, array $right): int {
+                    $startCompare = strcmp((string) ($left['fecha_inicio'] ?? ''), (string) ($right['fecha_inicio'] ?? ''));
+                    if ($startCompare !== 0) {
+                        return $startCompare;
+                    }
+                    return ((int) ($left['id_contrato_arriendo'] ?? 0)) <=> ((int) ($right['id_contrato_arriendo'] ?? 0));
+                });
+                $tiendaOccupancyData['occupancy_records_by_month'][$monthKey] = $records;
+            }
+        }
+        unset($tiendaOccupancyData);
         $perfMark('carga_contratos_y_locales');
 
         foreach ($tiendaRows as $idTienda => &$tiendaDataRef) {
@@ -2332,6 +2564,7 @@ try {
 
     foreach ($tiendaRows as $tiendaData) {
         $serviciosByMonth = [];
+        $finesByMonth = [];
         $reservaByMonth = [];
         $reservaBreakdownByMonth = [];
         $garantiaByMonth = [];
@@ -2446,10 +2679,20 @@ try {
                 continue;
             }
             $reservaBreakdownByMonth[$resPeriodo] = [
-                'danos_multas' => round((float) ($resBreakdown['danos_multas'] ?? 0), 2),
+                'multas' => round((float) ($resBreakdown['multas'] ?? 0), 2),
+                'danos' => round((float) ($resBreakdown['danos'] ?? 0), 2),
                 'otros_cargos' => round((float) ($resBreakdown['otros_cargos'] ?? 0), 2),
                 'saldo_favor_aplicado' => round((float) ($resBreakdown['saldo_favor_aplicado'] ?? 0), 2),
             ];
+        }
+        $fineDataTienda = is_array($fineItemsByTiendaMonth[$idTienda] ?? null)
+            ? $fineItemsByTiendaMonth[$idTienda]
+            : [];
+        foreach ($fineDataTienda as $finePeriodo => $fineItems) {
+            if (!isset($months[$finePeriodo]) || !is_array($fineItems)) {
+                continue;
+            }
+            $finesByMonth[$finePeriodo] = array_values($fineItems);
         }
         $garantiaAplicadaDataTienda = is_array($garantiaAplicadaByTiendaMonth[$idTienda] ?? null)
             ? $garantiaAplicadaByTiendaMonth[$idTienda]
@@ -2490,6 +2733,9 @@ try {
             'rut_display_by_month' => $rutDisplayByMonthRow,
             'termino_by_month' => $terminoByMonthRow,
             'post_termino_by_month' => $postTerminoByMonthRow,
+            'occupancy_records_by_month' => is_array($tiendaData['occupancy_records_by_month'] ?? null)
+                ? $tiendaData['occupancy_records_by_month']
+                : [],
             'uf_base' => $ufBaseRow,
             'uf_base_by_month' => $ufBaseByMonthRow,
             'arriendo_neto_by_month' => $arriendoNetoByMonthRow,
@@ -2505,6 +2751,7 @@ try {
             'water_readings_by_month' => is_array($waterReadingsByTiendaMonth[$idTienda] ?? null)
                 ? $waterReadingsByTiendaMonth[$idTienda]
                 : [],
+            'fines_by_month' => $finesByMonth,
             'rent_snapshots_by_month' => is_array($rentSnapshotsByTiendaMonth[$idTienda] ?? null)
                 ? $rentSnapshotsByTiendaMonth[$idTienda]
                 : [],
@@ -2545,6 +2792,7 @@ try {
             $baseRutByMonth = is_array($baseRow['rut_display_by_month'] ?? null) ? $baseRow['rut_display_by_month'] : [];
             $baseTerminoByMonth = is_array($baseRow['termino_by_month'] ?? null) ? $baseRow['termino_by_month'] : [];
             $basePostTerminoByMonth = is_array($baseRow['post_termino_by_month'] ?? null) ? $baseRow['post_termino_by_month'] : [];
+            $baseOccupancyByMonth = is_array($baseRow['occupancy_records_by_month'] ?? null) ? $baseRow['occupancy_records_by_month'] : [];
             $baseArriendoNetoByMonth = is_array($baseRow['arriendo_neto_by_month'] ?? null) ? $baseRow['arriendo_neto_by_month'] : [];
             $baseServicios = is_array($baseRow['servicios'] ?? null) ? $baseRow['servicios'] : [];
             $baseElectricityReadings = is_array($baseRow['electricity_readings_by_month'] ?? null)
@@ -2555,6 +2803,9 @@ try {
                 : [];
             $baseWaterReadings = is_array($baseRow['water_readings_by_month'] ?? null)
                 ? $baseRow['water_readings_by_month']
+                : [];
+            $baseFines = is_array($baseRow['fines_by_month'] ?? null)
+                ? $baseRow['fines_by_month']
                 : [];
             $baseRentSnapshots = is_array($baseRow['rent_snapshots_by_month'] ?? null)
                 ? $baseRow['rent_snapshots_by_month']
@@ -2571,6 +2822,7 @@ try {
             $newRutByMonth = is_array($rowItem['rut_display_by_month'] ?? null) ? $rowItem['rut_display_by_month'] : [];
             $newTerminoByMonth = is_array($rowItem['termino_by_month'] ?? null) ? $rowItem['termino_by_month'] : [];
             $newPostTerminoByMonth = is_array($rowItem['post_termino_by_month'] ?? null) ? $rowItem['post_termino_by_month'] : [];
+            $newOccupancyByMonth = is_array($rowItem['occupancy_records_by_month'] ?? null) ? $rowItem['occupancy_records_by_month'] : [];
             $newArriendoNetoByMonth = is_array($rowItem['arriendo_neto_by_month'] ?? null) ? $rowItem['arriendo_neto_by_month'] : [];
             $newServicios = is_array($rowItem['servicios'] ?? null) ? $rowItem['servicios'] : [];
             $newElectricityReadings = is_array($rowItem['electricity_readings_by_month'] ?? null)
@@ -2581,6 +2833,9 @@ try {
                 : [];
             $newWaterReadings = is_array($rowItem['water_readings_by_month'] ?? null)
                 ? $rowItem['water_readings_by_month']
+                : [];
+            $newFines = is_array($rowItem['fines_by_month'] ?? null)
+                ? $rowItem['fines_by_month']
                 : [];
             $newRentSnapshots = is_array($rowItem['rent_snapshots_by_month'] ?? null)
                 ? $rowItem['rent_snapshots_by_month']
@@ -2600,6 +2855,41 @@ try {
                 $newTerminoMes = (bool) ($newTerminoByMonth[$monthKey] ?? false);
                 $basePostTerminoMes = (bool) ($basePostTerminoByMonth[$monthKey] ?? false);
                 $newPostTerminoMes = (bool) ($newPostTerminoByMonth[$monthKey] ?? false);
+
+                $occupancyRecords = array_merge(
+                    is_array($baseOccupancyByMonth[$monthKey] ?? null) ? $baseOccupancyByMonth[$monthKey] : [],
+                    is_array($newOccupancyByMonth[$monthKey] ?? null) ? $newOccupancyByMonth[$monthKey] : []
+                );
+                if ($occupancyRecords !== []) {
+                    $uniqueOccupancies = [];
+                    foreach ($occupancyRecords as $occupancyRecord) {
+                        if (!is_array($occupancyRecord)) {
+                            continue;
+                        }
+                        $occupancyKey = (string) ((int) ($occupancyRecord['id_contrato_arriendo'] ?? 0));
+                        if (!isset($uniqueOccupancies[$occupancyKey])) {
+                            $uniqueOccupancies[$occupancyKey] = $occupancyRecord;
+                            continue;
+                        }
+                        $existingOccupancy = $uniqueOccupancies[$occupancyKey];
+                        $occupancyLocales = array_values(array_unique(array_merge(
+                            is_array($existingOccupancy['locales'] ?? null) ? $existingOccupancy['locales'] : [],
+                            is_array($occupancyRecord['locales'] ?? null) ? $occupancyRecord['locales'] : []
+                        )));
+                        usort($occupancyLocales, static fn (string $left, string $right): int => msp2ControlDiarioCompareLocalCode($left, $right));
+                        $existingOccupancy['locales'] = $occupancyLocales;
+                        $existingOccupancy['local'] = implode(' / ', $occupancyLocales);
+                        $uniqueOccupancies[$occupancyKey] = $existingOccupancy;
+                    }
+                    $baseOccupancyByMonth[$monthKey] = array_values($uniqueOccupancies);
+                    usort($baseOccupancyByMonth[$monthKey], static function (array $left, array $right): int {
+                        $startCompare = strcmp((string) ($left['fecha_inicio'] ?? ''), (string) ($right['fecha_inicio'] ?? ''));
+                        if ($startCompare !== 0) {
+                            return $startCompare;
+                        }
+                        return ((int) ($left['id_contrato_arriendo'] ?? 0)) <=> ((int) ($right['id_contrato_arriendo'] ?? 0));
+                    });
+                }
 
                 $useNew = false;
                 if ($baseArr === '' && $newArr !== '') {
@@ -2687,6 +2977,21 @@ try {
                     $baseWaterReadings[$monthKey] = array_values($lecturasAguaUnicas);
                 }
 
+                $multasMes = array_merge(
+                    is_array($baseFines[$monthKey] ?? null) ? $baseFines[$monthKey] : [],
+                    is_array($newFines[$monthKey] ?? null) ? $newFines[$monthKey] : []
+                );
+                if ($multasMes !== []) {
+                    $multasUnicas = [];
+                    foreach ($multasMes as $multaMes) {
+                        $idMultaMes = (int) ($multaMes['id_cargo'] ?? 0);
+                        if ($idMultaMes > 0) {
+                            $multasUnicas[$idMultaMes] = $multaMes;
+                        }
+                    }
+                    $baseFines[$monthKey] = array_values($multasUnicas);
+                }
+
                 $snapshotsMes = array_merge(
                     is_array($baseRentSnapshots[$monthKey] ?? null) ? $baseRentSnapshots[$monthKey] : [],
                     is_array($newRentSnapshots[$monthKey] ?? null) ? $newRentSnapshots[$monthKey] : []
@@ -2715,11 +3020,13 @@ try {
             $baseRow['rut_display_by_month'] = $baseRutByMonth;
             $baseRow['termino_by_month'] = $baseTerminoByMonth;
             $baseRow['post_termino_by_month'] = $basePostTerminoByMonth;
+            $baseRow['occupancy_records_by_month'] = $baseOccupancyByMonth;
             $baseRow['arriendo_neto_by_month'] = $baseArriendoNetoByMonth;
             $baseRow['servicios'] = $baseServicios;
             $baseRow['electricity_readings_by_month'] = $baseElectricityReadings;
             $baseRow['gas_readings_by_month'] = $baseGasReadings;
             $baseRow['water_readings_by_month'] = $baseWaterReadings;
+            $baseRow['fines_by_month'] = $baseFines;
             $baseRow['rent_snapshots_by_month'] = $baseRentSnapshots;
             $baseRow['garantia'] = $baseGarantia;
             $baseRow['reserva'] = $baseReserva;
@@ -2999,6 +3306,9 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                 }
                                 $terminoByMonthRaw = is_array($row['termino_by_month'] ?? null) ? $row['termino_by_month'] : [];
                                 $postTerminoByMonthRaw = is_array($row['post_termino_by_month'] ?? null) ? $row['post_termino_by_month'] : [];
+                                $occupancyByMonthRaw = is_array($row['occupancy_records_by_month'] ?? null)
+                                    ? $row['occupancy_records_by_month']
+                                    : [];
                                 $terminoByMonth = [];
                                 $postTerminoByMonth = [];
                                 foreach ($renderMonths as $monthMeta) {
@@ -3013,6 +3323,13 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                 if (!is_string($postTerminoByMonthJson) || $postTerminoByMonthJson === '') {
                                     $postTerminoByMonthJson = '{}';
                                 }
+                                $occupancyByMonthJson = json_encode(
+                                    $occupancyByMonthRaw,
+                                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                                );
+                                if (!is_string($occupancyByMonthJson) || $occupancyByMonthJson === '') {
+                                    $occupancyByMonthJson = '{}';
+                                }
                                 ?>
                                 <tr
                                     data-local-id="<?php echo (int) $row['id_local']; ?>"
@@ -3026,6 +3343,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                     data-doc-number-by-month="<?php echo msp2Escape($docNumberByMonthJson); ?>"
                                     data-arriendo-neto-by-month="<?php echo msp2Escape($arriendoNetoByMonthJson); ?>"
                                     data-liquidacion-by-month="<?php echo msp2Escape($postTerminoByMonthJson); ?>"
+                                    data-occupancy-records-by-month="<?php echo msp2Escape($occupancyByMonthJson); ?>"
                                     data-local-label="<?php echo msp2Escape((string) ($row['local_code'] ?? '')); ?>"
                                 >
                                     <td class="sticky-col sticky-col-local">
@@ -3038,6 +3356,9 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                     <td class="sticky-col sticky-col-arr">
                                         <div class="arr-cell-stack">
                                             <div
+                                                class="js-arr-primary"
+                                            >
+                                            <div
                                                 class="arr-label js-arr-display"
                                                 title="<?php echo msp2Escape('Arrendatario completo: ' . (string) $row['arrendatario']); ?>"
                                                 aria-label="<?php echo msp2Escape('Arrendatario completo: ' . (string) $row['arrendatario']); ?>"
@@ -3047,6 +3368,8 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                                 title="<?php echo msp2Escape('RUT completo: ' . ($row['rut_display'] !== '' ? $row['rut_display'] : '-')); ?>"
                                                 aria-label="<?php echo msp2Escape('RUT completo: ' . ($row['rut_display'] !== '' ? $row['rut_display'] : '-')); ?>"
                                             ><?php echo msp2Escape($row['rut_display'] !== '' ? $row['rut_display'] : '-'); ?></div>
+                                            </div>
+                                            <div class="transition-occupancies d-none js-transition-occupancies" aria-label="Contratos del mes de transición"></div>
                                             <div class="small text-warning-emphasis fw-semibold d-none js-arr-liquidacion">Liquidación de servicios pendiente</div>
                                         </div>
                                     </td>
@@ -3126,19 +3449,25 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                         }
                                         $reservaMes = is_array($row['reserva'] ?? null) ? $row['reserva'] : [];
                                         $montoReserva = round((float) ($reservaMes[$monthKey] ?? 0), 2);
+                                        $fineItemsMes = is_array($row['fines_by_month'][$monthKey] ?? null)
+                                            ? $row['fines_by_month'][$monthKey]
+                                            : [];
                                         $reservaBreakdownMes = is_array($row['reserva_breakdown'][$monthKey] ?? null)
                                             ? $row['reserva_breakdown'][$monthKey]
-                                            : ['danos_multas' => 0.0, 'otros_cargos' => 0.0, 'saldo_favor_aplicado' => 0.0];
-                                        $montoDanosMultas = round((float) ($reservaBreakdownMes['danos_multas'] ?? 0), 2);
+                                            : ['multas' => 0.0, 'danos' => 0.0, 'otros_cargos' => 0.0, 'saldo_favor_aplicado' => 0.0];
+                                        $montoMultas = round((float) ($reservaBreakdownMes['multas'] ?? 0), 2);
+                                        $montoDanos = round((float) ($reservaBreakdownMes['danos'] ?? 0), 2);
                                         $montoOtrosCargos = round((float) ($reservaBreakdownMes['otros_cargos'] ?? 0), 2);
                                         $montoSaldoFavorAplicado = round((float) ($reservaBreakdownMes['saldo_favor_aplicado'] ?? 0), 2);
-                                        $showReservaTooltip = abs($montoDanosMultas) > 0.009
+                                        $showReservaTooltip = abs($montoMultas) > 0.009
+                                            || abs($montoDanos) > 0.009
                                             || abs($montoOtrosCargos) > 0.009
                                             || abs($montoSaldoFavorAplicado) > 0.009;
                                         $reservaTooltip = $showReservaTooltip
                                             ? implode("\n", [
                                                 'Desglose reserva',
-                                                'Daños/Multas: ' . msp2ControlDiarioFormatSignedAmount($montoDanosMultas),
+                                                'Multas: ' . msp2ControlDiarioFormatSignedAmount($montoMultas),
+                                                'Daños/Reparaciones: ' . msp2ControlDiarioFormatSignedAmount($montoDanos),
                                                 'Otros cargos: ' . msp2ControlDiarioFormatSignedAmount($montoOtrosCargos),
                                                 'Saldo a favor aplicado: ' . msp2ControlDiarioFormatSignedAmount($montoSaldoFavorAplicado),
                                                 'Total reserva: ' . msp2ControlDiarioFormatSignedAmount($montoReserva),
@@ -3269,9 +3598,16 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                             <?php endif; ?>
                                         </td>
                                         <td
-                                            class="cell-num js-reserva js-month-col<?php echo $showReservaTooltip ? ' has-tooltip' : ''; ?>"
+                                            class="cell-num js-reserva js-month-col<?php echo $showReservaTooltip ? ' has-tooltip' : ''; ?><?php echo $fineItemsMes !== [] && $canCorrectFines ? ' fine-edit-cell' : ''; ?>"
                                             data-month-key="<?php echo msp2Escape($monthKey); ?>"
                                             data-reserva-monto="<?php echo msp2Escape(number_format($montoReserva, 2, '.', '')); ?>"
+                                            data-reserva-breakdown="<?php echo msp2Escape((string) json_encode([
+                                                'multas' => $montoMultas,
+                                                'danos' => $montoDanos,
+                                                'otros_cargos' => $montoOtrosCargos,
+                                                'saldo_favor_aplicado' => $montoSaldoFavorAplicado,
+                                                'total' => $montoReserva,
+                                            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)); ?>"
                                             title="<?php echo msp2Escape($showReservaTooltip ? $reservaTooltip : 'Reserva completa: $ ' . number_format($montoReserva, 2, ',', '.')); ?>"
                                         >
                                             <span class="reserva-cell-content">
@@ -3280,6 +3616,22 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
                                                 <?php endif; ?>
                                                 <span><?php echo msp2Escape(msp2ControlDiarioFormatVisibleAmount($montoReserva)); ?></span>
                                             </span>
+                                            <?php if ($fineItemsMes !== [] && $canCorrectFines): ?>
+                                                <button
+                                                    type="button"
+                                                    class="fine-edit-btn js-fine-edit"
+                                                    data-fines="<?php echo msp2Escape((string) json_encode($fineItemsMes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)); ?>"
+                                                    data-breakdown="<?php echo msp2Escape((string) json_encode([
+                                                        'multas' => $montoMultas,
+                                                        'danos' => $montoDanos,
+                                                        'otros_cargos' => $montoOtrosCargos,
+                                                        'saldo_favor_aplicado' => $montoSaldoFavorAplicado,
+                                                        'total' => $montoReserva,
+                                                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)); ?>"
+                                                    aria-label="Editar multa del período <?php echo msp2Escape((string) ($month['label'] ?? $monthKey)); ?>"
+                                                    title="Editar multa"
+                                                ><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                            <?php endif; ?>
                                         </td>
                                         <td
                                             class="cell-num cell-total js-total js-month-col<?php echo $showTotalTooltip ? ' has-tooltip' : ''; ?>"
@@ -3677,6 +4029,98 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
     </div>
 </div>
 
+<div class="modal fade" id="fineCorrectionModal" tabindex="-1" aria-labelledby="fineCorrectionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('correcciones/guardar.php')); ?>" id="fine-correction-form">
+            <?php msp2CsrfField(); ?>
+            <input type="hidden" name="accion" value="crear">
+            <input type="hidden" name="entidad_afectada" value="cargo">
+            <input type="hidden" name="modulo_origen" value="control_diario/index.php">
+            <input type="hidden" name="id_contrato_arriendo" id="fine-id-contrato" value="">
+            <input type="hidden" name="id_local" id="fine-id-local" value="">
+            <input type="hidden" name="id_registro_origen" id="fine-id-cargo" value="">
+            <input type="hidden" name="periodo_facturacion" id="fine-periodo" value="">
+            <input type="hidden" name="valor_anterior" id="fine-valor-anterior" value="">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title fs-5" id="fineCorrectionModalLabel">Editar multa del período</h2>
+                    <div class="small text-muted">Solo la multa es editable. Los demás componentes de Reserva se muestran como referencia.</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3 d-none" id="fine-select-wrap">
+                    <label class="form-label" for="fine-select">Multa que deseas editar</label>
+                    <select class="form-select" id="fine-select"></select>
+                    <div class="form-text">Cada multa se corrige de forma independiente.</div>
+                </div>
+
+                <div class="fine-correction-context mb-3">
+                    <div><span>Local</span><strong id="fine-local-label">-</strong></div>
+                    <div><span>Período</span><strong id="fine-period-label">-</strong></div>
+                    <div><span>Documento</span><strong id="fine-document-label">-</strong></div>
+                    <div><span>Descripción</span><strong id="fine-description-label">-</strong></div>
+                </div>
+
+                <div id="fine-breakdown-section">
+                    <h3 class="h6 mb-2">Composición de Reserva</h3>
+                    <div class="fine-breakdown-grid mb-3">
+                    <label data-fine-breakdown-item="multas">
+                        <span>Multas del período</span>
+                        <input class="form-control" type="text" id="fine-breakdown-fines" value="$ 0" disabled>
+                    </label>
+                    <label data-fine-breakdown-item="danos">
+                        <span>Daños / reparaciones</span>
+                        <input class="form-control" type="text" id="fine-breakdown-damages" value="$ 0" disabled>
+                    </label>
+                    <label data-fine-breakdown-item="otros_cargos">
+                        <span>Otros cargos</span>
+                        <input class="form-control" type="text" id="fine-breakdown-others" value="$ 0" disabled>
+                    </label>
+                    <label data-fine-breakdown-item="saldo_favor_aplicado">
+                        <span>Saldo a favor aplicado</span>
+                        <input class="form-control" type="text" id="fine-breakdown-credit" value="$ 0" disabled>
+                    </label>
+                    </div>
+                </div>
+
+                <div class="alert mb-3" id="fine-correction-level" role="status"></div>
+
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label class="form-label" for="fine-new-amount">Nuevo monto de la multa</label>
+                        <input class="form-control" type="number" min="0" step="0.01" name="valor_nuevo" id="fine-new-amount" required>
+                        <div class="form-text">Puedes ingresar 0 para anular el cargo de la multa.</div>
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label" for="fine-reason">Motivo de la corrección</label>
+                        <input class="form-control" type="text" name="motivo" id="fine-reason" maxlength="500" required placeholder="Ej.: multa ingresada con monto incorrecto">
+                    </div>
+                </div>
+
+                <div class="form-check mt-3 d-none" id="fine-zero-confirm-wrap">
+                    <input class="form-check-input" type="checkbox" name="confirmar_cero" value="1" id="fine-zero-confirm">
+                    <label class="form-check-label" for="fine-zero-confirm">
+                        Confirmo que el monto 0 anulará esta multa y la retirará del cobro.
+                    </label>
+                </div>
+
+                <div class="fine-result-panel mt-3">
+                    <div><span>Monto actual</span><strong id="fine-current-amount">-</strong></div>
+                    <div><span>Nuevo monto</span><strong id="fine-result-amount">-</strong></div>
+                    <div><span>Diferencia</span><strong id="fine-difference">-</strong></div>
+                    <div><span>Nuevo total documento</span><strong id="fine-document-total-new">-</strong></div>
+                </div>
+                <div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="fine-validation-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="fine-submit">Registrar corrección</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="modal fade" id="controlRowRedirectModal" tabindex="-1" aria-labelledby="controlRowRedirectModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -3894,7 +4338,8 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         const localText = (row.querySelector('.sticky-col-local')?.textContent || '').trim();
         const arrText = (row.querySelector('.js-arr-display')?.textContent || '').trim();
         const rutText = (row.querySelector('.js-rut-display')?.textContent || '').trim();
-        const searchableText = (localText + ' ' + arrText + ' ' + rutText).toLowerCase();
+        const occupancyText = String(row.getAttribute('data-occupancy-records-by-month') || '');
+        const searchableText = (localText + ' ' + arrText + ' ' + rutText + ' ' + occupancyText).toLowerCase();
         row.__searchableText = searchableText;
         return searchableText;
     }
@@ -3981,6 +4426,8 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         const arrDisplay = row.querySelector('.js-arr-display');
         const rutDisplay = row.querySelector('.js-rut-display');
         const liquidacionDisplay = row.querySelector('.js-arr-liquidacion');
+        const primaryDisplay = row.querySelector('.js-arr-primary');
+        const transitionDisplay = row.querySelector('.js-transition-occupancies');
         if (!arrDisplay && !rutDisplay) {
             return;
         }
@@ -3988,6 +4435,7 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         const arrMap = getRowMonthMap(row, 'data-arrendatario-by-month', '__arrendatarioByMonth');
         const rutMap = getRowMonthMap(row, 'data-rut-by-month', '__rutByMonth');
         const liquidacionMap = getRowMonthMap(row, 'data-liquidacion-by-month', '__liquidacionByMonth');
+        const occupancyMap = getRowMonthMap(row, 'data-occupancy-records-by-month', '__occupancyRecordsByMonth');
 
         const arrValue = Object.prototype.hasOwnProperty.call(arrMap, monthKey)
             ? String(arrMap[monthKey] || '').trim()
@@ -4010,6 +4458,62 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         if (liquidacionDisplay) {
             const isLiquidacion = liquidacionMap[monthKey] === true || liquidacionMap[monthKey] === 1;
             liquidacionDisplay.classList.toggle('d-none', !isLiquidacion);
+        }
+
+        const occupancyRecords = Array.isArray(occupancyMap[monthKey]) ? occupancyMap[monthKey] : [];
+        const showTransition = occupancyRecords.length > 1;
+        if (primaryDisplay) {
+            primaryDisplay.classList.toggle('d-none', showTransition);
+        }
+        if (transitionDisplay) {
+            transitionDisplay.replaceChildren();
+            transitionDisplay.classList.toggle('d-none', !showTransition);
+            if (showTransition) {
+                occupancyRecords.forEach((record, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'transition-occupancy';
+
+                    const heading = document.createElement('div');
+                    heading.className = 'transition-occupancy-heading';
+
+                    const badge = document.createElement('span');
+                    badge.className = 'transition-occupancy-badge';
+                    if (index === 0) {
+                        badge.textContent = 'Saliente';
+                    } else if (index === occupancyRecords.length - 1) {
+                        badge.textContent = 'Entrante';
+                    } else {
+                        badge.textContent = 'Transición';
+                    }
+                    heading.appendChild(badge);
+
+                    const contract = document.createElement('span');
+                    contract.className = 'transition-occupancy-contract';
+                    contract.textContent = 'Contrato #' + String(record.id_contrato_arriendo || '-');
+                    heading.appendChild(contract);
+
+                    const name = document.createElement('div');
+                    name.className = 'transition-occupancy-name';
+                    name.textContent = String(record.arrendatario || 'Sin arrendatario');
+
+                    const meta = document.createElement('div');
+                    meta.className = 'transition-occupancy-meta';
+                    const dates = [];
+                    if (record.fecha_inicio) {
+                        dates.push('desde ' + String(record.fecha_inicio));
+                    }
+                    if (record.fecha_termino) {
+                        dates.push('hasta ' + String(record.fecha_termino));
+                    }
+                    const localLabel = record.local ? 'Local ' + String(record.local) : '';
+                    meta.textContent = [String(record.rut || '-'), localLabel, dates.join(' ')].filter(Boolean).join(' · ');
+
+                    item.appendChild(heading);
+                    item.appendChild(name);
+                    item.appendChild(meta);
+                    transitionDisplay.appendChild(item);
+                });
+            }
         }
         delete row.__searchableText;
     }
@@ -5456,6 +5960,239 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
         });
     }
 
+    function initFineCorrection() {
+        const modalElement = document.getElementById('fineCorrectionModal');
+        const form = document.getElementById('fine-correction-form');
+        const selectorWrap = document.getElementById('fine-select-wrap');
+        const selector = document.getElementById('fine-select');
+        const newAmountInput = document.getElementById('fine-new-amount');
+        const reasonInput = document.getElementById('fine-reason');
+        const zeroConfirmWrap = document.getElementById('fine-zero-confirm-wrap');
+        const zeroConfirm = document.getElementById('fine-zero-confirm');
+        const submitButton = document.getElementById('fine-submit');
+        const levelAlert = document.getElementById('fine-correction-level');
+        const validationMessage = document.getElementById('fine-validation-message');
+        if (!modalElement || !form || !selectorWrap || !selector || !newAmountInput
+            || !reasonInput || !zeroConfirmWrap || !zeroConfirm || !submitButton
+            || !levelAlert || !validationMessage || typeof bootstrap === 'undefined') {
+            return;
+        }
+
+        const modal = new bootstrap.Modal(modalElement);
+        let fines = [];
+        let activeFine = null;
+        let breakdown = {};
+        let submissionStarted = false;
+        const numberValue = function (value) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+        const displayAmount = function (value) {
+            return '$ ' + new Intl.NumberFormat('es-CL', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(numberValue(value));
+        };
+        const setText = function (id, value) {
+            const node = document.getElementById(id);
+            if (node) {
+                node.textContent = String(value);
+            }
+        };
+        const setValue = function (id, value) {
+            const node = document.getElementById(id);
+            if (node) {
+                node.value = String(value ?? '');
+            }
+        };
+        const periodLabel = function (period) {
+            const parts = String(period ?? '').split('-');
+            return parts.length === 2 ? parts[1] + '-' + parts[0] : String(period ?? '-');
+        };
+        const parseJsonArray = function (raw) {
+            try {
+                const decoded = JSON.parse(raw || '[]');
+                return Array.isArray(decoded) ? decoded : [];
+            } catch (_error) {
+                return [];
+            }
+        };
+        const parseJsonObject = function (raw) {
+            try {
+                const decoded = JSON.parse(raw || '{}');
+                return decoded && typeof decoded === 'object' && !Array.isArray(decoded) ? decoded : {};
+            } catch (_error) {
+                return {};
+            }
+        };
+        const showBreakdown = function () {
+            const section = document.getElementById('fine-breakdown-section');
+            const extraKeys = ['danos', 'otros_cargos', 'saldo_favor_aplicado'];
+            const listedFineTotal = fines.reduce(function (total, fine) {
+                return total + numberValue(fine && fine.monto);
+            }, 0);
+            const hasOtherFineAmount = Math.abs(numberValue(breakdown.multas) - listedFineTotal) > 0.005;
+            const hasExtraComponents = extraKeys.some(function (key) {
+                return Math.abs(numberValue(breakdown[key])) > 0.005;
+            }) || fines.length > 1 || hasOtherFineAmount;
+            if (section) {
+                section.classList.toggle('d-none', !hasExtraComponents);
+            }
+            document.querySelectorAll('[data-fine-breakdown-item]').forEach(function (item) {
+                const key = String(item.getAttribute('data-fine-breakdown-item') ?? '');
+                item.classList.toggle('d-none', key !== 'multas' && Math.abs(numberValue(breakdown[key])) <= 0.005);
+            });
+            setValue('fine-breakdown-fines', displayAmount(breakdown.multas));
+            setValue('fine-breakdown-damages', displayAmount(breakdown.danos));
+            setValue('fine-breakdown-others', displayAmount(breakdown.otros_cargos));
+            setValue('fine-breakdown-credit', displayAmount(breakdown.saldo_favor_aplicado));
+        };
+        const showLevel = function (fine) {
+            const level = String(fine.nivel ?? 'REVISION').toUpperCase();
+            const allowed = fine.puede_aplicar === true || Number(fine.puede_aplicar) === 1;
+            let message = '';
+            let alertClass = 'alert-danger';
+            if (level === 'EDICION_SIMPLE' && allowed) {
+                message = 'La multa aún no forma parte de un documento. Se actualizará solamente este cargo.';
+                alertClass = 'alert-success';
+            } else if (level === 'REGENERACION_CONTROLADA' && allowed) {
+                message = 'La multa forma parte de un documento abierto y sin movimientos protegidos. Se actualizarán este ítem y los totales del documento.';
+                alertClass = 'alert-warning';
+            } else {
+                message = String(fine.motivo_bloqueo ?? '').trim()
+                    || 'Esta multa no se puede editar mientras el período o sus movimientos financieros estén protegidos.';
+            }
+            levelAlert.className = 'alert mb-3 ' + alertClass;
+            levelAlert.textContent = message;
+            return allowed && (level === 'EDICION_SIMPLE' || level === 'REGENERACION_CONTROLADA');
+        };
+        const validateAndCalculate = function () {
+            if (!activeFine) {
+                submitButton.disabled = true;
+                return false;
+            }
+            const raw = String(newAmountInput.value ?? '').trim();
+            const nextAmount = raw === '' ? Number.NaN : Number(raw);
+            const currentAmount = numberValue(activeFine.monto);
+            const isZero = Number.isFinite(nextAmount) && Math.abs(nextAmount) < 0.005;
+            zeroConfirmWrap.classList.toggle('d-none', !isZero);
+            if (!isZero) {
+                zeroConfirm.checked = false;
+            }
+
+            let error = '';
+            if (!Number.isFinite(nextAmount) || nextAmount < 0) {
+                error = 'Ingresa un monto válido, igual o mayor que cero.';
+            } else if (Math.abs(nextAmount - currentAmount) < 0.005) {
+                error = 'El nuevo monto debe ser distinto del monto actual.';
+            } else if (isZero && !zeroConfirm.checked) {
+                error = 'Confirma que deseas anular la multa ingresando monto 0.';
+            }
+
+            const delta = Number.isFinite(nextAmount) ? Math.round((nextAmount - currentAmount) * 100) / 100 : 0;
+            const documentId = Number.parseInt(String(activeFine.id_documento ?? '0'), 10);
+            setText('fine-current-amount', displayAmount(currentAmount));
+            setText('fine-result-amount', Number.isFinite(nextAmount) ? displayAmount(nextAmount) : '-');
+            setText('fine-difference', Number.isFinite(nextAmount) ? displayAmount(delta) : '-');
+            setText('fine-document-total-new', documentId > 0 && Number.isFinite(nextAmount)
+                ? displayAmount(numberValue(activeFine.monto_documento) + delta)
+                : 'Sin documento emitido');
+
+            const levelAllowed = showLevel(activeFine);
+            validationMessage.textContent = error;
+            validationMessage.classList.toggle('d-none', error === '');
+            submitButton.disabled = submissionStarted || error !== '' || !levelAllowed;
+            return error === '' && levelAllowed;
+        };
+        const showFine = function (index) {
+            activeFine = fines[index] ?? null;
+            if (!activeFine) {
+                submitButton.disabled = true;
+                return;
+            }
+            const documentId = Number.parseInt(String(activeFine.id_documento ?? '0'), 10);
+            const documentNumber = String(activeFine.numero_documento ?? '').trim();
+            setValue('fine-id-contrato', activeFine.id_contrato_arriendo);
+            setValue('fine-id-local', activeFine.id_local);
+            setValue('fine-id-cargo', activeFine.id_cargo);
+            setValue('fine-periodo', activeFine.periodo);
+            setValue('fine-valor-anterior', JSON.stringify({ monto_cargo: numberValue(activeFine.monto) }));
+            setText('fine-local-label', String(activeFine.local ?? '').trim() || '-');
+            setText('fine-period-label', periodLabel(activeFine.periodo));
+            setText('fine-document-label', documentId > 0
+                ? (documentNumber !== '' ? documentNumber : ('#' + String(documentId)))
+                : 'Sin documento emitido');
+            setText('fine-description-label', String(activeFine.descripcion ?? '').trim() || 'Multa sin descripción');
+            newAmountInput.value = numberValue(activeFine.monto).toFixed(2);
+            const canEdit = activeFine.puede_aplicar === true || Number(activeFine.puede_aplicar) === 1;
+            newAmountInput.disabled = !canEdit;
+            reasonInput.disabled = !canEdit;
+            zeroConfirm.disabled = !canEdit;
+            zeroConfirm.checked = false;
+            validateAndCalculate();
+        };
+
+        document.querySelectorAll('.js-fine-edit').forEach(function (button) {
+            button.addEventListener('click', function () {
+                fines = parseJsonArray(button.getAttribute('data-fines')).filter(function (fine) {
+                    return fine && Number.parseInt(String(fine.id_cargo ?? '0'), 10) > 0;
+                });
+                if (fines.length === 0) {
+                    return;
+                }
+                breakdown = parseJsonObject(button.getAttribute('data-breakdown'));
+                submissionStarted = false;
+                submitButton.textContent = 'Registrar corrección';
+                reasonInput.value = '';
+                selector.innerHTML = '';
+                fines.forEach(function (fine, index) {
+                    const option = document.createElement('option');
+                    option.value = String(index);
+                    const description = String(fine.descripcion ?? '').trim();
+                    option.textContent = (description !== '' ? description : ('Multa #' + String(fine.id_cargo)))
+                        + ' · ' + displayAmount(fine.monto)
+                        + ((fine.puede_aplicar === true || Number(fine.puede_aplicar) === 1) ? '' : ' · No editable');
+                    selector.appendChild(option);
+                });
+                selectorWrap.classList.toggle('d-none', fines.length <= 1);
+                selector.value = '0';
+                showBreakdown();
+                showFine(0);
+                modal.show();
+                window.setTimeout(function () {
+                    newAmountInput.focus();
+                    newAmountInput.select();
+                }, 200);
+            });
+        });
+        selector.addEventListener('change', function () {
+            const index = Number.parseInt(selector.value, 10);
+            showFine(Number.isFinite(index) ? index : 0);
+        });
+        newAmountInput.addEventListener('input', validateAndCalculate);
+        zeroConfirm.addEventListener('change', validateAndCalculate);
+        form.addEventListener('submit', function (event) {
+            if (!validateAndCalculate()) {
+                event.preventDefault();
+                return;
+            }
+            submissionStarted = true;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Registrando…';
+        });
+        modalElement.addEventListener('hidden.bs.modal', function () {
+            fines = [];
+            activeFine = null;
+            breakdown = {};
+            submissionStarted = false;
+            selector.innerHTML = '';
+            form.reset();
+            zeroConfirmWrap.classList.add('d-none');
+            submitButton.textContent = 'Registrar corrección';
+            validationMessage.classList.add('d-none');
+        });
+    }
+
     function syncStickyHeaderOffset() {
         const table = document.querySelector('.control-grid');
         if (!table) {
@@ -5531,6 +6268,8 @@ if ($viewMonthKey !== '' && $allMonthKeys !== []) {
             markFront('init_gas_correction_deferred');
             initWaterCorrection();
             markFront('init_water_correction_deferred');
+            initFineCorrection();
+            markFront('init_fine_correction_deferred');
             initRowRedirectModal();
             markFront('init_row_redirect_deferred');
             flushFrontPerf();

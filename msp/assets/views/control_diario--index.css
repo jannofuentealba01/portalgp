@@ -660,6 +660,7 @@
         .electricity-edit-cell,
         .gas-edit-cell,
         .water-edit-cell,
+        .fine-edit-cell,
         .rent-edit-cell {
             position: relative;
             padding-right: 30px !important;
@@ -678,6 +679,7 @@
         .electricity-edit-btn,
         .gas-edit-btn,
         .water-edit-btn,
+        .fine-edit-btn,
         .rent-edit-btn {
             position: absolute;
             top: 50%;
@@ -707,6 +709,9 @@
         .water-edit-cell:hover .water-edit-btn,
         .water-edit-cell:focus-within .water-edit-btn,
         .water-edit-btn:focus-visible,
+        .fine-edit-cell:hover .fine-edit-btn,
+        .fine-edit-cell:focus-within .fine-edit-btn,
+        .fine-edit-btn:focus-visible,
         .rent-edit-cell:hover .rent-edit-btn,
         .rent-edit-cell:focus-within .rent-edit-btn,
         .rent-edit-btn:focus-visible {
@@ -719,6 +724,8 @@
         .gas-edit-btn:focus-visible,
         .water-edit-btn:hover,
         .water-edit-btn:focus-visible,
+        .fine-edit-btn:hover,
+        .fine-edit-btn:focus-visible,
         .rent-edit-btn:hover,
         .rent-edit-btn:focus-visible {
             background: var(--color-primary);
@@ -734,6 +741,9 @@
         .water-correction-context,
         .water-calculation-grid,
         .water-result-panel,
+        .fine-correction-context,
+        .fine-breakdown-grid,
+        .fine-result-panel,
         .rent-correction-context,
         .rent-calculation-grid,
         .rent-result-panel {
@@ -751,6 +761,8 @@
         .water-correction-context > div,
         .water-calculation-grid > div,
         .water-result-panel > div,
+        .fine-correction-context > div,
+        .fine-result-panel > div,
         .rent-correction-context > div,
         .rent-calculation-grid > div,
         .rent-result-panel > div {
@@ -770,6 +782,9 @@
         .water-correction-context span,
         .water-calculation-grid span,
         .water-result-panel span,
+        .fine-correction-context span,
+        .fine-breakdown-grid span,
+        .fine-result-panel span,
         .rent-correction-context span,
         .rent-calculation-grid span,
         .rent-result-panel span {
@@ -789,6 +804,8 @@
         .water-correction-context strong,
         .water-calculation-grid strong,
         .water-result-panel strong,
+        .fine-correction-context strong,
+        .fine-result-panel strong,
         .rent-correction-context strong,
         .rent-calculation-grid strong,
         .rent-result-panel strong {
@@ -801,9 +818,31 @@
 
         .electricity-result-panel > div,
         .gas-result-panel > div,
+        .water-result-panel > div,
+        .fine-result-panel > div,
         .rent-result-panel > div {
             background: #eef6ff;
             border-color: #bdd6f2;
+        }
+
+        .fine-breakdown-grid label {
+            min-width: 0;
+            margin: 0;
+            padding: 8px 10px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            background: var(--color-surface-soft);
+            font-weight: 600;
+        }
+
+        .fine-breakdown-grid .form-control:disabled {
+            min-height: 34px;
+            padding: 5px 8px;
+            border-color: transparent;
+            background: #e8eef5;
+            color: var(--color-primary);
+            font-weight: 700;
+            opacity: 1;
         }
 
         .local-label {
@@ -844,6 +883,57 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .transition-occupancies {
+            display: grid;
+            gap: 5px;
+        }
+
+        .transition-occupancy {
+            min-width: 0;
+            padding: 5px 6px;
+            border: 1px solid var(--color-border);
+            border-radius: 7px;
+            background: var(--color-surface);
+        }
+
+        .transition-occupancy-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+            margin-bottom: 2px;
+        }
+
+        .transition-occupancy-badge {
+            padding: 1px 4px;
+            border-radius: 4px;
+            background: #e8f1fb;
+            color: var(--color-primary);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .03em;
+            text-transform: uppercase;
+        }
+
+        .transition-occupancy-contract,
+        .transition-occupancy-meta {
+            color: var(--color-text-muted);
+            font-size: 9px;
+            line-height: 1.15;
+        }
+
+        .transition-occupancy-name {
+            display: -webkit-box;
+            overflow: hidden;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            color: var(--color-text);
+            font-size: 10px;
+            font-weight: 650;
+            line-height: 1.15;
+            word-break: break-word;
         }
 
         .control-footnote {
@@ -952,6 +1042,9 @@
             .water-correction-context,
             .water-calculation-grid,
             .water-result-panel,
+            .fine-correction-context,
+            .fine-breakdown-grid,
+            .fine-result-panel,
             .rent-correction-context,
             .rent-calculation-grid,
             .rent-result-panel {
@@ -963,6 +1056,7 @@
             .electricity-edit-btn,
             .gas-edit-btn,
             .water-edit-btn,
+            .fine-edit-btn,
             .rent-edit-btn {
                 opacity: 1;
             }

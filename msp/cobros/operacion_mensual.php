@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/ServicioPeriodoReglas.php';
 require_once dirname(__DIR__) . '/documentos_cobro/vale_lib.php';
 require_once dirname(__DIR__) . '/pagos/archivos_pdf_helper.php';
 require_once __DIR__ . '/mail_templates/vale_cobro_email.php';
@@ -1867,50 +1868,7 @@ function omAguaPeriodoConsumo(string $periodoFacturacion): ?array
 
 function omServiceMeasurementWindow(string $codigoServicio, string $periodoFacturacion): ?array
 {
-    $periodoDate = DateTimeImmutable::createFromFormat('Y-m-d', $periodoFacturacion);
-    if ($periodoDate === false || $periodoDate->format('Y-m-d') !== $periodoFacturacion) {
-        return null;
-    }
-
-    $codigo = strtoupper(trim($codigoServicio));
-    $offsetMonths = match ($codigo) {
-        'LUZ', 'GAS' => -1,
-        'AGUA' => -2,
-        default => null,
-    };
-    if ($offsetMonths === null) {
-        return null;
-    }
-
-    $targetMonth = $periodoDate->modify(($offsetMonths > 0 ? '+' : '') . $offsetMonths . ' months');
-    if ($targetMonth === false) {
-        return null;
-    }
-
-    $minDate = $targetMonth->format('Y-m-01');
-    $baseMaxDateObj = $targetMonth->modify('last day of this month');
-    if ($baseMaxDateObj === false) {
-        return null;
-    }
-    $baseMaxDate = $baseMaxDateObj->format('Y-m-d');
-    $maxDate = $baseMaxDate;
-
-    // GAS: admitir facturas tardías hasta 5 días calendario del mes siguiente.
-    if ($codigo === 'GAS') {
-        $gasMaxDateObj = $baseMaxDateObj->modify('+5 days');
-        if ($gasMaxDateObj === false) {
-            return null;
-        }
-        $maxDate = $gasMaxDateObj->format('Y-m-d');
-    }
-
-    return [
-        'servicio' => $codigo,
-        'periodo_ym' => $targetMonth->format('Y-m'),
-        'min' => $minDate,
-        'max' => $maxDate,
-        'default' => $baseMaxDate,
-    ];
+    return ServicioPeriodoReglas::ventanaMedicion($codigoServicio, $periodoFacturacion);
 }
 
 function omResolveServiceReadingDefaults(string $codigoServicio, string $periodoFacturacion, ?string $fechaMedicionProceso = null): array

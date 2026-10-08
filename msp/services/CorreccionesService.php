@@ -223,6 +223,10 @@ final class CorreccionesService
             }
             throw new RuntimeException('La corrección controlada de lectura todavía no está disponible para el servicio seleccionado.');
         }
+        if ($tipo === 'CARGO' && $nivel === 'REGENERACION_CONTROLADA') {
+            require_once __DIR__ . '/MultaCorreccionService.php';
+            return MultaCorreccionService::ejecutar($conn, $corr, $usuario);
+        }
         if ($nivel !== 'EDICION_SIMPLE') {
             throw new RuntimeException('Esta corrección requiere una estrategia financiera controlada y todavía no puede ejecutarse automáticamente.');
         }
@@ -365,19 +369,30 @@ final class CorreccionesService
         $idCargo = (int) ($corr['id_registro_origen'] ?? 0);
         $idContrato = (int) ($corr['id_contrato_arriendo'] ?? 0);
         $nuevo = self::valorLectura($corr['valor_nuevo'] ?? null);
-        if ($idCargo <= 0 || $idContrato <= 0 || $nuevo === null || $nuevo <= 0) {
+        if ($idCargo <= 0 || $idContrato <= 0 || $nuevo === null || $nuevo < 0) {
             throw new RuntimeException('La corrección de cargo no contiene un monto válido.');
         }
         $q = $conn->prepare(
             'SELECT ccl.id_cargo_contrato_local,ccl.monto_cargo,ccl.estado_cargo,ccl.id_documento_cobro,
-                    ccl.monto_aplicado_garantia,ccl.monto_pagado_directo
+                    ccl.monto_aplicado_garantia,ccl.monto_pagado_directo,ccl.id_cargo_salida_legacy,
+                    UPPER(LTRIM(RTRIM(tc.codigo_tipo_cargo))) codigo_tipo_cargo,
+                    ISNULL(cm.estado_cierre,0) estado_cierre
              FROM dbo.msp_cargos_contrato_local ccl
              INNER JOIN dbo.msp_contrato_locales cl ON cl.id_contrato_local=ccl.id_contrato_local
+             INNER JOIN dbo.msp_tipos_cargo_salida tc ON tc.id_tipo_cargo_salida=ccl.id_tipo_cargo_salida
+             LEFT JOIN dbo.msp_cierre_mensual cm
+                ON cm.periodo_facturacion=COALESCE(ccl.periodo_referencia,DATEFROMPARTS(YEAR(ccl.fecha_cargo),MONTH(ccl.fecha_cargo),1))
              WHERE ccl.id_cargo_contrato_local=:cargo AND cl.id_contrato_arriendo=:contrato'
         );
         $q->execute([':cargo'=>$idCargo, ':contrato'=>$idContrato]);
         $cargo = $q->fetch(PDO::FETCH_ASSOC);
         if (!$cargo) { throw new RuntimeException('El cargo ya no existe o no pertenece al contrato.'); }
+        if (strtoupper((string) ($cargo['codigo_tipo_cargo'] ?? '')) !== 'MULTA') {
+            throw new RuntimeException('La edición desde Control diario está habilitada solamente para multas.');
+        }
+        if (in_array((int) ($cargo['estado_cierre'] ?? 0), [3,5], true)) {
+            throw new RuntimeException('El período se cerró después del análisis. La multa no se modificó.');
+        }
         $montoEsperado=self::valorCampo($corr['valor_anterior'] ?? null,'monto_cargo');
         if ($montoEsperado !== null && abs((float)$cargo['monto_cargo']-$montoEsperado)>0.01) {
             throw new RuntimeException('El cargo cambió después del análisis. Vuelve a analizar la corrección.');
@@ -392,19 +407,52 @@ final class CorreccionesService
             $claim=$conn->prepare("UPDATE dbo.msp_correcciones SET estado_correccion=N'EJECUTANDO',estrategia_ejecucion=N'CARGO_SIMPLE',fecha_actualizacion=SYSDATETIME() WHERE id_correccion=:id AND estado_correccion=N'APROBADA'");
             $claim->execute([':id'=>$idCorreccion]);
             if ($claim->rowCount() !== 1) { throw new RuntimeException('La corrección ya fue ejecutada o está siendo procesada.'); }
-            $upd=$conn->prepare('UPDATE dbo.msp_cargos_contrato_local SET monto_cargo=:monto WHERE id_cargo_contrato_local=:id');
-            $upd->execute([':monto'=>$nuevo, ':id'=>$idCargo]);
-            if (msp2TableExists($conn, 'msp_correcciones_impactos')) {
-                $impact=$conn->prepare("INSERT dbo.msp_correcciones_impactos(id_correccion,tipo_entidad,id_registro,accion_prevista,valor_anterior,valor_nuevo,es_financiero) VALUES(:c,N'CARGO',:r,N'UPDATE',:a,:n,0)");
-                $impact->execute([':c'=>$idCorreccion, ':r'=>$idCargo, ':a'=>(string)$cargo['monto_cargo'], ':n'=>(string)$nuevo]);
+            $idCargoLegacy = (int) ($cargo['id_cargo_salida_legacy'] ?? 0);
+            $anular = $nuevo === 0.0;
+            if ($idCargoLegacy > 0 && msp2TableExists($conn, 'msp_cargos_salida')) {
+                $updLegacy = $anular
+                    ? $conn->prepare('UPDATE dbo.msp_cargos_salida SET estado_cargo=5 WHERE id_cargo_salida=:id AND id_documento_cobro IS NULL')
+                    : $conn->prepare('UPDATE dbo.msp_cargos_salida SET monto_cargo=:monto WHERE id_cargo_salida=:id AND id_documento_cobro IS NULL');
+                $paramsLegacy = [':id'=>$idCargoLegacy];
+                if (!$anular) { $paramsLegacy[':monto']=$nuevo; }
+                $updLegacy->execute($paramsLegacy);
+                if ($updLegacy->rowCount() !== 1) {
+                    throw new RuntimeException('La multa original cambió después del análisis. Vuelve a registrar la corrección.');
+                }
             }
-            self::cambiarEstado($conn,$idCorreccion,'EJECUTADA',$usuario,'Cargo pendiente corregido sin alterar documentos ni pagos.');
+            $upd = $anular
+                ? $conn->prepare('UPDATE dbo.msp_cargos_contrato_local SET estado_cargo=5 WHERE id_cargo_contrato_local=:id')
+                : $conn->prepare('UPDATE dbo.msp_cargos_contrato_local SET monto_cargo=:monto WHERE id_cargo_contrato_local=:id');
+            $paramsCargo = [':id'=>$idCargo];
+            if (!$anular) { $paramsCargo[':monto']=$nuevo; }
+            $upd->execute($paramsCargo);
+            if ($upd->rowCount() !== 1) {
+                throw new RuntimeException('El registro mensual de la multa cambió después del análisis. Vuelve a registrar la corrección.');
+            }
+            if (msp2TableExists($conn, 'msp_correcciones_impactos')) {
+                $impact=$conn->prepare("INSERT dbo.msp_correcciones_impactos(id_correccion,tipo_entidad,id_registro,accion_prevista,valor_anterior,valor_nuevo,es_financiero) VALUES(:c,N'CARGO',:r,:accion,:a,:n,0)");
+                $impact->execute([':c'=>$idCorreccion, ':r'=>$idCargo, ':accion'=>$anular ? 'ANULAR' : 'UPDATE', ':a'=>(string)$cargo['monto_cargo'], ':n'=>(string)$nuevo]);
+            }
+            self::cambiarEstado(
+                $conn,
+                $idCorreccion,
+                'EJECUTADA',
+                $usuario,
+                $anular
+                    ? 'Multa pendiente anulada sin alterar documentos ni pagos.'
+                    : 'Multa pendiente corregida sin alterar documentos ni pagos.'
+            );
             if ($transaccionPropia) { $conn->commit(); }
         } catch (Throwable $e) {
             if ($transaccionPropia && $conn->inTransaction()) { $conn->rollBack(); }
             throw $e;
         }
-        return ['id_cargo'=>$idCargo,'monto_anterior'=>(float)$cargo['monto_cargo'],'monto_nuevo'=>$nuevo];
+        return [
+            'id_cargo'=>$idCargo,
+            'monto_anterior'=>(float)$cargo['monto_cargo'],
+            'monto_nuevo'=>$nuevo,
+            'anulada'=>$nuevo === 0.0,
+        ];
     }
 
     private static function ejecutarArriendoSimple(PDO $conn, array $corr, int $usuario): array

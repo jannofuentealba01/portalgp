@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/ServicioPeriodoReglas.php';
 
 msp2RequireAccess();
 
@@ -35,6 +36,30 @@ function msp2LiquidacionBadge(bool $ok, string $okText = 'COMPLETO', string $bad
     return $ok ? [$okText, 'text-bg-success'] : [$badText, 'text-bg-warning text-dark'];
 }
 
+function msp2LiquidacionServicioEstado(int $estado): array
+{
+    return match ($estado) {
+        2 => ['Consumo recibido', 'text-bg-info'],
+        3 => ['Conciliado', 'text-bg-success'],
+        4 => ['No aplica', 'text-bg-secondary'],
+        default => ['Pendiente', 'text-bg-warning text-dark'],
+    };
+}
+
+function msp2LiquidacionConsumoEstado(int $estado): array
+{
+    return match ($estado) {
+        2 => ['Emitido', 'text-bg-success'],
+        3 => ['Anulado', 'text-bg-secondary'],
+        default => ['Pendiente de emisión', 'text-bg-warning text-dark'],
+    };
+}
+
+function msp2LiquidacionPeriodoServicioSugerido(string $codigoServicio, string $fechaTermino): string
+{
+    return ServicioPeriodoReglas::periodoEmisionSugerido($codigoServicio, $fechaTermino);
+}
+
 $contrato = null;
 $locales = [];
 $garantias = [];
@@ -43,6 +68,10 @@ $cargosPendientes = 0;
 $reservasGarantia = 0;
 $documentosPendientes = [];
 $lecturasFinales = [];
+$serviciosLiquidacion = [];
+$consumosLiquidacionByServicio = [];
+$serviciosTardiosAbiertos = 0;
+$consumosTardiosSinEmitir = 0;
 $bloqueos = [];
 
 try {
@@ -87,6 +116,11 @@ try {
 
     // Checklist operacional: última lectura disponible por medidor del contrato.
     if (msp2TableExists($conn, 'msp_medidores') && msp2TableExists($conn, 'msp_lecturas_medidores')) {
+        $fechaCorteMedidores = trim((string) ($contrato['fecha_termino_efectiva'] ?? ''));
+        $filtroMedidoresCorte = $fechaCorteMedidores !== ''
+            ? ' AND (m.fecha_instalacion IS NULL OR m.fecha_instalacion <= :fecha_corte_instalacion)
+                AND (m.fecha_retiro IS NULL OR m.fecha_retiro >= :fecha_corte_retiro)'
+            : '';
         $stmtLecturasFinales = $conn->prepare(
             'SELECT m.id_medidor, m.codigo_medidor, l.cdo_local, ts.codigo_servicio,
                     ult.periodo_facturacion, ult.fecha_lectura, ult.lectura_actual
@@ -101,11 +135,114 @@ try {
                 ORDER BY lm.periodo_facturacion DESC, lm.id_lectura DESC
              ) ult
              WHERE cl.id_contrato_arriendo = :id_contrato
+             ' . $filtroMedidoresCorte . '
              ORDER BY l.cdo_local, ts.id_tipo_servicio, m.codigo_medidor'
         );
         $stmtLecturasFinales->bindValue(':id_contrato', $idContratoArriendo, PDO::PARAM_INT);
+        if ($fechaCorteMedidores !== '') {
+            $stmtLecturasFinales->bindValue(':fecha_corte_instalacion', $fechaCorteMedidores, PDO::PARAM_STR);
+            $stmtLecturasFinales->bindValue(':fecha_corte_retiro', $fechaCorteMedidores, PDO::PARAM_STR);
+        }
         $stmtLecturasFinales->execute();
         $lecturasFinales = $stmtLecturasFinales->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    if (msp2TableExists($conn, 'msp_liquidacion_servicios')
+        && msp2TableExists($conn, 'msp_liquidacion_servicio_consumos')) {
+        $stmtServiciosLiquidacion = $conn->prepare(
+            'SELECT
+                ls.id_liquidacion_servicio,
+                ls.estado_liquidacion,
+                ls.fecha_termino_operativo,
+                ls.observaciones,
+                cl.id_contrato_local,
+                l.cdo_local,
+                ts.codigo_servicio,
+                ts.nombre_servicio,
+                m.codigo_medidor,
+                ISNULL(resumen.consumos_activos, 0) AS consumos_activos,
+                ISNULL(resumen.pendientes_emision, 0) AS pendientes_emision,
+                ISNULL(resumen.consumos_emitidos, 0) AS consumos_emitidos,
+                ISNULL(resumen.monto_registrado, 0) AS monto_registrado
+             FROM dbo.msp_liquidacion_servicios ls
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_local = ls.id_contrato_local
+             INNER JOIN dbo.msp_locales l
+                ON l.id_local = cl.id_local
+             INNER JOIN dbo.msp_tipos_servicio ts
+                ON ts.id_tipo_servicio = ls.id_tipo_servicio
+             LEFT JOIN dbo.msp_medidores m
+                ON m.id_medidor = ls.id_medidor
+             OUTER APPLY (
+                SELECT
+                    SUM(CASE WHEN c.estado_consumo <> 3 THEN 1 ELSE 0 END) AS consumos_activos,
+                    SUM(CASE WHEN c.estado_consumo = 1 THEN 1 ELSE 0 END) AS pendientes_emision,
+                    SUM(CASE WHEN c.estado_consumo = 2 THEN 1 ELSE 0 END) AS consumos_emitidos,
+                    SUM(CASE WHEN c.estado_consumo <> 3 THEN c.monto_asignado ELSE 0 END) AS monto_registrado
+                FROM dbo.msp_liquidacion_servicio_consumos c
+                WHERE c.id_liquidacion_servicio = ls.id_liquidacion_servicio
+             ) resumen
+             WHERE cl.id_contrato_arriendo = :id_contrato
+             ORDER BY ' . msp2LocalCodeNaturalOrderSql('l.cdo_local') . ', ts.id_tipo_servicio, m.codigo_medidor'
+        );
+        $stmtServiciosLiquidacion->bindValue(':id_contrato', $idContratoArriendo, PDO::PARAM_INT);
+        $stmtServiciosLiquidacion->execute();
+        $serviciosLiquidacion = $stmtServiciosLiquidacion->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        foreach ($serviciosLiquidacion as &$servicioLiquidacion) {
+            $servicioLiquidacion['periodo_emision_sugerido'] = msp2LiquidacionPeriodoServicioSugerido(
+                (string) ($servicioLiquidacion['codigo_servicio'] ?? ''),
+                (string) ($servicioLiquidacion['fecha_termino_operativo'] ?? '')
+            );
+            if (in_array((int) ($servicioLiquidacion['estado_liquidacion'] ?? 0), [1, 2], true)) {
+                $serviciosTardiosAbiertos++;
+            }
+            $consumosTardiosSinEmitir += (int) ($servicioLiquidacion['pendientes_emision'] ?? 0);
+        }
+        unset($servicioLiquidacion);
+
+        $documentosCobroDisponibles = msp2TableExists($conn, 'msp_documentos_cobro');
+        $selectNumeroDocumento = $documentosCobroDisponibles
+            ? 'dc.numero_documento'
+            : 'CAST(NULL AS NVARCHAR(100)) AS numero_documento';
+        $joinDocumentoCobro = $documentosCobroDisponibles
+            ? 'LEFT JOIN dbo.msp_documentos_cobro dc
+                ON dc.id_documento_cobro = c.id_documento_cobro'
+            : '';
+        $stmtConsumosLiquidacion = $conn->prepare(
+            'SELECT
+                c.id_consumo_liquidacion,
+                c.id_liquidacion_servicio,
+                c.periodo_emision,
+                c.fecha_desde_consumo,
+                c.fecha_hasta_consumo,
+                c.referencia_origen,
+                c.lectura_anterior,
+                c.lectura_actual,
+                c.consumo_asignado,
+                c.monto_asignado,
+                c.estado_consumo,
+                c.observaciones,
+                c.id_documento_cobro,
+                ' . $selectNumeroDocumento . '
+             FROM dbo.msp_liquidacion_servicio_consumos c
+             INNER JOIN dbo.msp_liquidacion_servicios ls
+                ON ls.id_liquidacion_servicio = c.id_liquidacion_servicio
+             INNER JOIN dbo.msp_contrato_locales cl
+                ON cl.id_contrato_local = ls.id_contrato_local
+             ' . $joinDocumentoCobro . '
+             WHERE cl.id_contrato_arriendo = :id_contrato
+             ORDER BY c.periodo_emision DESC, c.id_consumo_liquidacion DESC'
+        );
+        $stmtConsumosLiquidacion->bindValue(':id_contrato', $idContratoArriendo, PDO::PARAM_INT);
+        $stmtConsumosLiquidacion->execute();
+        foreach (($stmtConsumosLiquidacion->fetchAll(PDO::FETCH_ASSOC) ?: []) as $consumoLiquidacion) {
+            $idServicioLiquidacion = (int) ($consumoLiquidacion['id_liquidacion_servicio'] ?? 0);
+            if ($idServicioLiquidacion <= 0) {
+                continue;
+            }
+            $consumosLiquidacionByServicio[$idServicioLiquidacion][] = $consumoLiquidacion;
+        }
     }
 
     if (msp2TableExists($conn, 'msp_garantias_tienda') && msp2TableExists($conn, 'msp_vw_garantias_tienda_resumen')) {
@@ -180,6 +317,12 @@ try {
     if ($reservasGarantia > 0) {
         $bloqueos[] = 'Existen saldos reservados en garantía.';
     }
+    if ($consumosTardiosSinEmitir > 0) {
+        $bloqueos[] = 'Existen consumos finales registrados que todavía no han sido emitidos.';
+    }
+    if ($serviciosTardiosAbiertos > 0) {
+        $bloqueos[] = 'Confirma como conciliados o marca como no aplicables todos los servicios finales.';
+    }
 
     $periodoTermino = !empty($contrato['fecha_termino_efectiva'])
         ? substr((string) $contrato['fecha_termino_efectiva'], 0, 7)
@@ -228,8 +371,10 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Liquidación final | MSP</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/portalgp/assets/vendor/bootstrap-icons-1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/portalgp/styles.css">
+    <link rel="stylesheet" href="/portalgp/msp/assets/views/contratos--liquidacion_final.css">
 </head>
 <body class="gp-layout bg-light">
 <?php include dirname(__DIR__, 2) . '/templates/header.php'; ?>
@@ -260,36 +405,6 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
         <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Deuda vencida</div><div class="h4 mb-0 text-warning"><?php echo msp2Escape(msp2LiquidacionMonto($deudaVencida)); ?></div><div class="small text-muted">Hasta hoy</div></div></div></div>
         <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Garantía disponible</div><div class="h4 mb-0 text-success"><?php echo msp2Escape(msp2LiquidacionMonto($saldoGarantia)); ?></div><div class="small text-muted"><?php echo count($garantias); ?> garantía(s)</div></div></div></div>
         <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Resultado estimado</div><div class="h4 mb-0"><?php echo msp2Escape(msp2LiquidacionMonto(max(0.0, $deudaSaldo - $saldoGarantia))); ?></div><div class="small text-muted">Deuda restante estimada</div></div></div></div>
-    </div>
-
-    <div class="card shadow-sm mb-3">
-        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center gap-2">
-            <span>Servicios finales y lecturas</span>
-            <span class="badge <?php echo $lecturasFinalesOk ? 'text-bg-success' : 'text-bg-warning text-dark'; ?>"><?php echo $lecturasFinalesOk ? 'Revisado' : 'Pendiente'; ?></span>
-        </div>
-        <div class="card-body">
-            <?php if ($lecturasFinales === []): ?>
-                <p class="text-muted mb-0">No hay medidores asociados al contrato; no se requiere lectura final.</p>
-            <?php else: ?>
-                <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-                    <thead><tr><th>Local</th><th>Servicio</th><th>Medidor</th><th>Último período</th><th>Fecha lectura</th><th>Estado</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($lecturasFinales as $lectura): $falta = in_array($lectura, $lecturasFaltantes, true); ?>
-                        <tr>
-                            <td><?php echo msp2Escape((string) ($lectura['cdo_local'] ?? '-')); ?></td>
-                            <td><?php echo msp2Escape((string) ($lectura['codigo_servicio'] ?? '-')); ?></td>
-                            <td><?php echo msp2Escape((string) ($lectura['codigo_medidor'] ?? '-')); ?></td>
-                            <td><?php echo msp2Escape(substr((string) ($lectura['periodo_facturacion'] ?? ''), 0, 7) ?: '-'); ?></td>
-                            <td><?php echo msp2Escape(msp2LiquidacionFecha((string) ($lectura['fecha_lectura'] ?? ''))); ?></td>
-                            <td><span class="badge <?php echo $falta ? 'text-bg-warning text-dark' : 'text-bg-success'; ?>"><?php echo $falta ? 'Actualizar lectura' : 'Disponible'; ?></span></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table></div>
-                <?php if (!$lecturasFinalesOk): ?><div class="small text-warning-emphasis mt-2">Hay medidores sin lectura en el mes del término. Registra las lecturas en Operación mensual antes de cerrar.</div><?php endif; ?>
-                <?php if ($periodoCorteSugerido !== '-'): ?><a class="btn btn-outline-primary btn-sm mt-3" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php?periodo=' . urlencode($periodoCorteSugerido))); ?>">Ir a Operación mensual</a><?php else: ?><a class="btn btn-outline-primary btn-sm mt-3" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php')); ?>">Ir a Operación mensual</a><?php endif; ?>
-            <?php endif; ?>
-        </div>
     </div>
 
     <?php if ($bloqueos !== []): ?>
@@ -344,9 +459,9 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
             </div>
         </div>
         <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white fw-semibold">Documentos pendientes</div>
-                <div class="card-body">
+            <details class="card shadow-sm h-100 lf-details">
+                <summary class="card-header bg-white fw-semibold">Documentos pendientes (<?php echo count($documentosPendientes); ?>)</summary>
+                <div class="card-body border-top">
                     <?php if ($documentosPendientes === []): ?>
                         <p class="text-muted mb-0">No se detectan documentos pendientes para este contrato.</p>
                     <?php else: ?>
@@ -361,9 +476,134 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
-            </div>
+            </details>
         </div>
     </div>
+
+    <details class="card shadow-sm mb-3 lf-details" open>
+        <summary class="card-header bg-white fw-semibold">
+            <span>Servicios finales y lecturas</span>
+            <span class="badge <?php echo $lecturasFinalesOk && $serviciosTardiosAbiertos === 0 ? 'text-bg-success' : 'text-bg-warning text-dark'; ?>">
+                <?php echo $lecturasFinalesOk && $serviciosTardiosAbiertos === 0 ? 'Revisado' : 'Pendiente'; ?>
+            </span>
+        </summary>
+        <div class="card-body border-top">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                <div>
+                    <div class="fw-semibold">Lecturas registradas al término</div>
+                    <div class="small text-muted">La asignación utiliza la fecha real de término del consumo, no la fecha en que se carga.</div>
+                </div>
+                <?php if ($periodoCorteSugerido !== '-'): ?>
+                    <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php?periodo=' . urlencode($periodoCorteSugerido))); ?>">Ir a Operación mensual</a>
+                <?php else: ?>
+                    <a class="btn btn-outline-primary btn-sm" href="<?php echo msp2Escape(msp2Url('cobros/operacion_mensual.php')); ?>">Ir a Operación mensual</a>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($lecturasFinales === []): ?>
+                <p class="text-muted">No hay medidores asociados al contrato; no se requiere lectura final.</p>
+            <?php else: ?>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>Local</th><th>Servicio</th><th>Medidor</th><th>Último período</th><th>Fecha lectura</th><th>Estado</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($lecturasFinales as $lectura): $falta = in_array($lectura, $lecturasFaltantes, true); ?>
+                            <tr>
+                                <td><?php echo msp2Escape((string) ($lectura['cdo_local'] ?? '-')); ?></td>
+                                <td><?php echo msp2Escape((string) ($lectura['codigo_servicio'] ?? '-')); ?></td>
+                                <td><?php echo msp2Escape((string) ($lectura['codigo_medidor'] ?? '-')); ?></td>
+                                <td><?php echo msp2Escape(substr((string) ($lectura['periodo_facturacion'] ?? ''), 0, 7) ?: '-'); ?></td>
+                                <td><?php echo msp2Escape(msp2LiquidacionFecha((string) ($lectura['fecha_lectura'] ?? ''))); ?></td>
+                                <td><span class="badge <?php echo $falta ? 'text-bg-warning text-dark' : 'text-bg-success'; ?>"><?php echo $falta ? 'Actualizar lectura' : 'Disponible'; ?></span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php if (!$lecturasFinalesOk): ?>
+                    <div class="small text-warning-emphasis mb-3">Hay medidores sin lectura en el mes del término. Registra las lecturas en Operación mensual antes de cerrar.</div>
+                <?php endif; ?>
+            <?php endif; ?>
+
+            <div class="border-top pt-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                    <div>
+                        <div class="fw-semibold">Consumos recibidos después del término</div>
+                        <div class="small text-muted">Luz y gas sugieren emisión al mes siguiente; agua, dos meses después. El cargo seguirá asociado a este contrato.</div>
+                    </div>
+                    <span class="badge text-bg-light border"><?php echo count($serviciosLiquidacion); ?> servicio(s)</span>
+                </div>
+
+                <?php if ($serviciosLiquidacion === []): ?>
+                    <p class="text-muted mb-0">No existen servicios tardíos inicializados para este contrato.</p>
+                <?php else: ?>
+                    <div class="lf-services-grid">
+                    <?php foreach ($serviciosLiquidacion as $servicioLiquidacion): ?>
+                        <?php
+                        $idServicioLiquidacion = (int) ($servicioLiquidacion['id_liquidacion_servicio'] ?? 0);
+                        [$servicioEstadoLabel, $servicioEstadoClass] = msp2LiquidacionServicioEstado((int) ($servicioLiquidacion['estado_liquidacion'] ?? 1));
+                        $consumosServicio = is_array($consumosLiquidacionByServicio[$idServicioLiquidacion] ?? null)
+                            ? $consumosLiquidacionByServicio[$idServicioLiquidacion]
+                            : [];
+                        ?>
+                        <article class="lf-service-card">
+                            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                                <div>
+                                    <div class="fw-semibold"><?php echo msp2Escape((string) ($servicioLiquidacion['nombre_servicio'] ?? $servicioLiquidacion['codigo_servicio'] ?? 'Servicio')); ?> · Local <?php echo msp2Escape((string) ($servicioLiquidacion['cdo_local'] ?? '-')); ?></div>
+                                    <div class="small text-muted">Medidor <?php echo msp2Escape((string) ($servicioLiquidacion['codigo_medidor'] ?? '-')); ?> · Término <?php echo msp2Escape(msp2LiquidacionFecha((string) ($servicioLiquidacion['fecha_termino_operativo'] ?? ''))); ?></div>
+                                </div>
+                                <span class="badge <?php echo msp2Escape($servicioEstadoClass); ?>"><?php echo msp2Escape($servicioEstadoLabel); ?></span>
+                            </div>
+
+                            <div class="lf-service-summary mt-2">
+                                <span>Período sugerido: <strong><?php echo msp2Escape((string) ($servicioLiquidacion['periodo_emision_sugerido'] ?? '-')); ?></strong></span>
+                                <span>Consumos: <strong><?php echo (int) ($servicioLiquidacion['consumos_activos'] ?? 0); ?></strong></span>
+                                <span>Monto: <strong><?php echo msp2Escape(msp2LiquidacionMonto((float) ($servicioLiquidacion['monto_registrado'] ?? 0))); ?></strong></span>
+                            </div>
+
+                            <?php if ($consumosServicio !== []): ?>
+                                <details class="lf-service-consumptions mt-2">
+                                    <summary>Ver consumos registrados (<?php echo count($consumosServicio); ?>)</summary>
+                                    <div class="mt-2">
+                                    <?php foreach ($consumosServicio as $consumoServicio): ?>
+                                        <?php [$consumoEstadoLabel, $consumoEstadoClass] = msp2LiquidacionConsumoEstado((int) ($consumoServicio['estado_consumo'] ?? 1)); ?>
+                                        <div class="lf-consumption-row">
+                                            <div>
+                                                <div class="fw-semibold"><?php echo msp2Escape((string) ($consumoServicio['referencia_origen'] ?? '-')); ?></div>
+                                                <div class="small text-muted">Consumo hasta <?php echo msp2Escape(msp2LiquidacionFecha((string) ($consumoServicio['fecha_hasta_consumo'] ?? ''))); ?> · Emisión <?php echo msp2Escape(substr((string) ($consumoServicio['periodo_emision'] ?? ''), 0, 7)); ?></div>
+                                                <?php if (!empty($consumoServicio['numero_documento'])): ?><div class="small text-muted">Documento <?php echo msp2Escape((string) $consumoServicio['numero_documento']); ?></div><?php endif; ?>
+                                            </div>
+                                            <div class="text-end">
+                                                <div class="fw-semibold"><?php echo msp2Escape(msp2LiquidacionMonto((float) ($consumoServicio['monto_asignado'] ?? 0))); ?></div>
+                                                <span class="badge <?php echo msp2Escape($consumoEstadoClass); ?>"><?php echo msp2Escape($consumoEstadoLabel); ?></span>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    </div>
+                                </details>
+                            <?php endif; ?>
+
+                            <div class="d-flex flex-wrap gap-2 mt-3">
+                                <?php if (in_array((int) ($servicioLiquidacion['estado_liquidacion'] ?? 1), [1, 2], true)): ?>
+                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalServicioTardio" data-id="<?php echo $idServicioLiquidacion; ?>" data-servicio="<?php echo msp2Escape((string) ($servicioLiquidacion['nombre_servicio'] ?? $servicioLiquidacion['codigo_servicio'] ?? 'Servicio')); ?>" data-local="<?php echo msp2Escape((string) ($servicioLiquidacion['cdo_local'] ?? '-')); ?>" data-medidor="<?php echo msp2Escape((string) ($servicioLiquidacion['codigo_medidor'] ?? '')); ?>" data-periodo-sugerido="<?php echo msp2Escape((string) ($servicioLiquidacion['periodo_emision_sugerido'] ?? '')); ?>" data-fecha-termino="<?php echo msp2Escape((string) ($servicioLiquidacion['fecha_termino_operativo'] ?? '')); ?>">Registrar consumo recibido</button>
+                                <?php endif; ?>
+                                <?php if ((int) ($servicioLiquidacion['estado_liquidacion'] ?? 1) === 1 && $consumosServicio === []): ?>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalServicioNoAplica" data-id="<?php echo $idServicioLiquidacion; ?>" data-servicio="<?php echo msp2Escape((string) ($servicioLiquidacion['nombre_servicio'] ?? 'Servicio')); ?>" data-local="<?php echo msp2Escape((string) ($servicioLiquidacion['cdo_local'] ?? '-')); ?>" data-medidor="<?php echo msp2Escape((string) ($servicioLiquidacion['codigo_medidor'] ?? '')); ?>">Marcar No aplica</button>
+                                <?php endif; ?>
+                                <?php if ((int) ($servicioLiquidacion['estado_liquidacion'] ?? 1) === 2): ?>
+                                    <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalConciliarServicio" data-id="<?php echo $idServicioLiquidacion; ?>" data-servicio="<?php echo msp2Escape((string) ($servicioLiquidacion['nombre_servicio'] ?? 'Servicio')); ?>" data-local="<?php echo msp2Escape((string) ($servicioLiquidacion['cdo_local'] ?? '-')); ?>" data-medidor="<?php echo msp2Escape((string) ($servicioLiquidacion['codigo_medidor'] ?? '')); ?>">Confirmar conciliación</button>
+                                <?php endif; ?>
+                                <?php if (in_array((int) ($servicioLiquidacion['estado_liquidacion'] ?? 1), [3, 4], true)): ?>
+                                    <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#modalReabrirServicio" data-id="<?php echo $idServicioLiquidacion; ?>" data-servicio="<?php echo msp2Escape((string) ($servicioLiquidacion['nombre_servicio'] ?? 'Servicio')); ?>" data-local="<?php echo msp2Escape((string) ($servicioLiquidacion['cdo_local'] ?? '-')); ?>" data-medidor="<?php echo msp2Escape((string) ($servicioLiquidacion['codigo_medidor'] ?? '')); ?>">Reabrir</button>
+                                <?php endif; ?>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </details>
 
     <div class="card shadow-sm mb-3">
         <div class="card-header bg-white fw-semibold">Checklist de liquidación</div>
@@ -428,7 +668,109 @@ if (!empty($contrato['fecha_termino_efectiva'])) {
             </form>
         </div>
     </div>
+
+    <div class="modal fade" id="modalServicioTardio" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('contratos/guardar_servicio_liquidacion.php')); ?>">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title fs-5">Registrar consumo recibido</h2>
+                        <div class="small text-muted js-servicio-contexto"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <?php msp2CsrfField(); ?>
+                    <input type="hidden" name="id_contrato_arriendo" value="<?php echo (int) $idContratoArriendo; ?>">
+                    <input type="hidden" name="id_liquidacion_servicio" value="">
+                    <input type="hidden" name="accion" value="REGISTRAR_CONSUMO">
+                    <div class="alert alert-info py-2 small">La fecha final del consumo determina a qué ocupación corresponde. Si el período continúa después del término, separa el consumo usando la lectura tomada al entregar el local y explica el criterio en Observaciones.</div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Período de emisión</label>
+                            <input type="month" class="form-control" name="periodo_emision_mes" required>
+                            <div class="form-text">Luz/gas: mes siguiente. Agua: dos meses después.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Consumo desde</label>
+                            <input type="date" class="form-control" name="fecha_desde_consumo">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Consumo hasta</label>
+                            <input type="date" class="form-control" name="fecha_hasta_consumo" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Referencia de origen</label>
+                            <input type="text" class="form-control" name="referencia_origen" maxlength="100" placeholder="Ej.: factura o comprobante de la empresa" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Lectura anterior</label>
+                            <input type="text" inputmode="decimal" class="form-control" name="lectura_anterior">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Lectura final</label>
+                            <input type="text" inputmode="decimal" class="form-control" name="lectura_actual">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Consumo asignado</label>
+                            <input type="text" inputmode="decimal" class="form-control" name="consumo_asignado">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Monto asignado</label>
+                            <input type="text" inputmode="decimal" class="form-control" name="monto_asignado" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Observaciones</label>
+                            <textarea class="form-control" name="observaciones" rows="3" maxlength="500" placeholder="Indica el criterio utilizado para separar el consumo, especialmente si la factura incluye días posteriores al término."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar consumo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <?php
+    $modalesServicio = [
+        ['modalServicioNoAplica', 'MARCAR_NO_APLICA', 'Marcar servicio como No aplica', 'Guardar decisión', 'Explica por qué este servicio no generará un cobro final.'],
+        ['modalConciliarServicio', 'CONFIRMAR_CONCILIADO', 'Confirmar conciliación', 'Confirmar', 'Indica cómo se verificó que todos los consumos fueron emitidos correctamente.'],
+        ['modalReabrirServicio', 'REABRIR_PENDIENTE', 'Reabrir servicio pendiente', 'Reabrir', 'Explica por qué es necesario volver a revisar este servicio.'],
+    ];
+    foreach ($modalesServicio as [$modalId, $modalAccion, $modalTitulo, $modalBoton, $modalAyuda]):
+    ?>
+        <div class="modal fade" id="<?php echo msp2Escape($modalId); ?>" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('contratos/guardar_servicio_liquidacion.php')); ?>">
+                    <div class="modal-header">
+                        <div>
+                            <h2 class="modal-title fs-5"><?php echo msp2Escape($modalTitulo); ?></h2>
+                            <div class="small text-muted js-servicio-contexto"></div>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <?php msp2CsrfField(); ?>
+                        <input type="hidden" name="id_contrato_arriendo" value="<?php echo (int) $idContratoArriendo; ?>">
+                        <input type="hidden" name="id_liquidacion_servicio" value="">
+                        <input type="hidden" name="accion" value="<?php echo msp2Escape($modalAccion); ?>">
+                        <label class="form-label">Motivo u observación</label>
+                        <textarea class="form-control" name="observaciones" rows="4" maxlength="500" required></textarea>
+                        <div class="form-text"><?php echo msp2Escape($modalAyuda); ?></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary"><?php echo msp2Escape($modalBoton); ?></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    <?php endforeach; ?>
 </main>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
+<script src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/msp/assets/liquidacion_final.js"></script>
 </body>
 </html>
