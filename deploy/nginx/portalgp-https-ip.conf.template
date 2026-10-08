@@ -1,0 +1,23 @@
+# Bloque HTTPS independiente para PortalGP. No sirve ni modifica it-conecta.
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name __PORTALGP_IP__;
+    root /var/www;
+    server_tokens off;
+
+    ssl_certificate /etc/letsencrypt/live/__PORTALGP_IP__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__PORTALGP_IP__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:PortalGPSSL:10m;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    include /etc/nginx/snippets/portalgp-app.conf;
+
+    location / {
+        return 404;
+    }
+}
