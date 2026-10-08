@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/url_helper.php';
 require_once __DIR__ . '/vendor/autoload.php';
 pgpSecurityStartSession();
 
@@ -126,15 +127,7 @@ function pgpMicrosoftAuthConfig(): array
 
 function pgpCurrentBaseUrl(): string
 {
-    $https = $_SERVER['HTTPS'] ?? '';
-    $isHttps = (!empty($https) && strtolower((string)$https) !== 'off')
-        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
-        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
-
-    $scheme = $isHttps ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-
-    return $scheme . '://' . $host;
+    return pgpCanonicalBaseUrl();
 }
 
 function pgpCurrentAppBasePath(): string

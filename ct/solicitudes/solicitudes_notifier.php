@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/mail_helper.php';
+require_once dirname(__DIR__, 2) . '/url_helper.php';
 require_once __DIR__ . '/mail_templates/solicitud_notificacion_email.php';
 
 function ctSolicitudesNotifEmailDomain(string $email): string
@@ -47,16 +48,7 @@ function ctSolicitudesNotifBaseSubject(array $solicitud): string
 function ctSolicitudesNotifBuildFichaUrl(int $idSolicitud): string
 {
     $path = ctUrl('solicitudes/ficha.php') . '?id=' . max(0, $idSolicitud);
-    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
-    if ($host === '') {
-        return $path;
-    }
-    $isHttps = (
-        (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
-        || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443'
-    );
-    $scheme = $isHttps ? 'https' : 'http';
-    return $scheme . '://' . $host . $path;
+    return pgpCanonicalBaseUrl() . $path;
 }
 
 function ctSolicitudesNotifResolveUsersCatalog(PDO $conn): array
