@@ -331,6 +331,7 @@ if (!preg_match('/^(20\d{2})-(0[1-9]|1[0-2])$/', $monthText, $monthMatch)) {
 }
 
 $config = fte_load_config();
+$config['runtime_cache_enabled'] = false; // Do not read/write the portal's personnel cache.
 fte_assert_buk_config($config);
 fte_assert_geovictoria_config($config);
 $defaultOutput = dirname(__DIR__, 3) . '/storage/fte_diagnostics/geovictoria_performance_' . date('Ymd_His') . '.json';

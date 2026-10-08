@@ -172,8 +172,7 @@ $assert(
 
 $defaultConfig = fte_load_config();
 $defaultExclusions = fte_identity_exclusion_map($defaultConfig);
-$assert(count($defaultExclusions) === 1, 'la politica excluye de dotacion solo a la persona sin CECO confirmado');
-$assert(isset($defaultExclusions['89937760']), 'Carlos queda fuera de dotacion hasta regularizar su CECO');
+$assert(count($defaultExclusions) === 0, 'la politica no mantiene exclusiones globales de identidad con vigencia laboral ya regularizada');
 $attendanceExclusions = fte_attendance_exclusion_map($defaultConfig);
 $assert(count($attendanceExclusions) === 5, 'la politica conserva cinco trabajadores en dotacion con cobertura GeoVictoria pendiente');
 foreach (['156158410', '155927852', '108149892', '123045602', '271366264'] as $identifier) {

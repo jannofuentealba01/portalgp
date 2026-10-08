@@ -972,6 +972,7 @@ function fte_monthly_build_data_quality(
         'attendance_excluded_count' => count($attendanceExcludedWorkers),
         'workers_not_found' => fte_monthly_quality_worker_rows($people, $unmatched),
         'workers_failed' => fte_monthly_quality_worker_rows($people, $failed),
+        'attendance_failure_reasons' => $attendanceDiagnostics['failure_reasons'] ?? [],
         'workers_excluded' => $excludedWorkers,
         'attendance_excluded_workers' => $attendanceExcludedWorkers,
         'identity_duplicate_records_merged' => (int)($identity['duplicate_records_merged'] ?? 0),
@@ -2577,12 +2578,18 @@ function fte_monthly_build_report(
         'request_count' => (int)($attendanceDiagnostics['request_count'] ?? 0),
         'batch_requests' => (int)($attendanceDiagnostics['batch_requests'] ?? 0),
         'fallback_requests' => (int)($attendanceDiagnostics['fallback_requests'] ?? 0),
+        'strategy' => $attendanceDiagnostics['strategy'] ?? null,
+        'batch_size' => (int)($attendanceDiagnostics['batch_size'] ?? 0),
+        'retry_requests' => (int)($attendanceDiagnostics['retry_requests'] ?? 0),
+        'split_batches' => (int)($attendanceDiagnostics['split_batches'] ?? 0),
+        'circuit_open' => (bool)($attendanceDiagnostics['circuit_open'] ?? false),
     ];
     return $calculated;
 }
 
 function fte_build_monthly_payload(array $config, array $params, ?PDO $conn = null): array
 {
+    $performanceStarted = hrtime(true);
     $period = trim((string)($params['period'] ?? date('Y-m')));
     if (!preg_match('/^(20\d{2})-(0[1-9]|1[0-2])$/', $period, $match)) {
         throw new InvalidArgumentException('El periodo mensual no es valido.');
@@ -2631,6 +2638,8 @@ function fte_build_monthly_payload(array $config, array $params, ?PDO $conn = nu
         $people = fte_fetch_buk_people($config, false, $identityDiagnostics);
         $headcount = fte_headcount_build_month($people, $year, $month, $calendar);
     }
+    fte_performance_phase($config, 'buk_people_calendar_headcount', $performanceStarted);
+    $performanceStarted = hrtime(true);
     $from = new DateTimeImmutable($calendar['period'] . '-01');
     $to = $from->modify('last day of this month');
     $warnings = $calendarSnapshotWarning !== null ? [$calendarSnapshotWarning] : [];
@@ -2644,11 +2653,15 @@ function fte_build_monthly_payload(array $config, array $params, ?PDO $conn = nu
         'start_before' => $to->format('Y-m-d'),
         'end_after' => $from->format('Y-m-d'),
     ]);
+    fte_performance_phase($config, 'buk_vacations', $performanceStarted);
+    $performanceStarted = hrtime(true);
     $licences = fte_buk_fetch_all($config, "/api/v1/{$country}/absences/licence", [
         'from' => $from->format('Y-m-d'),
         'to' => $to->format('Y-m-d'),
     ]);
+    fte_performance_phase($config, 'buk_licences', $performanceStarted);
     }
+    $performanceStarted = hrtime(true);
     if (!$vacations['ok']) {
         $warnings[] = 'No fue posible incorporar vacaciones desde Buk.';
     }
@@ -2675,6 +2688,8 @@ function fte_build_monthly_payload(array $config, array $params, ?PDO $conn = nu
         }
     }
 
+    fte_performance_phase($config, 'absence_normalization', $performanceStarted);
+    $performanceStarted = hrtime(true);
     $attendance = [];
     $attendancePeople = [];
     $attendanceExcludedWorkers = [];
@@ -2719,7 +2734,7 @@ function fte_build_monthly_payload(array $config, array $params, ?PDO $conn = nu
                 ? 'PARCIAL'
                 : 'DISPONIBLE';
             if ($diagnostics['failed_identifiers']) {
-                $warnings[] = 'GeoVictoria fallo para ' . count($diagnostics['failed_identifiers']) . ' persona(s).';
+                $warnings[] = 'GeoVictoria fallo para ' . count($diagnostics['failed_identifiers']) . ' persona(s). Se conservaron las respuestas recuperadas; sus conceptos son parciales y los casos fallidos no equivalen a cero horas.';
             }
             if ($diagnostics['unmatched_identifiers']) {
                 $warnings[] = 'GeoVictoria no concilio ' . count($diagnostics['unmatched_identifiers']) . ' persona(s).';
@@ -2748,6 +2763,8 @@ function fte_build_monthly_payload(array $config, array $params, ?PDO $conn = nu
         $diagnostics['identity'] = $identityDiagnostics;
     }
 
+    fte_performance_phase($config, 'attendance_total', $performanceStarted);
+    $performanceStarted = hrtime(true);
     $report = fte_monthly_build_report(
         $calendar,
         $headcount,
@@ -3057,5 +3074,6 @@ function fte_build_monthly_payload(array $config, array $params, ?PDO $conn = nu
         'cost_centers' => true,
         'reference_values_affect_calculation' => false,
     ];
+    fte_performance_phase($config, 'calculation_and_report', $performanceStarted);
     return $report;
 }

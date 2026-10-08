@@ -64,5 +64,41 @@ $missingCeco = fte_headcount_build_month([[
 $assert(in_array('ACTIVE_PERSON_WITHOUT_COST_CENTER_ASSIGNMENT', $missingCeco['warnings'], true), 'advierte persona activa sin CECO');
 $assert($missingCeco['unassigned_person_days'] === 31, 'cuantifica dias-persona sin asignacion CECO');
 
+$rehiredAfterGap = fte_headcount_build_month([[
+    'normalized_identifier' => '89937760',
+    'active' => true,
+    'active_since' => '2025-12-10',
+    'active_until' => null,
+    'employment_dates_verified' => true,
+    'employment_periods' => [
+        ['start_date' => '2025-12-10', 'end_date' => '2026-06-24', 'verified' => true],
+        ['start_date' => '2026-09-07', 'end_date' => null, 'verified' => true],
+    ],
+    'jobs' => [
+        $job(6, '2025-12-10', '2026-06-24', '11-30-30'),
+        $job(7, '2026-09-07', null, '12-27-27'),
+    ],
+]], 2026, 8, fte_calendar_calculate_month(2026, 8));
+$assert($rehiredAfterGap['unique_people_active_any_time'] === 0, 'una persona desvinculada que reingresa en septiembre no integra agosto');
+$assert($rehiredAfterGap['unassigned_person_days'] === 0, 'el intervalo entre contratos no se interpreta como dias sin CECO');
+
+$rehiredInSeptember = fte_headcount_build_month([[
+    'normalized_identifier' => '89937760',
+    'active' => true,
+    'active_since' => '2025-12-10',
+    'active_until' => null,
+    'employment_dates_verified' => true,
+    'employment_periods' => [
+        ['start_date' => '2025-12-10', 'end_date' => '2026-06-24', 'verified' => true],
+        ['start_date' => '2026-09-07', 'end_date' => null, 'verified' => true],
+    ],
+    'jobs' => [
+        $job(6, '2025-12-10', '2026-06-24', '11-30-30'),
+        $job(7, '2026-09-07', null, '12-27-27'),
+    ],
+]], 2026, 9, fte_calendar_calculate_month(2026, 9));
+$assert($rehiredInSeptember['unique_people_active_any_time'] === 1, 'el reingreso se incorpora desde su fecha real de septiembre');
+$assert($rehiredInSeptember['unassigned_person_days'] === 0, 'el reingreso conserva su CECO vigente');
+
 echo "Resultado: {$passed} OK, {$failed} fallidas.\n";
 exit($failed === 0 ? 0 : 1);

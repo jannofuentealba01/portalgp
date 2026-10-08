@@ -9,6 +9,8 @@ require_once __DIR__ . '/fte_headcount_snapshot.php';
 require_once __DIR__ . '/fte_monthly_source_snapshot.php';
 require_once __DIR__ . '/fte_attendance_status.php';
 require_once __DIR__ . '/fte_monthly_report.php';
+require_once __DIR__ . '/fte_geovictoria_batches.php';
+require_once __DIR__ . '/fte_runtime_cache.php';
 
 final class FteGeoVictoriaException extends RuntimeException
 {
@@ -254,7 +256,36 @@ function fte_normalize_buk_person(array $raw): ?array
     ];
 }
 
-function fte_http_json(string $url, array $headers = [], ?array $jsonPayload = null, int $timeout = 45): array
+/** Optional, diagnostic-only observer. It never receives URLs, headers or payloads. */
+function fte_performance_emit(?callable $observer, array $event): void
+{
+    if ($observer === null) {
+        return;
+    }
+    try {
+        $observer($event);
+    } catch (Throwable $ignored) {
+        // A measurement must never change the response or calculation.
+    }
+}
+
+function fte_performance_phase(array $config, string $phase, int $started): void
+{
+    fte_performance_emit($config['_performance_observer'] ?? null, [
+        'type' => 'phase', 'phase' => $phase,
+        'seconds' => (hrtime(true) - $started) / 1e9,
+    ]);
+}
+
+function fte_http_json(
+    string $url,
+    array $headers = [],
+    ?array $jsonPayload = null,
+    int $timeout = 45,
+    array $curlOptions = [],
+    ?callable $observer = null,
+    string $source = 'http'
+): array
 {
     $ch = curl_init($url);
     $httpHeaders = array_merge(['Accept: application/json'], $headers);
@@ -274,11 +305,13 @@ function fte_http_json(string $url, array $headers = [], ?array $jsonPayload = n
         $httpHeaders[] = 'Content-Type: application/json';
         $options[CURLOPT_HTTPHEADER] = $httpHeaders;
     }
-    curl_setopt_array($ch, $options);
+    curl_setopt_array($ch, array_replace($options, $curlOptions));
+    $started = hrtime(true);
     $raw = curl_exec($ch);
     $errno = curl_errno($ch);
     $error = curl_error($ch);
-    $status = (int)(curl_getinfo($ch, CURLINFO_HTTP_CODE) ?: 0);
+    $info = curl_getinfo($ch);
+    $status = (int)($info['http_code'] ?? 0);
     curl_close($ch);
 
     $decoded = null;
@@ -288,14 +321,101 @@ function fte_http_json(string $url, array $headers = [], ?array $jsonPayload = n
             $decoded = $tmp;
         }
     }
+    fte_performance_emit($observer, [
+        'type' => 'http', 'source' => $source, 'status' => $status, 'errno' => $errno,
+        'seconds' => (hrtime(true) - $started) / 1e9,
+        'ttfb_seconds' => (float)($info['starttransfer_time'] ?? 0),
+        'bytes' => is_string($raw) ? strlen($raw) : 0,
+    ]);
     return [
-        'ok' => $status >= 200 && $status < 300,
+        'ok' => $errno === 0 && $status >= 200 && $status < 300,
         'status' => $status,
         'errno' => $errno,
         'error' => $error,
         'raw' => $raw,
         'json' => $decoded,
     ];
+}
+
+function fte_geovictoria_curl_options(): array
+{
+    // GeoVictoria deja algunas conexiones HTTP/2 abiertas sin completar el
+    // handshake TLS. Forzar HTTP/1.1 evita esos timeouts intermitentes.
+    return [CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1];
+}
+
+function fte_geovictoria_login_response(
+    array $config,
+    string $url,
+    array $credentials,
+    int $timeoutSeconds,
+    int $attempt
+): array {
+    if (isset($config['_geovictoria_login_handler']) && is_callable($config['_geovictoria_login_handler'])) {
+        $response = $config['_geovictoria_login_handler']($url, $credentials, $timeoutSeconds, $attempt);
+        if (!is_array($response)) {
+            return ['ok' => false, 'status' => 0, 'errno' => 0, 'json' => null];
+        }
+        return $response;
+    }
+
+    return fte_http_json(
+        $url,
+        [],
+        $credentials,
+        $timeoutSeconds,
+        fte_geovictoria_curl_options(),
+        $config['_performance_observer'] ?? null,
+        'geo_auth'
+    );
+}
+
+function fte_geovictoria_token_cache_path(array $config): string
+{
+    $configured = trim((string)($config['geovictoria_token_cache_file'] ?? ''));
+    if ($configured !== '') {
+        return $configured;
+    }
+    $scope = fte_geovictoria_cache_scope($config);
+    return rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'portalgp-geovictoria-' . $scope . '.json';
+}
+
+function fte_geovictoria_shared_token(array $config): ?string
+{
+    $path = fte_geovictoria_token_cache_path($config);
+    if (!is_file($path)) {
+        return null;
+    }
+    $raw = @file_get_contents($path);
+    $cached = is_string($raw) ? json_decode($raw, true) : null;
+    if (!is_array($cached) || !is_string($cached['token'] ?? null)
+        || !hash_equals(fte_geovictoria_cache_scope($config), (string)($cached['scope'] ?? ''))
+        || (int)($cached['expires_at'] ?? 0) <= time() + 30) {
+        return null;
+    }
+    return $cached['token'];
+}
+
+function fte_geovictoria_store_shared_token(array $config, string $token, int $expiresAt): void
+{
+    $path = fte_geovictoria_token_cache_path($config);
+    $temporary = $path . '.' . bin2hex(random_bytes(6)) . '.tmp';
+    $payload = json_encode(['scope' => fte_geovictoria_cache_scope($config), 'token' => $token, 'expires_at' => $expiresAt], JSON_UNESCAPED_SLASHES);
+    if (!is_string($payload) || @file_put_contents($temporary, $payload, LOCK_EX) === false) {
+        return;
+    }
+    @chmod($temporary, 0600);
+    if (!@rename($temporary, $path)) {
+        @unlink($temporary);
+    }
+}
+
+function fte_geovictoria_forget_shared_token(array $config): void
+{
+    $path = fte_geovictoria_token_cache_path($config);
+    if (is_file($path)) {
+        @unlink($path);
+    }
 }
 
 function fte_buk_headers(array $config): array
@@ -375,19 +495,24 @@ function fte_response_has_next_page(array $payload, int $page, int $rowCount, in
 function fte_fetch_buk_people(array $config, bool $activeOnly = true, ?array &$identityDiagnostics = null): array
 {
     fte_assert_buk_config($config);
-    $base = rtrim((string)$config['buk_base_url'], '/');
-    $country = trim((string)$config['buk_country']);
     $identityPolicyHash = hash('sha256', json_encode([
         'identity' => $config['identity_exclusions'] ?? [],
         'attendance' => $config['attendance_exclusions'] ?? [],
     ], JSON_UNESCAPED_UNICODE));
-    $cacheKey = hash('sha256', $base . '|' . $country . '|' . (string)$config['buk_token'] . '|' . ($activeOnly ? 'active' : 'history') . '|identity-v2-employment-dates|' . $identityPolicyHash);
+    $cacheKey = 'buk:people:' . fte_buk_cache_scope($config) . '|' . ($activeOnly ? 'active' : 'history') . '|identity-v3-employment-dates|' . $identityPolicyHash;
     $cacheTtl = max(0, (int)($config['buk_people_cache_ttl_seconds'] ?? 300));
-    if (session_status() === PHP_SESSION_ACTIVE && $cacheTtl > 0) {
-        $cache = $_SESSION['fte_buk_people_cache'] ?? null;
+    $memoryCacheAllowed = session_status() === PHP_SESSION_ACTIVE || !empty($config['_fte_session_detached']);
+    $cachedSource = fte_runtime_cache_read($config, $cacheKey, $cacheTtl);
+    if ($cachedSource !== null && is_array($cachedSource['data']['people'] ?? null)
+        && is_array($cachedSource['data']['identity_diagnostics'] ?? null)) {
+        $identityDiagnostics = $cachedSource['data']['identity_diagnostics'];
+        fte_performance_emit($config['_performance_observer'] ?? null, ['type' => 'cache', 'source' => 'buk_people', 'scope' => $activeOnly ? 'active' : 'history', 'hit' => true]);
+        return $cachedSource['data']['people'];
+    }
+    if ($memoryCacheAllowed && $cacheTtl > 0 && empty($config['_refresh_buk_cache'])) {
+        $cache = $_SESSION['fte_buk_people_caches'][$cacheKey] ?? null;
         if (is_array($cache)
-            && hash_equals((string)($cache['key'] ?? ''), $cacheKey)
-            && (int)($cache['expires_at'] ?? 0) > time()
+            && min((int)($cache['expires_at'] ?? 0), (int)($cache['created_at'] ?? 0) + $cacheTtl) > fte_runtime_cache_now($config)
             && is_array($cache['people'] ?? null)) {
             $identityDiagnostics = is_array($cache['identity_diagnostics'] ?? null)
                 ? $cache['identity_diagnostics']
@@ -395,8 +520,62 @@ function fte_fetch_buk_people(array $config, bool $activeOnly = true, ?array &$i
             return $cache['people'];
         }
     }
-    $path = "/api/v1/{$country}/employees";
+    $rowsCreatedAt = null;
+    $rows = fte_fetch_buk_people_rows($config, $cacheTtl, $rowsCreatedAt);
     $people = [];
+    foreach ($rows as $row) {
+        $person = fte_normalize_buk_person($row);
+        if ($person !== null && (!$activeOnly || $person['active'] !== false)) {
+            $people[] = $person;
+        }
+    }
+    $people = fte_identity_unify_people($people, $config, $identityDiagnostics);
+    $namesCreatedAt = null;
+    $names = fte_fetch_buk_cost_center_names($config, $namesCreatedAt);
+    foreach ($people as &$person) {
+        $code = (string)($person['cost_center_code'] ?? '');
+        if (($person['cost_center_name'] ?? '') === '' && $code !== '' && isset($names[$code])) {
+            $person['cost_center_name'] = $names[$code];
+        }
+        foreach ($person['jobs'] as &$job) {
+            $jobCode = (string)($job['cost_center_code'] ?? '');
+            if ($jobCode !== '' && isset($names[$jobCode])) {
+                $job['cost_center_name'] = $names[$jobCode];
+            }
+        }
+        unset($job);
+    }
+    unset($person);
+    if ($cacheTtl > 0 && $namesCreatedAt !== null) {
+        $createdAt = min((int)$rowsCreatedAt, $namesCreatedAt);
+        $entry = ['created_at' => $createdAt, 'expires_at' => $createdAt + $cacheTtl,
+            'people' => $people, 'identity_diagnostics' => $identityDiagnostics ?? []];
+        if ($memoryCacheAllowed) {
+            $_SESSION['fte_buk_people_caches'][$cacheKey] = $entry;
+            if (count($_SESSION['fte_buk_people_caches']) > 4) {
+                array_shift($_SESSION['fte_buk_people_caches']);
+            }
+        }
+        fte_runtime_cache_write($config, $cacheKey, ['people' => $people,
+            'identity_diagnostics' => $identityDiagnostics ?? []], $cacheTtl, $createdAt);
+    }
+    return $people;
+}
+
+/** Raw full roster is identical for active/history; filter before identity merging, as before. */
+function fte_fetch_buk_people_rows(array $config, int $cacheTtl, ?int &$createdAt): array
+{
+    $base = rtrim((string)$config['buk_base_url'], '/');
+    $country = trim((string)$config['buk_country']);
+    $key = 'buk:employees:pages-v1:' . fte_buk_cache_scope($config);
+    $cached = fte_runtime_cache_read($config, $key, $cacheTtl);
+    if ($cached !== null && is_array($cached['data']['rows'] ?? null)) {
+        $createdAt = (int)$cached['created_at'];
+        fte_performance_emit($config['_performance_observer'] ?? null, ['type' => 'cache', 'source' => 'buk_people_raw', 'hit' => true]);
+        return $cached['data']['rows'];
+    }
+    $path = "/api/v1/{$country}/employees";
+    $rows = [];
     for ($page = 1; $page <= 50; $page++) {
         $query = [
             'page' => $page,
@@ -405,7 +584,7 @@ function fte_fetch_buk_people(array $config, bool $activeOnly = true, ?array &$i
             'include' => 'department,sub_department,position,employment,contract,organizational_unit,company_area,team,current_job,current_employment',
         ];
         $url = $base . $path . '?' . http_build_query($query);
-        $response = fte_http_json($url, fte_buk_headers($config), null, 30);
+        $response = fte_buk_http_response($config, $url, 'buk_people');
         if (!$response['ok']) {
             $status = (int)($response['status'] ?? 0);
             if ($status === 401 || $status === 403) {
@@ -422,18 +601,22 @@ function fte_fetch_buk_people(array $config, bool $activeOnly = true, ?array &$i
         if (!is_array($response['json'])) {
             throw new RuntimeException('Buk respondio con un formato no reconocido.');
         }
+        if (!array_is_list($response['json']) && !array_filter(['data', 'people', 'employees', 'items'],
+            static fn(string $key): bool => isset($response['json'][$key]) && is_array($response['json'][$key]))) {
+            throw new RuntimeException('Buk no entrego una lista reconocible de trabajadores.');
+        }
         $pageRows = fte_extract_list($response['json']);
         if (!$pageRows) {
+            if (fte_response_has_next_page($response['json'], $page, 0, 100)) {
+                throw new RuntimeException('Buk entrego una pagina vacia antes de completar la nomina.');
+            }
             break;
         }
         foreach ($pageRows as $row) {
             if (!is_array($row)) {
                 continue;
             }
-            $person = fte_normalize_buk_person($row);
-            if ($person !== null && (!$activeOnly || $person['active'] !== false)) {
-                $people[] = $person;
-            }
+            $rows[] = $row;
         }
         if (!fte_response_has_next_page($response['json'], $page, count($pageRows), 100)) {
             break;
@@ -442,31 +625,9 @@ function fte_fetch_buk_people(array $config, bool $activeOnly = true, ?array &$i
             throw new RuntimeException('Buk excedio el limite de paginas; nomina incompleta.');
         }
     }
-    $people = fte_identity_unify_people($people, $config, $identityDiagnostics);
-    $names = fte_fetch_buk_cost_center_names($config);
-    foreach ($people as &$person) {
-        $code = (string)($person['cost_center_code'] ?? '');
-        if (($person['cost_center_name'] ?? '') === '' && $code !== '' && isset($names[$code])) {
-            $person['cost_center_name'] = $names[$code];
-        }
-        foreach ($person['jobs'] as &$job) {
-            $jobCode = (string)($job['cost_center_code'] ?? '');
-            if ($jobCode !== '' && isset($names[$jobCode])) {
-                $job['cost_center_name'] = $names[$jobCode];
-            }
-        }
-        unset($job);
-    }
-    unset($person);
-    if (session_status() === PHP_SESSION_ACTIVE && $cacheTtl > 0) {
-        $_SESSION['fte_buk_people_cache'] = [
-            'key' => $cacheKey,
-            'expires_at' => time() + $cacheTtl,
-            'people' => $people,
-            'identity_diagnostics' => $identityDiagnostics,
-        ];
-    }
-    return $people;
+    $createdAt = fte_runtime_cache_now($config);
+    fte_runtime_cache_write($config, $key, ['rows' => $rows], $cacheTtl, $createdAt);
+    return $rows;
 }
 
 function fte_build_buk_cost_centers(array $people): array
@@ -502,8 +663,15 @@ function fte_build_buk_cost_centers(array $people): array
     }, $centers));
 }
 
-function fte_fetch_buk_cost_center_names(array $config): array
+function fte_fetch_buk_cost_center_names(array $config, ?int &$createdAt = null): array
 {
+    $ttl = max(0, (int)($config['buk_people_cache_ttl_seconds'] ?? 300));
+    $key = 'buk:areas:v1:' . fte_buk_cache_scope($config);
+    $cached = fte_runtime_cache_read($config, $key, $ttl);
+    if ($cached !== null && is_array($cached['data']['names'] ?? null)) {
+        $createdAt = (int)$cached['created_at'];
+        return $cached['data']['names'];
+    }
     $country = trim((string)$config['buk_country']);
     $result = fte_buk_fetch_all($config, "/api/v1/{$country}/organization/areas/", [
         'status' => 'both',
@@ -511,6 +679,7 @@ function fte_fetch_buk_cost_center_names(array $config): array
         'per_page' => 1000,
     ], 50);
     if (!$result['ok']) {
+        $createdAt = null;
         return [];
     }
     $names = [];
@@ -524,7 +693,17 @@ function fte_fetch_buk_cost_center_names(array $config): array
             $names[$code] = $name;
         }
     }
+    $createdAt = fte_runtime_cache_now($config);
+    fte_runtime_cache_write($config, $key, ['names' => $names], $ttl, $createdAt);
     return $names;
+}
+
+function fte_buk_http_response(array $config, string $url, string $source): array
+{
+    if (isset($config['_buk_http_handler']) && is_callable($config['_buk_http_handler'])) {
+        return $config['_buk_http_handler']($url, $source);
+    }
+    return fte_http_json($url, fte_buk_headers($config), null, 30, [], $config['_performance_observer'] ?? null, $source);
 }
 
 function fte_buk_fetch_all(array $config, string $path, array $query = [], int $maxPages = 20): array
@@ -545,7 +724,7 @@ function fte_buk_fetch_all(array $config, string $path, array $query = [], int $
         }
 
         $url = $base . $path . '?' . http_build_query($pageQuery);
-        $response = fte_http_json($url, fte_buk_headers($config), null, 30);
+        $response = fte_buk_http_response($config, $url, 'buk_other');
         $lastStatus = (int)($response['status'] ?? 0);
         $lastError = trim((string)($response['error'] ?? ''));
         if (!$response['ok'] || !is_array($response['json'])) {
@@ -787,27 +966,63 @@ function fte_iter_dates(DateTimeImmutable $from, DateTimeImmutable $to): array
 
 function fte_geovictoria_token(array $config, int $timeoutSeconds = 30): string
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
+    if (session_status() !== PHP_SESSION_ACTIVE && empty($config['_fte_session_detached'])) {
         session_start();
     }
     $cached = $_SESSION['fte_geovictoria_token'] ?? null;
     $expires = (int)($_SESSION['fte_geovictoria_token_expires'] ?? 0);
-    if (is_string($cached) && $cached !== '' && $expires > time()) {
+    $scope = fte_geovictoria_cache_scope($config);
+    if (is_string($cached) && $cached !== '' && $expires > time()
+        && hash_equals($scope, (string)($_SESSION['fte_geovictoria_token_scope'] ?? ''))) {
         return $cached;
     }
     fte_assert_geovictoria_config($config);
+    $sharedToken = fte_geovictoria_shared_token($config);
+    if ($sharedToken !== null) {
+        $_SESSION['fte_geovictoria_token'] = $sharedToken;
+        $_SESSION['fte_geovictoria_token_scope'] = $scope;
+        $_SESSION['fte_geovictoria_token_expires'] = time() + (int)$config['geovictoria_token_ttl_seconds'];
+        return $sharedToken;
+    }
     $user = trim((string)$config['geovictoria_user']);
     $password = trim((string)$config['geovictoria_password']);
     $url = rtrim((string)$config['geovictoria_base_url'], '/') . '/Login';
-    $response = fte_http_json($url, [], ['User' => $user, 'Password' => $password], max(1, min(30, $timeoutSeconds)));
+    $attempts = max(1, min(3, (int)($config['geovictoria_login_attempts'] ?? 3)));
+    $attemptTimeout = max(1, min(
+        30,
+        $timeoutSeconds,
+        (int)($config['geovictoria_login_attempt_timeout_seconds'] ?? 12)
+    ));
+    $response = ['ok' => false, 'status' => 0, 'errno' => 0, 'json' => null];
+    $reason = 'authentication';
+    for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+        $response = fte_geovictoria_login_response(
+            $config,
+            $url,
+            ['User' => $user, 'Password' => $password],
+            $attemptTimeout,
+            $attempt
+        );
+        if ($response['ok'] && is_array($response['json']) && !empty($response['json']['token'])) {
+            break;
+        }
+        $reason = fte_geovictoria_failure_reason($response);
+        if (in_array($reason, ['authentication', 'invalid_response'], true) || $attempt === $attempts) {
+            break;
+        }
+        usleep((int)(250_000 * $attempt));
+    }
     if (!$response['ok'] || !is_array($response['json']) || empty($response['json']['token'])) {
-        $reason = (int)($response['errno'] ?? 0) === CURLE_OPERATION_TIMEDOUT
-            ? 'timeout'
-            : (((int)($response['status'] ?? 0) === 429) ? 'rate_limit' : 'authentication');
         throw new FteGeoVictoriaException($reason, (int)($response['status'] ?? 0), 'GeoVictoria no entrego token de autenticacion.');
     }
     $_SESSION['fte_geovictoria_token'] = (string)$response['json']['token'];
+    $_SESSION['fte_geovictoria_token_scope'] = $scope;
     $_SESSION['fte_geovictoria_token_expires'] = time() + (int)$config['geovictoria_token_ttl_seconds'];
+    fte_geovictoria_store_shared_token(
+        $config,
+        (string)$_SESSION['fte_geovictoria_token'],
+        (int)$_SESSION['fte_geovictoria_token_expires']
+    );
     return (string)$_SESSION['fte_geovictoria_token'];
 }
 
@@ -859,11 +1074,29 @@ function fte_geovictoria_post(array $config, string $endpoint, array $payload, i
     $timeoutSeconds = max(1, min(75, $timeoutSeconds));
     $token = fte_geovictoria_token($config, min(30, $timeoutSeconds));
     $url = rtrim((string)$config['geovictoria_base_url'], '/') . '/' . ltrim($endpoint, '/');
-    $response = fte_http_json($url, ['Authorization: Bearer ' . $token], $payload, $timeoutSeconds);
-    if (($response['status'] === 401 || $response['status'] === 403) && session_status() === PHP_SESSION_ACTIVE) {
+    $response = fte_http_json(
+        $url,
+        ['Authorization: Bearer ' . $token],
+        $payload,
+        $timeoutSeconds,
+        fte_geovictoria_curl_options(),
+        $config['_performance_observer'] ?? null,
+        'geo_attendance'
+    );
+    if (($response['status'] === 401 || $response['status'] === 403)
+        && (session_status() === PHP_SESSION_ACTIVE || !empty($config['_fte_session_detached']))) {
         unset($_SESSION['fte_geovictoria_token'], $_SESSION['fte_geovictoria_token_expires']);
+        fte_geovictoria_forget_shared_token($config);
         $token = fte_geovictoria_token($config, min(30, $timeoutSeconds));
-        $response = fte_http_json($url, ['Authorization: Bearer ' . $token], $payload, $timeoutSeconds);
+        $response = fte_http_json(
+            $url,
+            ['Authorization: Bearer ' . $token],
+            $payload,
+            $timeoutSeconds,
+            fte_geovictoria_curl_options(),
+            $config['_performance_observer'] ?? null,
+            'geo_attendance_auth_retry'
+        );
     }
     if (!$response['ok']) {
         $reason = fte_geovictoria_failure_reason($response);
@@ -999,6 +1232,9 @@ function fte_identifier_from_geo_user(array $user): string
 
 function fte_attendance_batch_size(array $config, int $rangeDays): int
 {
+    if ($rangeDays >= 28 && !empty($config['geovictoria_monthly_individual_requests'])) {
+        return 0;
+    }
     $maxRangeDays = max(0, (int)($config['geovictoria_attendance_batch_max_range_days'] ?? 0));
     if ($rangeDays < 1 || $maxRangeDays < 1 || $rangeDays > $maxRangeDays) {
         return 0;
@@ -1076,32 +1312,33 @@ function fte_attendance_response_identifiers(array $raw): array
 
 function fte_attendance_known_unmatched(array $config, string $identifier): bool
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
+    if (session_status() !== PHP_SESSION_ACTIVE && empty($config['_fte_session_detached'])) {
         return false;
     }
     $ttl = max(0, (int)($config['geovictoria_unmatched_cache_ttl_seconds'] ?? 300));
     if ($ttl === 0) {
         return false;
     }
-    $key = hash('sha256', $identifier);
+    $key = hash('sha256', fte_geo_unmatched_cache_key($config, $identifier));
     $expiresAt = (int)($_SESSION['fte_geovictoria_unmatched_cache'][$key] ?? 0);
     if ($expiresAt <= time()) {
         unset($_SESSION['fte_geovictoria_unmatched_cache'][$key]);
-        return false;
+        return fte_runtime_cache_read($config, fte_geo_unmatched_cache_key($config, $identifier), $ttl) !== null;
     }
     return true;
 }
 
 function fte_attendance_remember_unmatched(array $config, string $identifier): void
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
+    if (session_status() !== PHP_SESSION_ACTIVE && empty($config['_fte_session_detached'])) {
         return;
     }
     $ttl = max(0, (int)($config['geovictoria_unmatched_cache_ttl_seconds'] ?? 300));
     if ($ttl === 0) {
         return;
     }
-    $_SESSION['fte_geovictoria_unmatched_cache'][hash('sha256', $identifier)] = time() + $ttl;
+    $_SESSION['fte_geovictoria_unmatched_cache'][hash('sha256', fte_geo_unmatched_cache_key($config, $identifier))] = time() + $ttl;
+    fte_runtime_cache_write($config, fte_geo_unmatched_cache_key($config, $identifier), ['confirmed_nonexistent' => true], $ttl);
 }
 
 function fte_attendance_fallback_person(
@@ -1226,6 +1463,302 @@ function fte_attendance_fetch_chunk(
     }
 }
 
+function fte_attendance_individual_post(array $config, array $payload, array &$diagnostics): array
+{
+    $attempts = max(1, min(2, (int)($config['geovictoria_individual_attempts'] ?? 2)));
+    $timeout = max(1, min(75, (int)($config['geovictoria_individual_timeout_seconds'] ?? 20)));
+    for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+        $diagnostics['request_count']++;
+        try {
+            return fte_geovictoria_post($config, 'AttendanceBook', $payload, $timeout);
+        } catch (FteGeoVictoriaException $exception) {
+            $transient = in_array(
+                $exception->reason(),
+                ['timeout', 'rate_limit', 'provider_unavailable', 'transport_error', 'unexpected_response'],
+                true
+            );
+            if (!$transient || $attempt === $attempts) {
+                throw $exception;
+            }
+            usleep((int)(250_000 * $attempt));
+        }
+    }
+    throw new FteGeoVictoriaException('provider_unavailable', 0, 'GeoVictoria no completo la consulta individual.');
+}
+
+function fte_geovictoria_multi_post(
+    array $config,
+    string $endpoint,
+    array $payloads,
+    int $timeoutSeconds
+): array {
+    if (isset($config['_geovictoria_multi_handler']) && is_callable($config['_geovictoria_multi_handler'])) {
+        $responses = $config['_geovictoria_multi_handler']($endpoint, $payloads, $timeoutSeconds);
+        if (!is_array($responses) || count($responses) !== count($payloads)) {
+            throw new FteGeoVictoriaException('unexpected_response', 0, 'GeoVictoria entrego un lote concurrente no valido.');
+        }
+        return array_values($responses);
+    }
+
+    if (!function_exists('curl_multi_init')) {
+        throw new FteGeoVictoriaException('transport_error', 0, 'cURL multi no esta disponible.');
+    }
+    $token = fte_geovictoria_token($config, min(30, $timeoutSeconds));
+    $url = rtrim((string)$config['geovictoria_base_url'], '/') . '/' . ltrim($endpoint, '/');
+    $multi = curl_multi_init();
+    $handles = [];
+    foreach (array_values($payloads) as $index => $payload) {
+        $handle = curl_init($url);
+        curl_setopt_array($handle, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => max(1, min(75, $timeoutSeconds)),
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $token,
+            ],
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        ]);
+        curl_multi_add_handle($multi, $handle);
+        $handles[$index] = $handle;
+    }
+
+    $waveStarted = hrtime(true);
+    do {
+        $multiStatus = curl_multi_exec($multi, $running);
+        if ($running > 0) {
+            $selected = curl_multi_select($multi, 1.0);
+            if ($selected === -1) {
+                usleep(10_000);
+            }
+        }
+    } while ($running > 0 && $multiStatus === CURLM_OK);
+
+    $responses = [];
+    foreach ($handles as $index => $handle) {
+        $raw = curl_multi_getcontent($handle);
+        $errno = curl_errno($handle);
+        $error = curl_error($handle);
+        $status = (int)(curl_getinfo($handle, CURLINFO_HTTP_CODE) ?: 0);
+        $info = curl_getinfo($handle);
+        fte_performance_emit($config['_performance_observer'] ?? null, [
+            'type' => 'http', 'source' => $config['_performance_geo_round'] ?? 'geo_initial',
+            'status' => $status, 'errno' => $errno,
+            'seconds' => (float)($info['total_time'] ?? 0),
+            'ttfb_seconds' => (float)($info['starttransfer_time'] ?? 0),
+            'bytes' => is_string($raw) ? strlen($raw) : 0,
+        ]);
+        $decoded = null;
+        if (is_string($raw) && $raw !== '') {
+            $candidate = json_decode($raw, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $decoded = $candidate;
+            }
+        }
+        $responses[$index] = [
+            'ok' => $errno === 0 && $status >= 200 && $status < 300,
+            'status' => $status,
+            'errno' => $errno,
+            'error' => $error,
+            'raw' => $raw,
+            'json' => $decoded,
+        ];
+        curl_multi_remove_handle($multi, $handle);
+        curl_close($handle);
+    }
+    curl_multi_close($multi);
+    fte_performance_emit($config['_performance_observer'] ?? null, [
+        'type' => 'wave', 'source' => $config['_performance_geo_round'] ?? 'geo_initial',
+        'seconds' => (hrtime(true) - $waveStarted) / 1e9, 'requests' => count($payloads),
+    ]);
+    ksort($responses);
+    return array_values($responses);
+}
+
+function fte_fetch_attendance_concurrent_individual(
+    array $config,
+    array $people,
+    string $start,
+    string $end,
+    array &$attendance,
+    array &$diagnostics
+): void {
+    $concurrency = max(2, min(8, (int)($config['geovictoria_monthly_concurrency'] ?? 4)));
+    $timeout = max(1, min(75, (int)($config['geovictoria_concurrent_timeout_seconds'] ?? 12)));
+    $retryTimeout = max(1, min(75, (int)($config['geovictoria_concurrent_retry_timeout_seconds'] ?? 10)));
+    $finalRetryTimeout = max(1, min(75, (int)($config['geovictoria_final_retry_timeout_seconds'] ?? 15)));
+    $finalRetryConcurrency = max(1, min(4, (int)($config['geovictoria_final_retry_concurrency'] ?? 2)));
+    $entries = [];
+    foreach (array_values($people) as $person) {
+        if (!is_array($person)) {
+            continue;
+        }
+        $identifier = fte_normalize_identifier($person['normalized_identifier'] ?? $person['identifier'] ?? '');
+        if ($identifier === '') {
+            continue;
+        }
+        if (fte_attendance_known_unmatched($config, $identifier)) {
+            $diagnostics['successful_identifiers'][] = $identifier;
+            $diagnostics['unmatched_identifiers'][] = $identifier;
+            $diagnostics['cached_unmatched_count']++;
+            continue;
+        }
+        $entries[$identifier] = [
+            'identifier' => $identifier,
+            'raw_identifier' => trim((string)($person['identifier'] ?? '')),
+            'payload' => [
+                'StartDate' => $start,
+                'EndDate' => $end,
+                'UserIds' => $identifier,
+            ],
+        ];
+    }
+
+    $acceptRaw = static function (array $entry, array $raw) use (&$attendance, &$diagnostics, $config): void {
+        $identifier = $entry['identifier'];
+        $returned = fte_attendance_response_identifiers($raw);
+        $unexpected = array_values(array_diff($returned, [$identifier]));
+        if ($unexpected) {
+            throw new FteAttendanceBatchException('identity_integrity', 0, 'GeoVictoria devolvio una identidad no solicitada.');
+        }
+        fte_merge_attendance_payload($attendance, $raw, !empty($config['_include_monthly_time_offs']));
+        $diagnostics['successful_identifiers'][] = $identifier;
+        if (!in_array($identifier, $returned, true)) {
+            $diagnostics['unmatched_identifiers'][] = $identifier;
+        }
+    };
+    $retryEntries = [];
+    $refreshTokenBeforeRetry = false;
+    $waves = array_chunk(array_values($entries), $concurrency);
+    foreach ($waves as $waveIndex => $wave) {
+        if ($waveIndex > 0) {
+            $pause = max(0.0, (float)($config['geovictoria_attendance_min_interval_seconds'] ?? 0.35));
+            if ($pause > 0) {
+                usleep((int)round($pause * 1_000_000));
+            }
+        }
+        $diagnostics['batch_requests']++;
+        $diagnostics['request_count'] += count($wave);
+        $responses = fte_geovictoria_multi_post(
+            $config,
+            'AttendanceBook',
+            array_column($wave, 'payload'),
+            $timeout
+        );
+
+        foreach ($wave as $index => $entry) {
+            $identifier = $entry['identifier'];
+            $response = $responses[$index] ?? ['ok' => false, 'status' => 0, 'errno' => 0, 'json' => null];
+            $raw = null;
+            if (!empty($response['ok']) && is_array($response['json'] ?? null)) {
+                $raw = $response['json'];
+            } else {
+                $reason = fte_geovictoria_failure_reason($response);
+                if (in_array($reason, ['authentication', 'timeout', 'rate_limit', 'provider_unavailable', 'transport_error', 'unexpected_response'], true)) {
+                    $retryEntries[$identifier] = $entry;
+                    $refreshTokenBeforeRetry = $refreshTokenBeforeRetry || $reason === 'authentication';
+                    continue;
+                } elseif (in_array($reason, ['bad_request', 'nonexistent_identity'], true)) {
+                    $rawIdentifier = $entry['raw_identifier'];
+                    if ($rawIdentifier !== '' && $rawIdentifier !== $identifier) {
+                        $entry['payload']['UserIds'] = $rawIdentifier;
+                        $retryEntries[$identifier] = $entry;
+                    } else {
+                        fte_attendance_remember_unmatched($config, $identifier);
+                        $diagnostics['successful_identifiers'][] = $identifier;
+                        $diagnostics['unmatched_identifiers'][] = $identifier;
+                    }
+                    continue;
+                } else {
+                    $diagnostics['failed_identifiers'][] = $identifier;
+                    continue;
+                }
+            }
+            $acceptRaw($entry, $raw);
+        }
+    }
+
+    if ($retryEntries) {
+        if ($refreshTokenBeforeRetry && (session_status() === PHP_SESSION_ACTIVE || !empty($config['_fte_session_detached']))) {
+            unset($_SESSION['fte_geovictoria_token'], $_SESSION['fte_geovictoria_token_expires']);
+            fte_geovictoria_forget_shared_token($config);
+        }
+        usleep(500_000);
+        $finalRetryEntries = [];
+        foreach (array_chunk(array_values($retryEntries), $concurrency) as $retryWave) {
+            $diagnostics['batch_requests']++;
+            $diagnostics['fallback_requests'] += count($retryWave);
+            $diagnostics['request_count'] += count($retryWave);
+            $responses = fte_geovictoria_multi_post(
+                array_replace($config, ['_performance_geo_round' => 'geo_retry']),
+                'AttendanceBook',
+                array_column($retryWave, 'payload'),
+                $retryTimeout
+            );
+            foreach ($retryWave as $index => $entry) {
+                $identifier = $entry['identifier'];
+                $response = $responses[$index] ?? ['ok' => false, 'status' => 0, 'errno' => 0, 'json' => null];
+                if (!empty($response['ok']) && is_array($response['json'] ?? null)) {
+                    $acceptRaw($entry, $response['json']);
+                    continue;
+                }
+                $reason = fte_geovictoria_failure_reason($response);
+                if (in_array($reason, ['bad_request', 'nonexistent_identity'], true)) {
+                    fte_attendance_remember_unmatched($config, $identifier);
+                    $diagnostics['successful_identifiers'][] = $identifier;
+                    $diagnostics['unmatched_identifiers'][] = $identifier;
+                } elseif (in_array($reason, ['authentication', 'timeout', 'rate_limit', 'provider_unavailable', 'transport_error', 'unexpected_response'], true)) {
+                    $finalRetryEntries[$identifier] = $entry;
+                } else {
+                    $diagnostics['failed_identifiers'][] = $identifier;
+                }
+            }
+        }
+
+        if ($finalRetryEntries) {
+            usleep(750_000);
+            foreach (array_chunk(array_values($finalRetryEntries), $finalRetryConcurrency) as $finalWave) {
+                $diagnostics['batch_requests']++;
+                $diagnostics['fallback_requests'] += count($finalWave);
+                $diagnostics['request_count'] += count($finalWave);
+                $responses = fte_geovictoria_multi_post(
+                    array_replace($config, ['_performance_geo_round' => 'geo_final_retry']),
+                    'AttendanceBook',
+                    array_column($finalWave, 'payload'),
+                    $finalRetryTimeout
+                );
+                foreach ($finalWave as $index => $entry) {
+                    $identifier = $entry['identifier'];
+                    $response = $responses[$index] ?? ['ok' => false, 'status' => 0, 'errno' => 0, 'json' => null];
+                    if (!empty($response['ok']) && is_array($response['json'] ?? null)) {
+                        $acceptRaw($entry, $response['json']);
+                        continue;
+                    }
+                    $reason = fte_geovictoria_failure_reason($response);
+                    if (in_array($reason, ['bad_request', 'nonexistent_identity'], true)) {
+                        fte_attendance_remember_unmatched($config, $identifier);
+                        $diagnostics['successful_identifiers'][] = $identifier;
+                        $diagnostics['unmatched_identifiers'][] = $identifier;
+                    } else {
+                        $diagnostics['failed_identifiers'][] = $identifier;
+                    }
+                }
+            }
+        }
+    }
+
+    if (count($diagnostics['successful_identifiers']) === 0 && count($diagnostics['failed_identifiers']) > 0) {
+        throw new FteAttendanceBatchException('provider_unavailable', 0, 'GeoVictoria no respondio al inicio de la consulta mensual.');
+    }
+}
+
 function fte_fetch_attendance(array $config, array $people, DateTimeImmutable $from, DateTimeImmutable $to, ?array &$diagnostics = null): array
 {
     $attendance = [];
@@ -1246,6 +1779,10 @@ function fte_fetch_attendance(array $config, array $people, DateTimeImmutable $f
     ];
     $start = $from->format('Ymd') . '000000';
     $end = $to->format('Ymd') . '235959';
+
+    if ($batchSize > 0 && $rangeDays >= 28 && !empty($config['geovictoria_resilient_monthly_batches'])) {
+        return fte_attendance_resilient_monthly($config, $people, $start, $end, $batchSize, $diagnostics);
+    }
 
     if ($batchSize > 0) {
         $peopleByIdentifier = [];
@@ -1288,6 +1825,26 @@ function fte_fetch_attendance(array $config, array $people, DateTimeImmutable $f
         return $attendance;
     }
 
+    if ($rangeDays >= 28
+        && !empty($config['geovictoria_monthly_individual_requests'])
+        && (int)($config['geovictoria_monthly_concurrency'] ?? 1) > 1) {
+        $diagnostics['strategy'] = 'concurrent_individual';
+        fte_fetch_attendance_concurrent_individual(
+            $config,
+            $people,
+            $start,
+            $end,
+            $attendance,
+            $diagnostics
+        );
+        foreach (['successful_identifiers', 'failed_identifiers', 'unmatched_identifiers'] as $key) {
+            $diagnostics[$key] = array_values(array_unique($diagnostics[$key]));
+        }
+        return $attendance;
+    }
+
+    $consecutiveProviderFailures = 0;
+    $providerFailureLimit = max(1, (int)($config['geovictoria_consecutive_failure_limit'] ?? 3));
     foreach (array_values($people) as $personIndex => $person) {
         $identifier = trim((string)($person['normalized_identifier'] ?? ''));
         if ($identifier === '') {
@@ -1302,22 +1859,39 @@ function fte_fetch_attendance(array $config, array $people, DateTimeImmutable $f
         ])));
         $success = false;
         foreach ($candidates as $candidate) {
-            $diagnostics['request_count']++;
             try {
-                $raw = fte_geovictoria_post($config, 'AttendanceBook', [
-                    'StartDate' => $start,
-                    'EndDate' => $end,
-                    'UserIds' => $candidate,
-                ]);
+                $raw = fte_attendance_individual_post(
+                    $config,
+                    [
+                        'StartDate' => $start,
+                        'EndDate' => $end,
+                        'UserIds' => $candidate,
+                    ],
+                    $diagnostics
+                );
                 fte_merge_attendance_payload($attendance, $raw, !empty($config['_include_monthly_time_offs']));
                 $returnedIdentifiers = fte_attendance_response_identifiers($raw);
                 if (!in_array($identifier, $returnedIdentifiers, true)) {
                     $diagnostics['unmatched_identifiers'][] = $identifier;
                 }
                 $success = true;
+                $consecutiveProviderFailures = 0;
+                break;
+            } catch (FteGeoVictoriaException $inner) {
+                if (in_array($inner->reason(), ['bad_request', 'nonexistent_identity'], true)) {
+                    continue;
+                }
+                $consecutiveProviderFailures++;
+                if ($consecutiveProviderFailures >= $providerFailureLimit) {
+                    throw fte_attendance_batch_exception($inner);
+                }
                 break;
             } catch (Throwable $inner) {
-                continue;
+                $consecutiveProviderFailures++;
+                if ($consecutiveProviderFailures >= $providerFailureLimit) {
+                    throw new FteAttendanceBatchException('provider_unavailable', 0, $inner->getMessage());
+                }
+                break;
             }
         }
         $bucket = $success ? 'successful_identifiers' : 'failed_identifiers';
