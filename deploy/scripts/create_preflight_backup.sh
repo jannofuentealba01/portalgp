@@ -19,7 +19,9 @@ fail() {
 umask 077
 install -d -m 0700 "$BACKUP_ROOT" "$DEST"
 
-GIT=(git -c "safe.directory=$APP_ROOT" -C "$APP_ROOT")
+# Evita que una consulta ejecutada como root refresque/recree el índice Git y
+# cambie su propietario. Toda la captura Git de este script es de solo lectura.
+GIT=(env GIT_OPTIONAL_LOCKS=0 git -c "safe.directory=$APP_ROOT" -C "$APP_ROOT")
 BRANCH="$("${GIT[@]}" branch --show-current)"
 COMMIT="$("${GIT[@]}" rev-parse HEAD)"
 DIRTY="no"
@@ -120,4 +122,3 @@ printf 'GIT_BRANCH=%s\n' "$BRANCH"
 printf 'GIT_COMMIT=%s\n' "$COMMIT"
 printf 'GIT_DIRTY=%s\n' "$DIRTY"
 printf 'ARCHIVES_VERIFIED=ok\n'
-
