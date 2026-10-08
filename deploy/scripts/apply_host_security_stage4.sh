@@ -19,6 +19,7 @@ command -v php-fpm8.3 >/dev/null || fail "php-fpm8.3 no está instalado"
 command -v nginx >/dev/null || fail "nginx no está instalado"
 command -v sshd >/dev/null || fail "sshd no está instalado"
 command -v fail2ban-client >/dev/null || fail "fail2ban no está instalado"
+command -v setfacl >/dev/null || fail "el paquete acl no está instalado"
 
 install -d -m 0700 "$BACKUP_ROOT"
 for path in \
@@ -60,6 +61,13 @@ if [[ -f "$FTE_CONFIG" ]]; then
     FTE_OWNER="$(stat -c '%U' "$FTE_CONFIG")"
     chown "$FTE_OWNER:portalgp" "$FTE_CONFIG"
     chmod 0640 "$FTE_CONFIG"
+fi
+
+# Se bloquea únicamente al usuario técnico de PortalGP. No cambia contenido,
+# propietario ni permisos tradicionales de la aplicación it-conecta.
+if [[ -d /var/www/it-conecta ]]; then
+    getfacl -p /var/www/it-conecta > "$BACKUP_ROOT/it-conecta-root.acl"
+    setfacl -m u:portalgp:--- /var/www/it-conecta
 fi
 
 install -o root -g root -m 0644 deploy/php-fpm/portalgp.conf /etc/php/8.3/fpm/pool.d/portalgp.conf
