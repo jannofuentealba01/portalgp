@@ -49,13 +49,16 @@ Esta etapa no autoriza:
 | Runtime | PHP 8.3.6 mediante PHP-FPM |
 | Ruta desplegada | `/var/www/portalgp` |
 | Rama desplegada | `codex/msp-aws-deploy` |
-| Commit desplegado | `4d1182c3cafd894dcc506eb7d781338f27b2a3b6` |
+| Commit desplegado | `6625cf107adbb96aa7729baafe73d3deedc2bf22` |
 | Estado Git remoto | árbol limpio al momento de la revisión |
 | Transporte web | HTTP en puerto 80; no existe servicio HTTPS en 443 |
 | Base usada | SQL Server, base `PORTALGP` |
 | Endpoint SQL conocido | `216.155.78.65` |
 
-La revisión de seguridad de AWS debe tomar como referencia el commit desplegado anterior. La rama local `dev` no es idéntica: ambas ramas comparten una base común, pero la rama de AWS contiene 38 commits exclusivos y `dev` contiene 3 commits exclusivos. Aunque gran parte del contenido funcional coincide, esta divergencia debe resolverse como parte del control de despliegue.
+La revisión de seguridad de AWS toma como referencia el SHA desplegado indicado
+en la tabla. La rama local `dev` no es idéntica a la rama de AWS; las soluciones
+portables deben integrarse explícitamente en ambas ramas y desplegarse solo desde
+`codex/msp-aws-deploy`, conservando el SHA exacto como evidencia.
 
 ## 1.3 Límite con `it-conecta`
 
@@ -212,6 +215,99 @@ La plataforma podrá considerarse preparada para migración cuando:
 
 ---
 
+# 2. Protección previa y puntos de restauración
+
+Estado: **protección creada y verificada; prueba de restauración SQL pendiente de una identidad administrativa**.
+
+## 2.1 Punto recuperable en Git
+
+- Se creó y publicó la etiqueta inmutable `security-preflight-2026-10-08` sobre
+  `81523fb5fd2b113e92c9102891fa6177daebe79c`, que identifica el estado de
+  PortalGP anterior a continuar la auditoría.
+- La rama desplegable continúa siendo `codex/msp-aws-deploy`.
+- El estado protegido final de AWS quedó en
+  `6625cf107adbb96aa7729baafe73d3deedc2bf22`, árbol limpio, y el mismo SHA fue
+  registrado en `/var/lib/portalgp/deployed_commit`.
+- Los procedimientos de respaldo se guardaron en Git, sin secretos, para poder
+  reutilizarlos al migrar al servidor definitivo.
+
+## 2.2 Respaldo de aplicación y servidor AWS
+
+Se creó el punto final:
+
+`/var/backups/portalgp/security-preflight-20261008T174146Z`
+
+Contenido:
+
+| Archivo | Contenido | Tamaño |
+|---|---|---:|
+| `portalgp-runtime.tar.gz` | Código y dependencias en ejecución, excluyendo `.git` y secretos locales | 9.734.979 bytes |
+| `msp-storage.tar.gz` | Adjuntos y documentos MSP ubicados fuera del árbol web | 1.078.138 bytes |
+| `runtime-secrets.tar.gz` | Configuración secreta separada del resto del respaldo | 469 bytes |
+| `server-config.tar.gz` | Nginx, PHP-FPM y ODBC relevantes para PortalGP | 35.943 bytes |
+
+Controles comprobados:
+
+1. directorios con modo `700` y archivos con modo `600`, todos propiedad de
+   `root:root`;
+2. lectura completa de los cuatro archivos con `tar -tzf`;
+3. hashes SHA-256 registrados y comprobados correctamente;
+4. manifiesto con fecha UTC, host, versiones, rama, SHA y estado limpio;
+5. Nginx y PHP-FPM activos;
+6. PortalGP e `it-conecta` siguieron respondiendo HTTP 200 después del proceso.
+
+El script `deploy/scripts/create_preflight_backup.sh` evita escribir el índice
+Git cuando se ejecuta como `root`. Durante la primera ejecución se detectó que
+Git había actualizado únicamente `.git/index` con propietario `root`; se
+restauró su propietario original, se corrigió el script y se verificó que una
+nueva ejecución conserva el índice como `ubuntu` y el árbol limpio. No se
+alteraron archivos funcionales ni datos de negocio.
+
+## 2.3 Respaldo de SQL Server
+
+El 8 de octubre de 2026 se ejecutó un respaldo completo de `PORTALGP` mediante
+la identidad técnica existente `portal`, que tiene permiso `BACKUP DATABASE`:
+
+`PORTALGP_COPY_ONLY_SECURITY_20261008_174132.bak`
+
+Propiedades solicitadas y confirmadas por la operación:
+
+- `COPY_ONLY`, para no alterar la cadena normal de respaldos;
+- compresión;
+- `CHECKSUM` durante la generación;
+- destino en la ruta predeterminada de respaldos de SQL Server;
+- sin escritura funcional adicional en las tablas de PortalGP.
+
+La herramienta portable quedó en `scripts/security_backup_sqlserver.php` y no
+contiene credenciales. El historial observado también registra respaldos
+completos anteriores con `COPY_ONLY` y checksum de los días 25 de septiembre,
+6 de octubre y 8 de octubre de 2026.
+
+La comprobación `RESTORE VERIFYONLY ... WITH CHECKSUM` no pudo ejecutarse con
+`portal`: SQL Server exige permiso administrativo en `master`. Esto es correcto
+desde el principio de mínimo privilegio y **no se ampliaron los permisos de la
+cuenta de la aplicación**. El archivo fue creado, pero su restaurabilidad no se
+dará por certificada hasta realizar esa prueba con una identidad administrativa.
+
+## 2.4 Límites y pasos de cierre
+
+La protección actual permite recuperar código desde Git, reconstruir la
+configuración y conservar los datos/archivos operativos. Aun así:
+
+1. el respaldo de aplicación está en el mismo disco de Lightsail y no protege
+   por sí solo contra pérdida total de esa instancia;
+2. el `.bak` está en el host de SQL Server y todavía no tiene una restauración
+   aislada comprobada;
+3. antes de una migración o cambio destructivo se debe copiar el respaldo AWS a
+   una ubicación externa cifrada o crear un snapshot de Lightsail;
+4. un administrador SQL debe ejecutar `RESTORE VERIFYONLY` y, preferiblemente,
+   una restauración de prueba bajo un nombre temporal, sin reemplazar `PORTALGP`.
+
+No se modificó `it-conecta`, no se enviaron correos y no se registraron datos de
+negocio durante esta etapa.
+
+---
+
 # Hallazgos detectados durante la definición del alcance
 
 ## SEC-001 — PortalGP transmite información real por HTTP
@@ -324,7 +420,7 @@ Estos controles son evidencia favorable, pero se volverán a validar durante las
 | Punto | Tema | Estado |
 |---:|---|---|
 | 1 | Alcance exacto | Completado |
-| 2 | Recuperación y puntos de restauración | Pendiente |
+| 2 | Recuperación y puntos de restauración | Protección creada; verificación SQL administrativa pendiente |
 | 3 | Línea base del despliegue AWS | Pendiente |
 | 4 | Red y exposición AWS | Pendiente |
 | 5 | Sistema operativo, Nginx y PHP-FPM | Pendiente |
@@ -338,7 +434,10 @@ Estos controles son evidencia favorable, pero se volverán a validar durante las
 
 ## Próximo punto
 
-El punto 2 deberá comprobar, antes de cualquier corrección, que existen copias recuperables del código, configuración, adjuntos y base de datos, y que puede realizarse una restauración verificable sin depender solamente del servidor activo.
+El punto 3 deberá establecer una línea base reproducible del despliegue AWS y
+compararla con el manifiesto protegido en este punto. La prueba administrativa
+de restauración SQL y la copia externa del respaldo permanecen como requisitos
+de continuidad, no como permisos pendientes de la aplicación.
 
 ## Avance de SEC-001
 
