@@ -49,7 +49,7 @@ Esta etapa no autoriza:
 | Runtime | PHP 8.3.6 mediante PHP-FPM |
 | Ruta desplegada | `/var/www/portalgp` |
 | Rama desplegada | `codex/msp-aws-deploy` |
-| Commit desplegado | `6625cf107adbb96aa7729baafe73d3deedc2bf22` |
+| Commit desplegado | `0852ebdd983f1956c905c6af9d1f1aeba07df6e9` |
 | Estado Git remoto | árbol limpio al momento de la revisión |
 | Transporte web | HTTP en puerto 80; no existe servicio HTTPS en 443 |
 | Base usada | SQL Server, base `PORTALGP` |
@@ -225,8 +225,10 @@ Estado: **protección creada y verificada; prueba de restauración SQL pendiente
   `81523fb5fd2b113e92c9102891fa6177daebe79c`, que identifica el estado de
   PortalGP anterior a continuar la auditoría.
 - La rama desplegable continúa siendo `codex/msp-aws-deploy`.
-- El estado protegido final de AWS quedó en
-  `6625cf107adbb96aa7729baafe73d3deedc2bf22`, árbol limpio, y el mismo SHA fue
+- El respaldo de ejecución se tomó sobre
+  `6625cf107adbb96aa7729baafe73d3deedc2bf22`, con árbol limpio. Después se
+  añadió únicamente el verificador de restauración; AWS quedó en
+  `0852ebdd983f1956c905c6af9d1f1aeba07df6e9`, también limpio, y ese SHA fue
   registrado en `/var/lib/portalgp/deployed_commit`.
 - Los procedimientos de respaldo se guardaron en Git, sin secretos, para poder
   reutilizarlos al migrar al servidor definitivo.
@@ -252,9 +254,12 @@ Controles comprobados:
    `root:root`;
 2. lectura completa de los cuatro archivos con `tar -tzf`;
 3. hashes SHA-256 registrados y comprobados correctamente;
-4. manifiesto con fecha UTC, host, versiones, rama, SHA y estado limpio;
-5. Nginx y PHP-FPM activos;
-6. PortalGP e `it-conecta` siguieron respondiendo HTTP 200 después del proceso.
+4. extracción completa en un directorio aislado, validación de archivos clave y
+   eliminación automática del temporal mediante
+   `deploy/scripts/verify_preflight_backup.sh`;
+5. manifiesto con fecha UTC, host, versiones, rama, SHA y estado limpio;
+6. Nginx y PHP-FPM activos;
+7. PortalGP e `it-conecta` siguieron respondiendo HTTP 200 después del proceso.
 
 El script `deploy/scripts/create_preflight_backup.sh` evita escribir el índice
 Git cuando se ejecuta como `root`. Durante la primera ejecución se detectó que
