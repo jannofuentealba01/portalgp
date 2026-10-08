@@ -709,6 +709,10 @@ $assert(($availability['fte'] ?? '') === 'PRELIMINAR_PARCIAL', 'Disponibilidad: 
 
 $monthlyView = (string)file_get_contents(__DIR__ . '/../rrhh/fte/fte_mensual.php');
 $assert(
+    str_contains($monthlyView, 'id="includeAttendance" checked'),
+    'La vista mensual incorpora GeoVictoria por defecto'
+);
+$assert(
     str_contains($monthlyView, 'id="warningsPanel"')
         && str_contains($monthlyView, '<details id="warningsPanel"')
         && str_contains($monthlyView, 'warningsPanel.removeAttribute(\'open\')')
@@ -740,6 +744,13 @@ $assert(str_contains($monthlyView, "['effective_theoretical_hours','Horas teóri
 $assert(str_contains($monthlyView, 'data-kpi="effective-theoretical"'), 'La vista mensual distingue horas teoricas brutas y proporcionales');
 $assert(str_contains($monthlyView, 'data-quality="attendance-excluded"'), 'La calidad distingue dotacion sin cobertura GeoVictoria');
 $assert(str_contains($monthlyView, 'id="employmentMovementsPanel"'), 'La vista mensual incorpora el panel de movimientos laborales');
+$assert(
+    str_contains($monthlyView, '<details id="employmentMovementsPanel"')
+        && str_contains($monthlyView, 'Ver detalle de ingresos y salidas')
+        && str_contains($monthlyView, 'Ocultar detalle de ingresos y salidas')
+        && str_contains($monthlyView, "getElementById('employmentMovementsPanel').removeAttribute('open')"),
+    'Ingresos y salidas comparten un unico panel desplegable cerrado por defecto'
+);
 $assert(str_contains($monthlyView, 'id="employmentEntryBody"'), 'La vista mensual incorpora el detalle independiente de ingresos');
 $assert(str_contains($monthlyView, 'id="employmentExitBody"'), 'La vista mensual incorpora el detalle independiente de salidas');
 $assert(str_contains($monthlyView, 'renderEmploymentMovements(data)'), 'La vista mensual renderiza los movimientos separados');

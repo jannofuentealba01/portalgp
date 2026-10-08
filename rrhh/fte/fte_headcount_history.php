@@ -129,6 +129,32 @@ function fte_headcount_build_month(array $people, int $year, int $month, ?array 
 
 function fte_headcount_person_active_on(array $person, string $date): bool
 {
+    $employmentPeriods = is_array($person['employment_periods'] ?? null)
+        ? $person['employment_periods']
+        : [];
+    $hasVerifiedPeriod = false;
+    foreach ($employmentPeriods as $period) {
+        if (!is_array($period)
+            || ($period['verified'] ?? ($person['employment_dates_verified'] ?? true)) !== true) {
+            continue;
+        }
+        $start = fte_headcount_date($period['start_date'] ?? null);
+        $end = fte_headcount_date($period['end_date'] ?? null);
+        if ($start !== null && $end !== null && $start > $end) {
+            continue;
+        }
+        if ($start === null && $end === null) {
+            continue;
+        }
+        $hasVerifiedPeriod = true;
+        if (($start === null || $date >= $start) && ($end === null || $date <= $end)) {
+            return true;
+        }
+    }
+    if ($hasVerifiedPeriod) {
+        return false;
+    }
+
     $start = fte_headcount_date($person['active_since'] ?? null);
     $end = fte_headcount_date($person['active_until'] ?? null);
     $jobs = is_array($person['jobs'] ?? null) ? $person['jobs'] : [];

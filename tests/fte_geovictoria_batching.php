@@ -39,6 +39,44 @@ $baseConfig = [
     'geovictoria_attendance_min_interval_seconds' => 0,
 ];
 
+$geoCurlOptions = fte_geovictoria_curl_options();
+$assert(
+    ($geoCurlOptions[CURLOPT_HTTP_VERSION] ?? null) === CURL_HTTP_VERSION_1_1,
+    'GeoVictoria utiliza HTTP/1.1 para evitar bloqueos del handshake HTTP/2'
+);
+
+unset($_SESSION['fte_geovictoria_token'], $_SESSION['fte_geovictoria_token_expires']);
+$loginAttempts = [];
+$retryLoginConfig = $baseConfig + [
+    'geovictoria_user' => 'usuario-prueba',
+    'geovictoria_password' => 'clave-prueba',
+    'geovictoria_base_url' => 'https://example.test/api/v1',
+    'geovictoria_token_ttl_seconds' => 1200,
+    'geovictoria_login_attempts' => 3,
+    'geovictoria_login_attempt_timeout_seconds' => 2,
+    'geovictoria_token_cache_file' => sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fte-token-test-' . bin2hex(random_bytes(6)) . '.json',
+];
+$retryLoginConfig['_geovictoria_login_handler'] = static function (
+    string $url,
+    array $credentials,
+    int $timeout,
+    int $attempt
+) use (&$loginAttempts): array {
+    $loginAttempts[] = [$url, $credentials, $timeout, $attempt];
+    if ($attempt < 3) {
+        return ['ok' => false, 'status' => 0, 'errno' => CURLE_OPERATION_TIMEDOUT, 'json' => null];
+    }
+    return ['ok' => true, 'status' => 200, 'errno' => 0, 'json' => ['token' => 'token-prueba']];
+};
+$assert(fte_geovictoria_token($retryLoginConfig, 10) === 'token-prueba', 'reintenta el login intermitente y recupera el token');
+$assert(count($loginAttempts) === 3, 'limita los reintentos de autenticacion de GeoVictoria');
+$assert(array_column($loginAttempts, 2) === [2, 2, 2], 'cada intento de login conserva un timeout breve');
+unset($_SESSION['fte_geovictoria_token'], $_SESSION['fte_geovictoria_token_expires']);
+$assert(fte_geovictoria_token($retryLoginConfig, 10) === 'token-prueba', 'reutiliza el token compartido entre sesiones PHP');
+$assert(count($loginAttempts) === 3, 'el token compartido evita autenticar nuevamente contra GeoVictoria');
+fte_geovictoria_forget_shared_token($retryLoginConfig);
+unset($_SESSION['fte_geovictoria_token'], $_SESSION['fte_geovictoria_token_expires']);
+
 $assert(fte_attendance_batch_size($baseConfig, 1) === 195, 'un dia utiliza lotes de 195');
 $assert(fte_attendance_batch_size($baseConfig, 7) === 195, 'siete dias utilizan lotes de 195');
 $assert(fte_attendance_batch_size($baseConfig, 8) === 187, 'ocho dias ajustan el lote a 187 personas');
@@ -47,6 +85,10 @@ $assert(fte_attendance_batch_size($baseConfig, 28) === 53, 'veintiocho dias util
 $assert(fte_attendance_batch_size($baseConfig, 30) === 50, 'treinta dias utilizan lotes de 50');
 $assert(fte_attendance_batch_size($baseConfig, 31) === 48, 'treinta y un dias utilizan lotes de 48');
 $assert(fte_attendance_batch_size($baseConfig, 32) === 0, 'mas de un mes conserva el flujo individual');
+$monthlyIndividualConfig = $baseConfig;
+$monthlyIndividualConfig['geovictoria_monthly_individual_requests'] = true;
+$assert(fte_attendance_batch_size($monthlyIndividualConfig, 31) === 0, 'el informe mensual usa solicitudes individuales compatibles con GeoVictoria');
+$assert(fte_attendance_batch_size($monthlyIndividualConfig, 27) === 55, 'la proteccion mensual no altera rangos operativos menores');
 $assert(fte_attendance_timeout_seconds($baseConfig, 7) === 45, 'hasta siete dias aplica el limite de 45 segundos');
 $assert(fte_attendance_timeout_seconds($baseConfig, 8) === 90, 'desde ocho dias aplica el limite de 90 segundos');
 $assert(fte_attendance_timeout_seconds($baseConfig, 31) === 90, 'un mes completo mantiene el limite de 90 segundos');
@@ -248,6 +290,127 @@ fte_fetch_attendance(
     $individualDiagnostics
 );
 $assert($individualCalls === 3 && ($individualDiagnostics['strategy'] ?? '') === 'individual', 'el cambio no altera rangos superiores a treinta y un dias');
+
+$transientCalls = 0;
+$transientConfig = $monthlyIndividualConfig;
+$transientConfig['geovictoria_attendance_min_interval_seconds'] = 0;
+$transientConfig['geovictoria_consecutive_failure_limit'] = 2;
+$transientConfig['geovictoria_individual_attempts'] = 2;
+$transientConfig['geovictoria_individual_timeout_seconds'] = 7;
+$transientConfig['_geovictoria_post_handler'] = static function (string $endpoint, array $payload, int $timeout) use (&$transientCalls): array {
+    $transientCalls++;
+    if ($timeout !== 7) {
+        throw new RuntimeException('Timeout individual inesperado.');
+    }
+    throw new FteGeoVictoriaException('timeout', 0, 'Timeout simulado.');
+};
+try {
+    $unused = [];
+    fte_fetch_attendance(
+        $transientConfig,
+        $makePeople(5),
+        new DateTimeImmutable('2026-08-01'),
+        new DateTimeImmutable('2026-08-31'),
+        $unused
+    );
+    $transientStopped = false;
+} catch (FteAttendanceBatchException $exception) {
+    $transientStopped = $exception->reason() === 'timeout';
+}
+$assert($transientStopped && $transientCalls === 4, 'reintenta cada trabajador y corta una caida sostenida sin esperar por toda la nomina');
+
+$recoveredCalls = 0;
+$recoveredConfig = $monthlyIndividualConfig;
+$recoveredConfig['geovictoria_attendance_min_interval_seconds'] = 0;
+$recoveredConfig['geovictoria_individual_attempts'] = 2;
+$recoveredConfig['_geovictoria_post_handler'] = static function (string $endpoint, array $payload, int $timeout) use (&$recoveredCalls): array {
+    $recoveredCalls++;
+    if ($recoveredCalls === 1) {
+        throw new FteGeoVictoriaException('timeout', 0, 'Timeout transitorio simulado.');
+    }
+    return ['Users' => [['Identifier' => (string)$payload['UserIds'], 'PlannedInterval' => []]]];
+};
+$recoveredDiagnostics = [];
+fte_fetch_attendance(
+    $recoveredConfig,
+    $makePeople(1),
+    new DateTimeImmutable('2026-08-01'),
+    new DateTimeImmutable('2026-08-31'),
+    $recoveredDiagnostics
+);
+$assert(
+    $recoveredCalls === 2 && count($recoveredDiagnostics['successful_identifiers'] ?? []) === 1,
+    'recupera un trabajador cuando GeoVictoria responde en el segundo intento'
+);
+
+$concurrentWaves = [];
+$concurrentConfig = $monthlyIndividualConfig;
+$concurrentConfig['geovictoria_monthly_concurrency'] = 4;
+$concurrentConfig['geovictoria_attendance_min_interval_seconds'] = 0;
+$concurrentConfig['_geovictoria_multi_handler'] = static function (
+    string $endpoint,
+    array $payloads,
+    int $timeout
+) use (&$concurrentWaves): array {
+    $concurrentWaves[] = count($payloads);
+    return array_map(static function (array $payload): array {
+        return [
+            'ok' => true,
+            'status' => 200,
+            'errno' => 0,
+            'json' => ['Users' => [['Identifier' => (string)$payload['UserIds'], 'PlannedInterval' => []]]],
+        ];
+    }, $payloads);
+};
+$concurrentDiagnostics = [];
+fte_fetch_attendance(
+    $concurrentConfig,
+    $makePeople(10),
+    new DateTimeImmutable('2026-08-01'),
+    new DateTimeImmutable('2026-08-31'),
+    $concurrentDiagnostics
+);
+$assert($concurrentWaves === [4, 4, 2], 'procesa el mes en grupos concurrentes de solicitudes individuales');
+$assert(($concurrentDiagnostics['strategy'] ?? '') === 'concurrent_individual', 'informa la estrategia mensual concurrente');
+$assert((int)($concurrentDiagnostics['request_count'] ?? 0) === 10, 'cuenta cada solicitud individual dentro de los lotes concurrentes');
+$assert(count($concurrentDiagnostics['successful_identifiers'] ?? []) === 10, 'la concurrencia conserva toda la cobertura mensual');
+
+$finalRetryCalls = 0;
+$finalRetryConfig = $monthlyIndividualConfig;
+$finalRetryConfig['geovictoria_monthly_concurrency'] = 4;
+$finalRetryConfig['geovictoria_final_retry_concurrency'] = 2;
+$finalRetryConfig['geovictoria_attendance_min_interval_seconds'] = 0;
+$finalRetryConfig['_geovictoria_multi_handler'] = static function (
+    string $endpoint,
+    array $payloads,
+    int $timeout
+) use (&$finalRetryCalls): array {
+    $finalRetryCalls++;
+    if ($finalRetryCalls < 3) {
+        return array_map(static fn(array $payload): array => [
+            'ok' => false,
+            'status' => 0,
+            'errno' => CURLE_OPERATION_TIMEDOUT,
+            'json' => null,
+        ], $payloads);
+    }
+    return array_map(static fn(array $payload): array => [
+        'ok' => true,
+        'status' => 200,
+        'errno' => 0,
+        'json' => ['Users' => [['Identifier' => (string)$payload['UserIds'], 'PlannedInterval' => []]]],
+    ], $payloads);
+};
+$finalRetryDiagnostics = [];
+fte_fetch_attendance(
+    $finalRetryConfig,
+    $makePeople(2),
+    new DateTimeImmutable('2026-08-01'),
+    new DateTimeImmutable('2026-08-31'),
+    $finalRetryDiagnostics
+);
+$assert($finalRetryCalls === 3, 'ejecuta una tercera ronda solo para los casos todavia transitorios');
+$assert(count($finalRetryDiagnostics['successful_identifiers'] ?? []) === 2, 'la ronda final recupera los casos lentos sin repetir los exitos previos');
 
 $_SESSION = [];
 session_destroy();

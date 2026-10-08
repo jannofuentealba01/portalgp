@@ -4,6 +4,7 @@ declare(strict_types=1);
 require __DIR__ . '/../../db.php';
 require __DIR__ . '/../../permisos.php';
 require __DIR__ . '/fte_lib.php';
+require __DIR__ . '/fte_response_timing.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
@@ -14,7 +15,16 @@ header('Content-Type: application/json; charset=UTF-8');
 function fte_json_response(array $payload, int $status = 200): void
 {
     http_response_code($status);
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    $serializationStarted = hrtime(true);
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    if (isset($GLOBALS['fteMonthlyTimingPhases']) && !headers_sent()) {
+        header('Server-Timing: ' . fte_public_server_timing(
+            $GLOBALS['fteMonthlyTimingPhases'],
+            microtime(true) - (float)($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true)),
+            (hrtime(true) - $serializationStarted) / 1e9
+        ));
+    }
+    echo $json;
     exit;
 }
 
@@ -74,6 +84,10 @@ if (!function_exists('tienePermiso') || !tienePermiso($_SESSION['usuario']['id']
 
 try {
     $action = trim((string)($_GET['action'] ?? 'dashboard'));
+    $config['_refresh_buk_cache'] = filter_var($_GET['refresh_buk'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    if (in_array($action, ['cost_centers', 'absences', 'monthly', 'dashboard', 'headcount_snapshot_status', 'headcount_snapshot_details'], true)) {
+        fte_release_session_for_external_work($config);
+    }
     if ($action === 'cost_centers') {
         $historyScope = trim((string)($_GET['scope'] ?? '')) === 'history';
         $people = fte_fetch_buk_people($config, !$historyScope);
@@ -108,10 +122,13 @@ try {
         }
         $period = trim((string)($_POST['period'] ?? ''));
         fte_monthly_source_snapshot_assert_closed_period($period);
+        $actorId = (int)$_SESSION['usuario']['id'];
+        $config['_refresh_buk_cache'] = true; // A new snapshot must consult fresh Buk sources.
+        fte_release_session_for_external_work($config);
         @set_time_limit(0);
         $snapshot = fte_monthly_source_snapshot_build($config, $period);
         $saved = fte_monthly_source_snapshot_save(
-            $conn, $snapshot, (int)($_SESSION['usuario']['id'] ?? 0),
+            $conn, $snapshot, $actorId,
             fte_monthly_source_snapshot_storage_dir($config)
         );
         fte_json_response(['ok' => true, 'snapshot' => $saved]);
@@ -147,6 +164,14 @@ try {
         fte_json_response(['ok' => true, 'snapshot' => $approved]);
     }
     if ($action === 'monthly') {
+        $GLOBALS['fteMonthlyTimingPhases'] = ['bootstrap_auth' => microtime(true) - (float)($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true))];
+        $previousObserver = $config['_performance_observer'] ?? null;
+        $config['_performance_observer'] = static function (array $event) use ($previousObserver): void {
+            if (($event['type'] ?? '') === 'phase') {
+                $GLOBALS['fteMonthlyTimingPhases'][$event['phase']] = $event['seconds'];
+            }
+            fte_performance_emit($previousObserver, $event);
+        };
         @set_time_limit(0);
         $includeAttendance = filter_var($_GET['include_attendance'] ?? false, FILTER_VALIDATE_BOOLEAN);
         if ($includeAttendance) {
