@@ -90,6 +90,26 @@ try {
         );
         $historyStatement->execute([':database' => $database]);
         $safeMetadata['latest_full_backups'] = $historyStatement->fetchAll();
+
+        $securityHistoryStatement = $pdo->prepare(
+            "SELECT TOP (10)
+                    bs.backup_start_date,
+                    bs.backup_finish_date,
+                    bs.backup_size,
+                    bs.compressed_backup_size,
+                    bs.is_copy_only,
+                    bs.has_backup_checksums,
+                    bmf.physical_device_name
+             FROM msdb.dbo.backupset AS bs
+             INNER JOIN msdb.dbo.backupmediafamily AS bmf
+                ON bmf.media_set_id = bs.media_set_id
+             WHERE bs.database_name = :database
+               AND bs.[type] = 'D'
+               AND bmf.physical_device_name LIKE '%COPY[_]ONLY[_]SECURITY%'
+             ORDER BY bs.backup_finish_date DESC"
+        );
+        $securityHistoryStatement->execute([':database' => $database]);
+        $safeMetadata['security_backups'] = $securityHistoryStatement->fetchAll();
     } catch (Throwable) {
         $safeMetadata['latest_full_backups'] = 'metadata_not_available';
     }
@@ -117,17 +137,52 @@ try {
     $sqlFile = str_replace("'", "''", $backupFile);
     $sqlDatabase = '[' . str_replace(']', ']]', $database) . ']';
 
-    $pdo->exec(
+    $backupStatement = $pdo->prepare(
         "BACKUP DATABASE {$sqlDatabase}
          TO DISK = N'{$sqlFile}'
-         WITH COPY_ONLY, COMPRESSION, CHECKSUM, INIT, STATS = 10"
+         WITH COPY_ONLY, COMPRESSION, CHECKSUM, INIT"
     );
+    $backupStatement->execute();
+    while ($backupStatement->nextRowset()) {
+        // Consume every server response before checking msdb.
+    }
+    $backupStatement->closeCursor();
+
+    $recordStatement = $pdo->prepare(
+        "SELECT TOP (1)
+                bs.backup_start_date,
+                bs.backup_finish_date,
+                bs.backup_size,
+                bs.compressed_backup_size,
+                bs.is_copy_only,
+                bs.has_backup_checksums,
+                bmf.physical_device_name
+         FROM msdb.dbo.backupset AS bs
+         INNER JOIN msdb.dbo.backupmediafamily AS bmf
+            ON bmf.media_set_id = bs.media_set_id
+         WHERE bs.database_name = :database
+           AND bs.[type] = 'D'
+           AND bmf.physical_device_name = :backup_file
+         ORDER BY bs.backup_finish_date DESC"
+    );
+    $recordStatement->execute([
+        ':database' => $database,
+        ':backup_file' => $backupFile,
+    ]);
+    $backupRecord = $recordStatement->fetch();
+    if (!is_array($backupRecord)) {
+        throw new RuntimeException(
+            'SQL Server terminó el comando, pero el respaldo no quedó registrado en msdb.'
+        );
+    }
 
     echo json_encode([
         'backup_file' => $backupFile,
         'backup_created' => true,
         'copy_only' => true,
         'checksum' => true,
+        'msdb_recorded' => true,
+        'msdb_record' => $backupRecord,
         'created_at_utc' => gmdate(DATE_ATOM),
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), PHP_EOL;
 

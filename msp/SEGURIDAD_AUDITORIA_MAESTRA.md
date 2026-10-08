@@ -49,7 +49,7 @@ Esta etapa no autoriza:
 | Runtime | PHP 8.3.6 mediante PHP-FPM |
 | Ruta desplegada | `/var/www/portalgp` |
 | Rama desplegada | `codex/msp-aws-deploy` |
-| Commit desplegado | `0852ebdd983f1956c905c6af9d1f1aeba07df6e9` |
+| Commit desplegado | `61fe80276a480a778e5ad4a7048c67b5bddd1663` |
 | Estado Git remoto | árbol limpio al momento de la revisión |
 | Transporte web | HTTP en puerto 80; no existe servicio HTTPS en 443 |
 | Base usada | SQL Server, base `PORTALGP` |
@@ -227,9 +227,9 @@ Estado: **protección creada y verificada; prueba de restauración SQL pendiente
 - La rama desplegable continúa siendo `codex/msp-aws-deploy`.
 - El respaldo de ejecución se tomó sobre
   `6625cf107adbb96aa7729baafe73d3deedc2bf22`, con árbol limpio. Después se
-  añadió únicamente el verificador de restauración; AWS quedó en
-  `0852ebdd983f1956c905c6af9d1f1aeba07df6e9`, también limpio, y ese SHA fue
-  registrado en `/var/lib/portalgp/deployed_commit`.
+  añadieron únicamente los verificadores de restauración y catálogo SQL; AWS
+  quedó en `61fe80276a480a778e5ad4a7048c67b5bddd1663`, también limpio, y ese SHA
+  fue registrado en `/var/lib/portalgp/deployed_commit`.
 - Los procedimientos de respaldo se guardaron en Git, sin secretos, para poder
   reutilizarlos al migrar al servidor definitivo.
 
@@ -273,7 +273,7 @@ alteraron archivos funcionales ni datos de negocio.
 El 8 de octubre de 2026 se ejecutó un respaldo completo de `PORTALGP` mediante
 la identidad técnica existente `portal`, que tiene permiso `BACKUP DATABASE`:
 
-`PORTALGP_COPY_ONLY_SECURITY_20261008_174132.bak`
+`PORTALGP_COPY_ONLY_SECURITY_20261008_174730.bak`
 
 Propiedades solicitadas y confirmadas por la operación:
 
@@ -281,10 +281,15 @@ Propiedades solicitadas y confirmadas por la operación:
 - compresión;
 - `CHECKSUM` durante la generación;
 - destino en la ruta predeterminada de respaldos de SQL Server;
+- registro confirmado en `msdb`: 56.712.192 bytes sin comprimir y 8.470.186
+  bytes comprimidos, con `is_copy_only=1` y `has_backup_checksums=1`;
 - sin escritura funcional adicional en las tablas de PortalGP.
 
-La herramienta portable quedó en `scripts/security_backup_sqlserver.php` y no
-contiene credenciales. El historial observado también registra respaldos
+La herramienta portable quedó en `scripts/security_backup_sqlserver.php`, no
+contiene credenciales y solo declara éxito cuando encuentra la fila exacta en
+`msdb`. Un primer intento que no apareció en el catálogo se descartó como
+evidencia y provocó este endurecimiento; el único respaldo nuevo aceptado en
+esta etapa es el archivo `...174730.bak` indicado arriba. El historial observado también registra respaldos
 completos anteriores con `COPY_ONLY` y checksum de los días 25 de septiembre,
 6 de octubre y 8 de octubre de 2026.
 
