@@ -90,6 +90,26 @@ try {
         );
         $historyStatement->execute([':database' => $database]);
         $safeMetadata['latest_full_backups'] = $historyStatement->fetchAll();
+
+        $securityHistoryStatement = $pdo->prepare(
+            "SELECT TOP (10)
+                    bs.backup_start_date,
+                    bs.backup_finish_date,
+                    bs.backup_size,
+                    bs.compressed_backup_size,
+                    bs.is_copy_only,
+                    bs.has_backup_checksums,
+                    bmf.physical_device_name
+             FROM msdb.dbo.backupset AS bs
+             INNER JOIN msdb.dbo.backupmediafamily AS bmf
+                ON bmf.media_set_id = bs.media_set_id
+             WHERE bs.database_name = :database
+               AND bs.[type] = 'D'
+               AND bmf.physical_device_name LIKE '%COPY[_]ONLY[_]SECURITY%'
+             ORDER BY bs.backup_finish_date DESC"
+        );
+        $securityHistoryStatement->execute([':database' => $database]);
+        $safeMetadata['security_backups'] = $securityHistoryStatement->fetchAll();
     } catch (Throwable) {
         $safeMetadata['latest_full_backups'] = 'metadata_not_available';
     }
@@ -123,11 +143,36 @@ try {
          WITH COPY_ONLY, COMPRESSION, CHECKSUM, INIT, STATS = 10"
     );
 
+    $recordStatement = $pdo->prepare(
+        "SELECT TOP (1)
+                bs.backup_start_date,
+                bs.backup_finish_date,
+                bs.backup_size,
+                bs.compressed_backup_size,
+                bs.is_copy_only,
+                bs.has_backup_checksums,
+                bmf.physical_device_name
+         FROM msdb.dbo.backupset AS bs
+         INNER JOIN msdb.dbo.backupmediafamily AS bmf
+            ON bmf.media_set_id = bs.media_set_id
+         WHERE bs.database_name = :database
+           AND bs.[type] = 'D'
+           AND bmf.physical_device_name = :backup_file
+         ORDER BY bs.backup_finish_date DESC"
+    );
+    $recordStatement->execute([
+        ':database' => $database,
+        ':backup_file' => $backupFile,
+    ]);
+    $backupRecord = $recordStatement->fetch();
+
     echo json_encode([
         'backup_file' => $backupFile,
         'backup_created' => true,
         'copy_only' => true,
         'checksum' => true,
+        'msdb_recorded' => is_array($backupRecord),
+        'msdb_record' => is_array($backupRecord) ? $backupRecord : null,
         'created_at_utc' => gmdate(DATE_ATOM),
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), PHP_EOL;
 
