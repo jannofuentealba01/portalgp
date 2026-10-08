@@ -20,11 +20,14 @@ command -v nginx >/dev/null || fail "nginx no está instalado"
 command -v sshd >/dev/null || fail "sshd no está instalado"
 command -v fail2ban-client >/dev/null || fail "fail2ban no está instalado"
 command -v setfacl >/dev/null || fail "el paquete acl no está instalado"
+command -v logrotate >/dev/null || fail "logrotate no está instalado"
 
 install -d -m 0700 "$BACKUP_ROOT"
 for path in \
     /etc/nginx/snippets/portalgp-app.conf \
+    /etc/nginx/conf.d/portalgp_timing.conf \
     /etc/php/8.3/fpm/pool.d/portalgp.conf \
+    /etc/logrotate.d/portalgp-fpm \
     /etc/ssh/sshd_config.d/99-portalgp-hardening.conf \
     /etc/fail2ban/jail.d/portalgp-sshd.local; do
     if [[ -e "$path" ]]; then
@@ -79,6 +82,13 @@ sudo -u portalgp test ! -w "$VENDOR_DIR/autoload.php" \
 sudo -u www-data test ! -w "$VENDOR_DIR/autoload.php" \
     || fail "el pool compartido todavía puede modificar vendor"
 
+# Los logs de PortalGP quedan fuera del árbol web, con lectura administrativa.
+touch /var/log/php8.3-fpm-portalgp-slow.log
+chown root:adm /var/log/php8.3-fpm-portalgp-slow.log
+chmod 0640 /var/log/php8.3-fpm-portalgp-slow.log
+find /var/log/nginx -maxdepth 1 -type f -name 'portalgp_timing.log*' \
+    -exec chown www-data:adm {} + -exec chmod 0640 {} +
+
 # Se bloquea únicamente al usuario técnico de PortalGP. No cambia contenido,
 # propietario ni permisos tradicionales de la aplicación it-conecta.
 if [[ -d /var/www/it-conecta ]]; then
@@ -87,14 +97,17 @@ if [[ -d /var/www/it-conecta ]]; then
 fi
 
 install -o root -g root -m 0644 deploy/php-fpm/portalgp.conf /etc/php/8.3/fpm/pool.d/portalgp.conf
+install -o root -g root -m 0644 deploy/logrotate/portalgp-fpm /etc/logrotate.d/portalgp-fpm
 install -o root -g root -m 0644 deploy/ssh/99-portalgp-hardening.conf /etc/ssh/sshd_config.d/99-portalgp-hardening.conf
 install -o root -g root -m 0644 deploy/fail2ban/portalgp-sshd.local /etc/fail2ban/jail.d/portalgp-sshd.local
 install -o root -g root -m 0644 deploy/nginx/portalgp-app.conf /etc/nginx/snippets/portalgp-app.conf
+install -o root -g root -m 0644 deploy/nginx/portalgp-timing.conf /etc/nginx/conf.d/portalgp_timing.conf
 
 php-fpm8.3 -t
 sshd -t
 nginx -t
 fail2ban-client -t
+logrotate --debug /etc/logrotate.d/portalgp-fpm >/dev/null
 
 systemctl reload php8.3-fpm
 for _ in {1..20}; do

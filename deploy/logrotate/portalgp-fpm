@@ -1,0 +1,14 @@
+/var/log/php8.3-fpm-portalgp-slow.log {
+    rotate 12
+    weekly
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 root adm
+    postrotate
+        if [ -x /usr/lib/php/php8.3-fpm-reopenlogs ]; then
+            /usr/lib/php/php8.3-fpm-reopenlogs
+        fi
+    endscript
+}
