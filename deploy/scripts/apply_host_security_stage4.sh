@@ -63,6 +63,22 @@ if [[ -f "$FTE_CONFIG" ]]; then
     chmod 0640 "$FTE_CONFIG"
 fi
 
+# Composer se ejecuta con el propietario de despliegue; PHP-FPM solo lee las
+# dependencias. Se preservan los bits ejecutables de vendor/bin.
+VENDOR_DIR="$REPO_ROOT/vendor"
+[[ -d "$VENDOR_DIR" ]] || fail "no existe $VENDOR_DIR"
+DEPLOY_OWNER="$(stat -c '%U' "$REPO_ROOT")"
+DEPLOY_GROUP="$(stat -c '%G' "$REPO_ROOT")"
+chown -R "$DEPLOY_OWNER:$DEPLOY_GROUP" "$VENDOR_DIR"
+find "$VENDOR_DIR" -type d -exec chmod 0755 {} +
+find "$VENDOR_DIR" -type f -perm /111 -exec chmod 0755 {} +
+find "$VENDOR_DIR" -type f ! -perm /111 -exec chmod 0644 {} +
+
+sudo -u portalgp test ! -w "$VENDOR_DIR/autoload.php" \
+    || fail "el pool PortalGP todavía puede modificar vendor"
+sudo -u www-data test ! -w "$VENDOR_DIR/autoload.php" \
+    || fail "el pool compartido todavía puede modificar vendor"
+
 # Se bloquea únicamente al usuario técnico de PortalGP. No cambia contenido,
 # propietario ni permisos tradicionales de la aplicación it-conecta.
 if [[ -d /var/www/it-conecta ]]; then
