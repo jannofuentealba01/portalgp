@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/services/ContratoDocumentoService.php';
 
 msp2RequireAccess();
 
@@ -101,6 +102,18 @@ function msp2FichaFmtPeriodo(?string $value): string
 function msp2FichaFmtMonto(mixed $value): string
 {
     return '$ ' . number_format((float) ($value ?? 0), 0, ',', '.');
+}
+
+function msp2FichaFmtBytes(mixed $value): string
+{
+    $bytes = max(0, (int) $value);
+    if ($bytes < 1024) {
+        return $bytes . ' B';
+    }
+    if ($bytes < 1024 * 1024) {
+        return number_format($bytes / 1024, 1, ',', '.') . ' KB';
+    }
+    return number_format($bytes / (1024 * 1024), 2, ',', '.') . ' MB';
 }
 
 function msp2FichaFmtNumero(mixed $value, int $decimals = 2): string
@@ -367,6 +380,12 @@ $totalDocumentos = 0;
 $totalPaginasDocumentos = 1;
 $documentosPaginationItems = [];
 
+$documentosAdjuntos = [];
+$documentosAdjuntosUsuarioLabels = [];
+$documentosAdjuntosEstructuraDisponible = false;
+$puedeAdministrarAdjuntos = false;
+$tiposDocumentoAdjunto = ContratoDocumentoService::tipos();
+
 $pagosMovimientos = [];
 $asientosContables = [];
 $asientosDetalleByAsiento = [];
@@ -430,6 +449,22 @@ try {
     $contrato = $stmtContrato->fetch() ?: null;
     if (!is_array($contrato)) {
         throw new RuntimeException('El contrato solicitado no existe o no está disponible.');
+    }
+
+    $documentosAdjuntosEstructuraDisponible = ContratoDocumentoService::estructuraDisponible($conn);
+    $puedeAdministrarAdjuntos = $documentosAdjuntosEstructuraDisponible
+        && in_array((int) ($contrato['estado_contrato'] ?? 0), [1, 2], true)
+        && msp2CurrentUserHasPermission('MSP Operacion', 'escritura');
+    if ($documentosAdjuntosEstructuraDisponible) {
+        $documentosAdjuntos = ContratoDocumentoService::listar($conn, (int) $idContratoArriendo);
+        $idsUsuariosAdjuntos = [];
+        foreach ($documentosAdjuntos as $documentoAdjunto) {
+            $idUsuarioAdjunto = (int) ($documentoAdjunto['id_usuario'] ?? 0);
+            if ($idUsuarioAdjunto > 0) {
+                $idsUsuariosAdjuntos[] = $idUsuarioAdjunto;
+            }
+        }
+        $documentosAdjuntosUsuarioLabels = msp2FichaResolveUsuarioLabels($conn, $idsUsuariosAdjuntos);
     }
 
     $idTiendaContrato = (int) ($contrato['id_tienda'] ?? 0);
@@ -2011,8 +2046,11 @@ if ($totalPaginasDocumentos > 1) {
                 <h1 class="form-title text-center mb-0">Contrato</h1>
             </div>
             <div class="msp-contract-actions">
-                <a href="#documentos" class="btn btn-outline-primary btn-sm">
-                    <i class="bi bi-receipt me-1" aria-hidden="true"></i>Documentos
+                <a href="#documentos-adjuntos" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-paperclip me-1" aria-hidden="true"></i>Adjuntos
+                </a>
+                <a href="#documentos" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-receipt me-1" aria-hidden="true"></i>Documentos de cobro
                 </a>
                 <a href="<?php echo msp2Escape(msp2Url('cobranza/registrar_pago_contrato.php?' . http_build_query(['id_contrato_arriendo' => (int) $idContratoArriendo, 'contexto_contrato' => 1, 'return_to' => $rutaRetornoFicha]))); ?>" class="btn btn-outline-success btn-sm">
                     <i class="bi bi-cash-stack me-1" aria-hidden="true"></i>Registrar pago
@@ -2191,7 +2229,7 @@ if ($totalPaginasDocumentos > 1) {
                             <div class="msp-summary-panel">
                                 <div class="small text-muted">Accesos operativos</div>
                                 <div class="msp-summary-actions mt-2">
-                                    <a class="btn btn-outline-primary btn-sm" href="#documentos">Ver documentos del contrato</a>
+                                    <a class="btn btn-outline-primary btn-sm" href="#documentos-adjuntos">Ver documentos adjuntos</a>
                                     <a class="btn btn-outline-warning btn-sm" href="<?php echo msp2Escape(msp2Url('contratos/liquidacion_final.php?id_contrato_arriendo=' . (int) $idContratoArriendo)); ?>">Liquidación final</a>
                                     <?php if ($puedeTraspasar): ?>
                                         <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#modalTraspasarContratoFicha">Traspasar contrato</button>
@@ -2496,9 +2534,241 @@ if ($totalPaginasDocumentos > 1) {
             <?php endif; ?>
             <?php endif; ?>
 
+            <div class="card shadow-sm border-0 mb-4" id="documentos-adjuntos">
+                <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 pt-3">
+                    <div>
+                        <h2 class="h5 mb-1">Documentos adjuntos</h2>
+                        <p class="small text-muted mb-0">Contrato, anexos, finiquito y otros antecedentes asociados.</p>
+                    </div>
+                    <?php if ($puedeAdministrarAdjuntos): ?>
+                        <button
+                            type="button"
+                            class="btn btn-primary btn-sm"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalDocumentoAdjunto"
+                            data-documento-modo="nuevo"
+                        >
+                            <i class="bi bi-file-earmark-arrow-up me-1" aria-hidden="true"></i>Adjuntar PDF
+                        </button>
+                    <?php endif; ?>
+                </div>
+                <div class="card-body p-3">
+                    <?php if (!$documentosAdjuntosEstructuraDisponible): ?>
+                        <div class="alert alert-warning mb-0" role="alert">
+                            <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+                            Documentos adjuntos aún no está habilitado en esta instalación.
+                        </div>
+                    <?php else: ?>
+                        <?php if (!in_array($estadoContratoId, [1, 2], true)): ?>
+                            <div class="alert alert-info py-2 mb-3" role="status">
+                                <i class="bi bi-lock me-1" aria-hidden="true"></i>
+                                El contrato ya tuvo su término operativo. Los PDF permanecen disponibles para consulta y descarga, pero no pueden cargarse, reemplazarse ni anularse.
+                            </div>
+                        <?php elseif (!$puedeAdministrarAdjuntos): ?>
+                            <div class="alert alert-light border py-2 mb-3" role="status">
+                                Tu perfil permite consultar los adjuntos, pero no administrarlos.
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if ($documentosAdjuntos === []): ?>
+                            <div class="msp-contract-attachment-empty">
+                                <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>
+                                <div>
+                                    <strong>No hay documentos adjuntos.</strong>
+                                    <div class="small text-muted">Los PDF que se incorporen al contrato aparecerán en esta sección.</div>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0 msp-contract-attachments-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Documento</th>
+                                            <th>Fecha documento</th>
+                                            <th>Tamaño</th>
+                                            <th>Cargado</th>
+                                            <th class="text-end">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($documentosAdjuntos as $documentoAdjunto): ?>
+                                        <?php
+                                        $idDocumentoAdjunto = (int) ($documentoAdjunto['id_documento'] ?? 0);
+                                        $tipoDocumentoAdjunto = strtoupper(trim((string) ($documentoAdjunto['tipo_documento'] ?? 'OTRO')));
+                                        $nombreDocumentoAdjunto = trim((string) ($documentoAdjunto['nombre_archivo'] ?? 'documento.pdf'));
+                                        $descripcionDocumentoAdjunto = trim((string) ($documentoAdjunto['descripcion'] ?? ''));
+                                        $fechaDocumentoAdjunto = substr(trim((string) ($documentoAdjunto['fecha_documento'] ?? '')), 0, 10);
+                                        $idUsuarioAdjunto = (int) ($documentoAdjunto['id_usuario'] ?? 0);
+                                        $usuarioDocumentoAdjunto = $idUsuarioAdjunto > 0
+                                            ? ($documentosAdjuntosUsuarioLabels[$idUsuarioAdjunto] ?? ('Usuario #' . $idUsuarioAdjunto))
+                                            : '-';
+                                        ?>
+                                        <tr>
+                                            <td>
+                                                <span class="badge text-bg-light border text-dark">
+                                                    <?php echo msp2Escape($tiposDocumentoAdjunto[$tipoDocumentoAdjunto] ?? ucfirst(strtolower($tipoDocumentoAdjunto))); ?>
+                                                </span>
+                                            </td>
+                                            <td class="msp-contract-attachment-name">
+                                                <div class="fw-semibold">
+                                                    <i class="bi bi-file-earmark-pdf text-danger me-1" aria-hidden="true"></i><?php echo msp2Escape($nombreDocumentoAdjunto); ?>
+                                                </div>
+                                                <?php if ($descripcionDocumentoAdjunto !== ''): ?>
+                                                    <div class="small text-muted"><?php echo msp2Escape($descripcionDocumentoAdjunto); ?></div>
+                                                <?php endif; ?>
+                                                <?php if ((int) ($documentoAdjunto['id_documento_reemplazado'] ?? 0) > 0): ?>
+                                                    <div class="small text-muted">Reemplaza documento #<?php echo (int) $documentoAdjunto['id_documento_reemplazado']; ?></div>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?php echo msp2Escape(msp2FichaFmtFecha($fechaDocumentoAdjunto)); ?></td>
+                                            <td class="text-nowrap"><?php echo msp2Escape(msp2FichaFmtBytes($documentoAdjunto['bytes_archivo'] ?? 0)); ?></td>
+                                            <td>
+                                                <div><?php echo msp2Escape($usuarioDocumentoAdjunto); ?></div>
+                                                <div class="small text-muted"><?php echo msp2Escape(msp2FichaFmtFechaHora((string) ($documentoAdjunto['fecha_registro'] ?? ''))); ?></div>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex flex-wrap justify-content-end gap-1">
+                                                    <a
+                                                        class="btn btn-outline-secondary btn-sm"
+                                                        href="<?php echo msp2Escape(msp2Url('contratos/descargar_documento.php?id=' . $idDocumentoAdjunto . '&modo=ver')); ?>"
+                                                        target="_blank"
+                                                        rel="noopener"
+                                                    >
+                                                        <i class="bi bi-eye me-1" aria-hidden="true"></i>Ver
+                                                    </a>
+                                                    <a
+                                                        class="btn btn-outline-primary btn-sm"
+                                                        href="<?php echo msp2Escape(msp2Url('contratos/descargar_documento.php?id=' . $idDocumentoAdjunto)); ?>"
+                                                    >
+                                                        <i class="bi bi-download me-1" aria-hidden="true"></i>Descargar
+                                                    </a>
+                                                    <?php if ($puedeAdministrarAdjuntos): ?>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-outline-secondary btn-sm"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#modalDocumentoAdjunto"
+                                                            data-documento-modo="reemplazar"
+                                                            data-documento-id="<?php echo $idDocumentoAdjunto; ?>"
+                                                            data-documento-nombre="<?php echo msp2Escape($nombreDocumentoAdjunto); ?>"
+                                                            data-documento-tipo="<?php echo msp2Escape($tipoDocumentoAdjunto); ?>"
+                                                            data-documento-fecha="<?php echo msp2Escape($fechaDocumentoAdjunto); ?>"
+                                                            data-documento-descripcion="<?php echo msp2Escape($descripcionDocumentoAdjunto); ?>"
+                                                        >
+                                                            <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Reemplazar
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-outline-danger btn-sm"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#modalAnularDocumentoAdjunto"
+                                                            data-documento-id="<?php echo $idDocumentoAdjunto; ?>"
+                                                            data-documento-nombre="<?php echo msp2Escape($nombreDocumentoAdjunto); ?>"
+                                                        >
+                                                            <i class="bi bi-slash-circle me-1" aria-hidden="true"></i>Anular
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <?php if ($puedeAdministrarAdjuntos): ?>
+                <div class="modal fade" id="modalDocumentoAdjunto" tabindex="-1" aria-labelledby="modalDocumentoAdjuntoTitulo" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <form
+                            class="modal-content"
+                            method="post"
+                            action="<?php echo msp2Escape(msp2Url('contratos/subir_documento.php')); ?>"
+                            enctype="multipart/form-data"
+                            data-documento-adjunto-form
+                            data-max-bytes="<?php echo ContratoDocumentoService::maxBytes(); ?>"
+                        >
+                            <?php msp2CsrfField(); ?>
+                            <input type="hidden" name="MAX_FILE_SIZE" value="<?php echo ContratoDocumentoService::maxBytes(); ?>">
+                            <input type="hidden" name="id_contrato_arriendo" value="<?php echo (int) $idContratoArriendo; ?>">
+                            <input type="hidden" name="id_documento_reemplazado" value="" data-documento-reemplazado>
+                            <div class="modal-header">
+                                <h2 class="modal-title fs-5" id="modalDocumentoAdjuntoTitulo" data-documento-modal-titulo>Adjuntar PDF</h2>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-light border small d-none" data-documento-reemplazo-aviso></div>
+                                <div class="mb-3">
+                                    <label class="form-label" for="documento_adjunto_tipo">Tipo de documento</label>
+                                    <select class="form-select" id="documento_adjunto_tipo" name="tipo_documento" required>
+                                        <?php foreach ($tiposDocumentoAdjunto as $codigoTipoAdjunto => $labelTipoAdjunto): ?>
+                                            <option value="<?php echo msp2Escape($codigoTipoAdjunto); ?>"><?php echo msp2Escape($labelTipoAdjunto); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" for="documento_adjunto_archivo">Archivo PDF</label>
+                                    <input
+                                        class="form-control"
+                                        type="file"
+                                        id="documento_adjunto_archivo"
+                                        name="archivo"
+                                        accept=".pdf,application/pdf"
+                                        required
+                                        data-documento-archivo
+                                    >
+                                    <div class="form-text">Solo PDF. Tamaño máximo: 15 MB.</div>
+                                    <div class="invalid-feedback" data-documento-archivo-error>El archivo debe ser un PDF de hasta 15 MB.</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" for="documento_adjunto_fecha">Fecha del documento <span class="text-muted fw-normal">(opcional)</span></label>
+                                    <input class="form-control" type="date" id="documento_adjunto_fecha" name="fecha_documento">
+                                </div>
+                                <div>
+                                    <label class="form-label" for="documento_adjunto_descripcion">Descripción <span class="text-muted fw-normal">(opcional)</span></label>
+                                    <textarea class="form-control" id="documento_adjunto_descripcion" name="descripcion" rows="3" maxlength="500"></textarea>
+                                    <div class="form-text">Describe brevemente el contenido o propósito del documento.</div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-primary" data-documento-submit>Adjuntar PDF</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="modal fade" id="modalAnularDocumentoAdjunto" tabindex="-1" aria-labelledby="modalAnularDocumentoAdjuntoTitulo" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <form class="modal-content" method="post" action="<?php echo msp2Escape(msp2Url('contratos/anular_documento.php')); ?>">
+                            <?php msp2CsrfField(); ?>
+                            <input type="hidden" name="id_contrato_arriendo" value="<?php echo (int) $idContratoArriendo; ?>">
+                            <input type="hidden" name="id_documento" value="" data-documento-anular-id>
+                            <div class="modal-header">
+                                <h2 class="modal-title fs-5" id="modalAnularDocumentoAdjuntoTitulo">Anular documento adjunto</h2>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="mb-3">El PDF <strong data-documento-anular-nombre></strong> dejará de aparecer entre los documentos activos, pero se conservará para trazabilidad.</p>
+                                <label class="form-label" for="documento_adjunto_motivo_anulacion">Motivo de anulación</label>
+                                <textarea class="form-control" id="documento_adjunto_motivo_anulacion" name="motivo_anulacion" rows="3" maxlength="500" required></textarea>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-danger">Confirmar anulación</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <div class="card shadow-sm border-0 mb-4" id="documentos">
                 <div class="card-header bg-white border-0 pb-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <h2 class="h5 mb-0">Documentos del Contrato</h2>
+                    <h2 class="h5 mb-0">Documentos de cobro</h2>
                     <form method="get" class="d-flex gap-2 align-items-center">
                         <input type="hidden" name="id_contrato_arriendo" value="<?php echo (int) $idContratoArriendo; ?>">
                         <?php if ($returnToCierre !== ''): ?><input type="hidden" name="return_to" value="<?php echo msp2Escape($returnToCierre); ?>"><?php endif; ?>
@@ -2676,6 +2946,7 @@ if ($totalPaginasDocumentos > 1) {
     </div>
 </main>
 <script<?= function_exists('pgpCspNonceAttribute') ? pgpCspNonceAttribute() : '' ?> src="/portalgp/assets/vendor/bootstrap-5.3.0/js/bootstrap.bundle.min.js"></script>
+<script src="/portalgp/msp/assets/contratos_ficha_documentos.js?v=<?php echo rawurlencode((string) @filemtime(dirname(__DIR__) . '/assets/contratos_ficha_documentos.js')); ?>" defer></script>
 <?php include dirname(__DIR__, 2) . '/templates/footer.php'; ?>
 </body>
 </html>

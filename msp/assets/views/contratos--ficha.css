@@ -218,6 +218,42 @@
             overflow-wrap: anywhere;
         }
 
+        #documentos-adjuntos {
+            scroll-margin-top: 1rem;
+        }
+
+        .msp-contract-attachment-empty {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            min-height: 5rem;
+            padding: 0.9rem 1rem;
+            border: 1px dashed var(--color-border);
+            border-radius: 0.55rem;
+            background: var(--color-surface-soft);
+        }
+
+        .msp-contract-attachment-empty > i {
+            flex: 0 0 auto;
+            font-size: 1.75rem;
+            color: var(--color-danger);
+        }
+
+        .msp-contract-attachments-table {
+            min-width: 900px;
+        }
+
+        .msp-contract-attachments-table th,
+        .msp-contract-attachments-table td {
+            padding: 0.55rem 0.65rem;
+        }
+
+        .msp-contract-attachment-name {
+            min-width: 220px;
+            max-width: 420px;
+            overflow-wrap: anywhere;
+        }
+
         @media (max-width: 576px) {
             .msp-timeline-item {
                 padding-left: 2.5rem;
