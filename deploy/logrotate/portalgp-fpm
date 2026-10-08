@@ -1,4 +1,5 @@
 /var/log/php8.3-fpm-portalgp-slow.log {
+    su root adm
     rotate 12
     weekly
     missingok

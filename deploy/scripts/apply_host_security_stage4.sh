@@ -107,7 +107,7 @@ php-fpm8.3 -t
 sshd -t
 nginx -t
 fail2ban-client -t
-logrotate --debug /etc/logrotate.d/portalgp-fpm >/dev/null
+logrotate --debug /etc/logrotate.d/portalgp-fpm >/dev/null 2>&1
 
 systemctl reload php8.3-fpm
 for _ in {1..20}; do
