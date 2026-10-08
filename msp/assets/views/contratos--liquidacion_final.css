@@ -6,6 +6,20 @@
         .lf-guarantees{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
         .lf-guarantee{border:1px solid var(--color-border);border-radius:9px;padding:.55rem .65rem;background:var(--color-surface-soft)}
         .lf-guarantee-money{white-space:nowrap}
-        .lf-details>summary{cursor:pointer;list-style-position:inside}
-        .lf-details>summary::marker{color:var(--color-text)}
+        .lf-details>summary{display:flex;align-items:center;gap:.45rem;cursor:pointer;list-style:none}
+        .lf-details>summary::-webkit-details-marker{display:none}
+        .lf-details>summary::before{content:'›';display:inline-block;color:var(--color-text);font-size:1.15rem;line-height:1;transition:transform .15s ease}
+        .lf-details[open]>summary::before{transform:rotate(90deg)}
+        .lf-details>summary .badge{margin-left:auto}
+        .lf-details>summary.card-header{min-height:44px}
+        .lf-services-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+        .lf-service-card{min-width:0;border:1px solid var(--color-border);border-radius:10px;padding:.75rem;background:var(--color-surface-soft)}
+        .lf-service-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem}
+        .lf-service-summary>span{min-width:0;padding:.35rem .45rem;border-radius:7px;background:var(--color-surface);font-size:.76rem;color:var(--color-text-muted)}
+        .lf-service-summary strong{display:block;color:var(--color-text);overflow-wrap:anywhere}
+        .lf-service-consumptions>summary{cursor:pointer;font-size:.8rem;font-weight:600;color:var(--color-primary)}
+        .lf-consumption-row{display:flex;justify-content:space-between;align-items:flex-start;gap:.65rem;padding:.45rem 0;border-top:1px solid var(--color-border)}
+        .lf-consumption-row:first-child{border-top:0}
+        @media(max-width:991.98px){.lf-services-grid{grid-template-columns:1fr}}
+        @media(max-width:575.98px){.lf-service-summary{grid-template-columns:1fr}}
         @media(max-width:767.98px){.lf-guarantees{grid-template-columns:1fr}}

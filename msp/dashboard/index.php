@@ -72,6 +72,7 @@ $composicionFacturacion = [
     'luz' => 0.0,
     'gas' => 0.0,
     'agua' => 0.0,
+    'multas' => 0.0,
     'otros' => 0.0,
 ];
 $consumoKpi = [
@@ -504,7 +505,8 @@ if ($tablaExiste) {
                     ROUND(SUM(CASE WHEN db.codigo_item = N'SERVICIO_LUZ' THEN db.subtotal ELSE 0 END), 2) AS monto_luz,
                     ROUND(SUM(CASE WHEN db.codigo_item = N'SERVICIO_GAS' THEN db.subtotal ELSE 0 END), 2) AS monto_gas,
                     ROUND(SUM(CASE WHEN db.codigo_item = N'SERVICIO_AGUA' THEN db.subtotal ELSE 0 END), 2) AS monto_agua,
-                    ROUND(SUM(CASE WHEN db.codigo_item NOT IN (N'ARRIENDO', N'SERVICIO_LUZ', N'SERVICIO_GAS', N'SERVICIO_AGUA') THEN db.subtotal ELSE 0 END), 2) AS monto_otros
+                    ROUND(SUM(CASE WHEN db.codigo_item = N'MULTA' THEN db.subtotal ELSE 0 END), 2) AS monto_multas,
+                    ROUND(SUM(CASE WHEN db.codigo_item NOT IN (N'ARRIENDO', N'SERVICIO_LUZ', N'SERVICIO_GAS', N'SERVICIO_AGUA', N'MULTA') THEN db.subtotal ELSE 0 END), 2) AS monto_otros
                 FROM detalle_base db
                 GROUP BY
                     db.id_tienda,
@@ -528,6 +530,7 @@ if ($tablaExiste) {
                 $composicionFacturacion['luz'] += (float) ($detalleRow['monto_luz'] ?? 0);
                 $composicionFacturacion['gas'] += (float) ($detalleRow['monto_gas'] ?? 0);
                 $composicionFacturacion['agua'] += (float) ($detalleRow['monto_agua'] ?? 0);
+                $composicionFacturacion['multas'] += (float) ($detalleRow['monto_multas'] ?? 0);
                 $composicionFacturacion['otros'] += (float) ($detalleRow['monto_otros'] ?? 0);
                 $totalServiciosLocal = (float) ($detalleRow['monto_luz'] ?? 0)
                     + (float) ($detalleRow['monto_gas'] ?? 0)
@@ -1232,6 +1235,7 @@ if ($tablaExiste) {
                                         ['label' => 'Luz', 'monto' => (float) $composicionFacturacion['luz'], 'color' => '#f59e0b'],
                                         ['label' => 'Gas', 'monto' => (float) $composicionFacturacion['gas'], 'color' => '#ef4444'],
                                         ['label' => 'Agua', 'monto' => (float) $composicionFacturacion['agua'], 'color' => '#06b6d4'],
+                                        ['label' => 'Multas', 'monto' => (float) $composicionFacturacion['multas'], 'color' => '#8b5cf6'],
                                         ['label' => 'Otros', 'monto' => (float) $composicionFacturacion['otros'], 'color' => '#64748b'],
                                     ];
                                     $totalComposicionDetalle = array_sum(array_column($composicionDetalle, 'monto'));
@@ -1437,6 +1441,7 @@ const composicionFacturacion = <?php echo dashboardJson([
     $composicionFacturacion['luz'],
     $composicionFacturacion['gas'],
     $composicionFacturacion['agua'],
+    $composicionFacturacion['multas'],
     $composicionFacturacion['otros'],
 ]); ?>;
 
@@ -1808,10 +1813,10 @@ if (typeof Chart !== 'undefined') {
         new Chart(composicionCanvas, {
             type: 'doughnut',
             data: {
-                labels: ['Arriendo', 'Luz', 'Gas', 'Agua', 'Otros'],
+                labels: ['Arriendo', 'Luz', 'Gas', 'Agua', 'Multas', 'Otros'],
                 datasets: [{
                     data: composicionFacturacion,
-                    backgroundColor: ['#0f766e', '#f59e0b', '#ef4444', '#06b6d4', '#64748b'],
+                    backgroundColor: ['#0f766e', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#64748b'],
                     borderWidth: 0,
                 }]
             },

@@ -433,8 +433,11 @@ function corrMonto(mixed $value): string
             && in_array($servicioLecturaControlada, ['LUZ','GAS','AGUA'], true);
         $esArriendoControlado = $tipoCorreccion === 'ARRIENDO_PERIODO'
             && strtoupper((string) ($registroExacto['unidad_correccion'] ?? '')) === 'UF_BASE';
+        $esMultaControlada = $tipoCorreccion === 'CARGO'
+            && strtoupper((string) ($registroExacto['codigo_tipo_cargo'] ?? '')) === 'MULTA'
+            && $nivelCorreccion === 'REGENERACION_CONTROLADA';
         $esAjusteFinancieroPermitido = $esArriendoControlado || $esLecturaControlada;
-        $esCorreccionControlada = $esLecturaControlada || $esArriendoControlado;
+        $esCorreccionControlada = $esLecturaControlada || $esArriendoControlado || $esMultaControlada;
         $puedeAplicarControlada = $esCorreccionControlada
             && in_array($nivelCorreccion, ['REGENERACION_CONTROLADA','AUTORIZACION','AJUSTE_FINANCIERO'], true)
             && in_array($estadoCorreccion, ['BORRADOR','ANALIZADA','PENDIENTE_APROBACION','ERROR','APROBADA'], true);
@@ -484,7 +487,7 @@ function corrMonto(mixed $value): string
                                     ? 'Autorizar y aplicar ajuste financiero'
                                     : ($nivelCorreccion === 'AUTORIZACION'
                                     ? ($esArriendoControlado ? 'Autorizar y corregir UF Base' : 'Autorizar y corregir lectura')
-                                    : 'Aplicar corrección controlada'); ?>
+                                    : ($esMultaControlada ? 'Aplicar corrección de multa' : 'Aplicar corrección controlada')); ?>
                             </button>
                         </form><?php endif; ?>
                     </div>

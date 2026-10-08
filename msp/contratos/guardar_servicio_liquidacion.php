@@ -174,6 +174,9 @@ try {
         if ($lecturaAnterior !== null && $lecturaActual !== null && $lecturaActual < $lecturaAnterior) {
             throw new RuntimeException('La lectura actual no puede ser menor que la lectura anterior.');
         }
+        if ($consumoAsignado === null && $lecturaAnterior !== null && $lecturaActual !== null) {
+            $consumoAsignado = round($lecturaActual - $lecturaAnterior, 4);
+        }
 
         [$montoValido, $montoNormalizado] = msp2NormalizeDecimalInput((string) ($_POST['monto_asignado'] ?? ''), 2);
         if (!$montoValido || $montoNormalizado === null || $montoNormalizado <= 0) {

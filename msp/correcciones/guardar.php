@@ -86,7 +86,11 @@ try {
             }
             $mensajeEjecucion = isset($resultadoEjecucion['id_lectura'])
                 ? 'Corrección aplicada: lectura, consumo y cobro asociado actualizados.'
-                : (isset($resultadoEjecucion['id_cargo']) ? 'Corrección aplicada: monto del cargo actualizado.' : 'Corrección aplicada: arriendo mensual actualizado.');
+                : (isset($resultadoEjecucion['id_cargo'])
+                    ? (!empty($resultadoEjecucion['anulada'])
+                        ? 'Corrección aplicada: multa anulada.'
+                        : 'Corrección aplicada: monto de la multa actualizado.')
+                    : 'Corrección aplicada: arriendo mensual actualizado.');
             msp2SetFlash('success', $mensajeEjecucion);
             msp2Redirect('correcciones/index.php?id_correccion='.(int)$idCorreccion);
         }
@@ -98,7 +102,7 @@ try {
                 throw new RuntimeException('La solicitud no corresponde a una corrección controlada disponible.');
             }
             $tipoControlado = strtoupper((string) ($correccionControlada['tipo_correccion'] ?? ''));
-            if (!in_array($tipoControlado, ['LECTURA','ARRIENDO_PERIODO'], true)) {
+            if (!in_array($tipoControlado, ['LECTURA','ARRIENDO_PERIODO','CARGO'], true)) {
                 throw new RuntimeException('La solicitud no corresponde a una corrección controlada disponible.');
             }
             $analisisControlado = json_decode((string) ($correccionControlada['resultado_analisis'] ?? ''), true);
@@ -112,6 +116,8 @@ try {
             $esAguaControlada = $tipoControlado === 'LECTURA' && $servicioControlado === 'AGUA';
             $esArriendoControlado = $tipoControlado === 'ARRIENDO_PERIODO'
                 && strtoupper((string) ($registroControlado['unidad_correccion'] ?? '')) === 'UF_BASE';
+            $esMultaControlada = $tipoControlado === 'CARGO'
+                && strtoupper((string) ($registroControlado['codigo_tipo_cargo'] ?? '')) === 'MULTA';
             if ($tipoControlado === 'LECTURA' && !in_array($servicioControlado, ['LUZ','GAS','AGUA'], true)) {
                 throw new RuntimeException('La ejecución controlada está habilitada solamente para lecturas de electricidad, gas y agua.');
             }
@@ -119,6 +125,10 @@ try {
                 throw new RuntimeException('La ejecución controlada de arriendo está habilitada solamente para UF Base.');
             }
             $nivelControlado = strtoupper((string) ($correccionControlada['nivel_correcion'] ?? ''));
+            if ($tipoControlado === 'CARGO'
+                && (!$esMultaControlada || $nivelControlado !== 'REGENERACION_CONTROLADA')) {
+                throw new RuntimeException('La ejecución controlada de cargos está habilitada solamente para multas de documentos abiertos y sin movimientos protegidos.');
+            }
             if ($nivelControlado === 'AJUSTE_FINANCIERO'
                 && !$esArriendoControlado
                 && !$esElectricidadControlada
@@ -130,7 +140,9 @@ try {
                 ? 'arriendo'
                 : ($esElectricidadControlada
                     ? 'electricidad'
-                    : ($esGasControlado ? 'gas' : ($esAguaControlada ? 'agua' : $servicioControlado)));
+                    : ($esGasControlado
+                        ? 'gas'
+                        : ($esAguaControlada ? 'agua' : ($esMultaControlada ? 'multa' : $servicioControlado))));
 
             if (in_array($nivelControlado, ['AUTORIZACION','AJUSTE_FINANCIERO'], true)
                 && !msp2CurrentUserHasPermission('MSP Cierre Mensual', 'escritura')
@@ -168,7 +180,11 @@ try {
             $documentosActualizados = count((array) ($resultadoEjecucion['documentos_actualizados'] ?? []));
             msp2SetFlash(
                 'success',
-                ($esArriendoControlado ? 'UF Base corregida.' : 'Lectura de '.$servicioControlado.' corregida.')
+                ($esArriendoControlado
+                    ? 'UF Base corregida.'
+                    : ($esMultaControlada
+                        ? (!empty($resultadoEjecucion['anulada']) ? 'Multa anulada.' : 'Multa corregida.')
+                        : 'Lectura de '.$servicioControlado.' corregida.'))
                     . ' Documentos actualizados: ' . $documentosActualizados . '.'
             );
             msp2Redirect('correcciones/index.php?id_correccion='.(int)$idCorreccion);
@@ -178,7 +194,9 @@ try {
         $mensajeEjecucion = isset($resultadoEjecucion['id_lectura'])
             ? 'Corrección ejecutada: lectura, consumo y cobro asociado actualizados.'
             : (isset($resultadoEjecucion['id_cargo'])
-                ? 'Corrección ejecutada: monto del cargo actualizado.'
+                ? (!empty($resultadoEjecucion['anulada'])
+                    ? 'Corrección ejecutada: multa anulada.'
+                    : 'Corrección ejecutada: monto de la multa actualizado.')
                 : 'Corrección ejecutada: arriendo mensual actualizado sin modificar otros períodos.');
         msp2SetFlash('success', $mensajeEjecucion);
         msp2Redirect('correcciones/index.php?id_correccion=' . (int) $idCorreccion);
@@ -296,9 +314,14 @@ try {
         }
         $qCargo = $conn->prepare(
             "SELECT ccl.*,cl.id_local,cl.id_contrato_arriendo,
+                    UPPER(LTRIM(RTRIM(tc.codigo_tipo_cargo))) codigo_tipo_cargo,
+                    ISNULL(cm.estado_cierre,0) estado_cierre,
                     CONVERT(char(7),COALESCE(ccl.periodo_referencia,ccl.fecha_cargo),126) periodo
              FROM dbo.msp_cargos_contrato_local ccl
              INNER JOIN dbo.msp_contrato_locales cl ON cl.id_contrato_local=ccl.id_contrato_local
+             INNER JOIN dbo.msp_tipos_cargo_salida tc ON tc.id_tipo_cargo_salida=ccl.id_tipo_cargo_salida
+             LEFT JOIN dbo.msp_cierre_mensual cm
+                ON cm.periodo_facturacion=COALESCE(ccl.periodo_referencia,DATEFROMPARTS(YEAR(ccl.fecha_cargo),MONTH(ccl.fecha_cargo),1))
              WHERE ccl.id_cargo_contrato_local=:cargo AND cl.id_contrato_arriendo=:contrato"
         );
         $qCargo->execute([':cargo'=>$idRegistroOrigen, ':contrato'=>(int)$idContrato]);
@@ -306,17 +329,34 @@ try {
         if (!$cargoExacto || (int)$cargoExacto['id_local'] !== $idLocalSeleccionado || (string)$cargoExacto['periodo'] !== $periodoSeleccionado) {
             throw new RuntimeException('La multa o cargo seleccionado no corresponde al contrato, local y período indicados.');
         }
-        if ($valorNuevo <= 0) {
-            throw new RuntimeException('Para corregir el monto debe ser mayor que cero. Para eliminar un cobro utiliza su acción de anulación o condonación.');
+        if (strtoupper((string) ($cargoExacto['codigo_tipo_cargo'] ?? '')) !== 'MULTA') {
+            throw new RuntimeException('Desde Control diario solo se permite editar cargos clasificados como multa.');
         }
-        $valorAnterior = 'monto_cargo='.(string)$cargoExacto['monto_cargo'].'; descripcion='.(string)$cargoExacto['descripcion_cargo'];
-        if ((int)($cargoExacto['estado_cargo'] ?? 0) !== 1) {
+        if ($valorNuevo < 0) {
+            throw new RuntimeException('El monto de la multa debe ser igual o mayor que cero.');
+        }
+        if ($valorNuevo === 0.0 && (string) ($_POST['confirmar_cero'] ?? '') !== '1') {
+            throw new RuntimeException('Debes confirmar expresamente que el monto 0 anulará la multa.');
+        }
+        if (abs($valorNuevo - (float) ($cargoExacto['monto_cargo'] ?? 0)) < 0.005) {
+            throw new RuntimeException('El nuevo monto debe ser diferente del monto actual de la multa.');
+        }
+        if (in_array((int) ($cargoExacto['estado_cierre'] ?? 0), [3,5], true)) {
+            throw new RuntimeException('El período mensual está cerrado. La multa no se modificó.');
+        }
+        $valorAnterior = 'monto_cargo='.(string)$cargoExacto['monto_cargo']
+            .'; descripcion='.(string)$cargoExacto['descripcion_cargo']
+            .'; codigo_tipo_cargo=MULTA';
+        if ((int)($cargoExacto['estado_cargo'] ?? 0) === 2) {
+            $nivel = 'REVISION';
+        } elseif (!in_array((int)($cargoExacto['estado_cargo'] ?? 0), [1,3], true)) {
             $nivel = 'REVISION';
         } elseif ((float)($cargoExacto['monto_aplicado_garantia'] ?? 0) > 0 || (float)($cargoExacto['monto_pagado_directo'] ?? 0) > 0) {
             $nivel = 'AJUSTE_FINANCIERO';
         } else {
             $nivel = corrNivelDocumento($conn, (int)($cargoExacto['id_documento_cobro'] ?? 0));
         }
+        $cargoExacto['operacion_cargo'] = $valorNuevo === 0.0 ? 'ANULAR' : 'ACTUALIZAR';
         $analisis['registro_exacto']=$cargoExacto;
         $analisis['clasificacion']['nivel']=$nivel;
     } elseif ($entidad === 'arriendo') {

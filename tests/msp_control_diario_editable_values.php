@@ -70,12 +70,13 @@ $assertions = [
         'La UF no puede sobrescribirse; corresponde un ajuste financiero.'
     ),
     'todos los lápices usan el mismo estado inicial' => preg_match_all(
-        '/\.gas-edit-btn,\s*\.water-edit-btn,\s*\.rent-edit-btn\s*\{\s*opacity:\s*1/s',
+        '/\.gas-edit-btn,\s*\.water-edit-btn,\s*\.fine-edit-btn,\s*\.rent-edit-btn\s*\{\s*opacity:\s*1/s',
         $styles
     ) === 1,
     'todos los lápices aparecen al pasar el cursor' => str_contains($styles, '.electricity-edit-cell:hover .electricity-edit-btn,')
         && str_contains($styles, '.gas-edit-cell:hover .gas-edit-btn,')
         && str_contains($styles, '.water-edit-cell:hover .water-edit-btn,')
+        && str_contains($styles, '.fine-edit-cell:hover .fine-edit-btn,')
         && str_contains($styles, '.rent-edit-cell:hover .rent-edit-btn,'),
     'gas y agua usan ancho compacto' => str_contains($styles, '.control-grid.month-single-mode .gas-col,')
         && str_contains($styles, 'width: 84px;')
