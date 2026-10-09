@@ -55,7 +55,7 @@ sudo certbot certonly --dry-run --non-interactive --agree-tos \
   --ip-address 15.229.113.179 --cert-name 15.229.113.179
 # Después de aprobar el ensayo, repetir sin --dry-run.
 sudo bash deploy/scripts/deploy_portalgp_security.sh https 15.229.113.179
-sudo certbot renew --cert-name 15.229.113.179 --dry-run --run-deploy-hooks
+sudo certbot renew --cert-name 15.229.113.179 --dry-run --run-deploy-hooks --no-random-sleep-on-renew
 systemctl is-active snap.certbot.renew.timer
 ```
 

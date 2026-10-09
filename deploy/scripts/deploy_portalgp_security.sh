@@ -19,7 +19,7 @@ fail() {
 [[ "$MODE" == "bootstrap" || "$MODE" == "https" ]] || fail "uso: $0 bootstrap | https <IP>"
 
 cd "$REPO_ROOT"
-GIT=(git -c "safe.directory=$REPO_ROOT")
+GIT=(env GIT_OPTIONAL_LOCKS=0 git -c "safe.directory=$REPO_ROOT")
 BRANCH="$("${GIT[@]}" branch --show-current)"
 [[ "$BRANCH" == "$EXPECTED_BRANCH" ]] || fail "rama actual $BRANCH; se requiere $EXPECTED_BRANCH"
 [[ -z "$("${GIT[@]}" status --porcelain)" ]] || fail "el árbol Git contiene cambios locales"
