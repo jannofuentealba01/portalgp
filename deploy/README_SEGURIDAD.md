@@ -43,3 +43,31 @@ contacto operativo. Esa decisión no debe quedar implícita en un despliegue.
 La restricción de SSH por dirección IP se administra en el firewall del
 proveedor una vez definida una IP administrativa estable o una VPN. El script
 no adivina esa dirección para evitar bloquear el acceso al servidor.
+
+## Certificado IP de PortalGP (SEC-025)
+
+Con autorización expresa del acuerdo de suscriptor, usar Certbot >=5.4:
+
+```bash
+sudo certbot certonly --dry-run --non-interactive --agree-tos \
+  --register-unsafely-without-email --preferred-profile shortlived \
+  --webroot --webroot-path /var/www/letsencrypt \
+  --ip-address 15.229.113.179 --cert-name 15.229.113.179
+# Después de aprobar el ensayo, repetir sin --dry-run.
+sudo bash deploy/scripts/deploy_portalgp_security.sh https 15.229.113.179
+sudo certbot renew --cert-name 15.229.113.179 --dry-run --run-deploy-hooks
+systemctl is-active snap.certbot.renew.timer
+```
+
+No se envían correos de prueba. El registro sin correo requiere supervisar
+externamente caducidad y renovación: el certificado IP tiene vida corta.
+El script comprueba cadena/IP antes de redirigir HTTP y cambia únicamente
+la URL canónica del pool PortalGP. El hook recarga Nginx tras renovar ese
+certificado; nunca reinicia servicios ni modifica archivos de it-conecta.
+La verificación HTTPS no usa `curl -k`.
+
+HTTPS del portal y TLS de SQL Server son controles distintos. No cambiar
+`TrustServerCertificate` ni declarar `PORTALGP_ENV=production` hasta validar
+la identidad del servidor SQL; no crear cuentas o restringir permisos como
+parte de este despliegue. Al migrar, adaptar IP/dominio, emitir otro certificado,
+instalar timer/hook y comprobar el pool del nuevo servidor.

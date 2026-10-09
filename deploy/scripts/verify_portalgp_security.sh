@@ -9,7 +9,7 @@ check_status() {
     local path="$1"
     local expected="$2"
     local status
-    status="$(curl -ksS -o /dev/null --max-time 15 -w '%{http_code}' "$BASE_URL$path")"
+    status="$(curl -sS -o /dev/null --max-time 15 -w '%{http_code}' "$BASE_URL$path")"
     if [[ ! "$status" =~ ^($expected)$ ]]; then
         printf 'FAIL %-65s esperado=%s obtenido=%s\n' "$path" "$expected" "$status"
         FAILED=1
@@ -28,7 +28,7 @@ check_status '/portalgp/msp/db/core_msp_migrate.sql' '403'
 check_status '/portalgp/msp/config/cacert.pem' '403'
 check_status '/portalgp/tests/security_stage1.php' '403'
 
-SERVER_HEADER="$(curl -ksSI --max-time 15 "$BASE_URL/portalgp/login.php" | tr -d '\r' | awk -F': ' 'tolower($1)=="server" {print $2; exit}')"
+SERVER_HEADER="$(curl -sSI --max-time 15 "$BASE_URL/portalgp/login.php" | tr -d '\r' | awk -F': ' 'tolower($1)=="server" {print $2; exit}')"
 if [[ "$SERVER_HEADER" == *'/'* || "$SERVER_HEADER" == *'('* ]]; then
     printf 'FAIL Server divulga versión: %s\n' "$SERVER_HEADER"
     FAILED=1
@@ -37,7 +37,7 @@ else
 fi
 
 if [[ "$BASE_URL" == https://* ]]; then
-    HSTS="$(curl -ksSI --max-time 15 "$BASE_URL/portalgp/login.php" | tr -d '\r' | awk -F': ' 'tolower($1)=="strict-transport-security" {print $2; exit}')"
+    HSTS="$(curl -sSI --max-time 15 "$BASE_URL/portalgp/login.php" | tr -d '\r' | awk -F': ' 'tolower($1)=="strict-transport-security" {print $2; exit}')"
     [[ -n "$HSTS" ]] || { printf 'FAIL falta HSTS\n'; FAILED=1; }
     [[ -n "$HSTS" ]] && printf 'OK   HSTS: %s\n' "$HSTS"
 fi
