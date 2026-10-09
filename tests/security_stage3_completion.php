@@ -30,7 +30,7 @@ foreach (['config/database.local.php', 'msp/config/mail.php', 'ct/config/mail.ph
 
 $databaseConfig = require $root . '/config/database.php';
 $assert(!empty($databaseConfig['encrypt']), 'la conexión SQL solicita cifrado');
-$databaseSource = (string) file_get_contents($root . '/db.php');
+$databaseSource = (string) file_get_contents($root . '/database_connection.php');
 $assert(str_contains($databaseSource, "['production', 'prod']") && str_contains($databaseSource, 'requiere validar el certificado'), 'producción falla si no cifra o no valida el certificado SQL');
 
 $broadPermissions = (int) $conn->query(
